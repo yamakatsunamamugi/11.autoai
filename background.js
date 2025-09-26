@@ -326,31 +326,29 @@ function formatLogEntry(request) {
   // 送信時刻
   if (request.sendTime) {
     const sendTime = new Date(request.sendTime);
-    parts.push(`送信時刻: ${sendTime.toLocaleString("ja-JP")}`);
+    const hours = String(sendTime.getHours()).padStart(2, "0");
+    const minutes = String(sendTime.getMinutes()).padStart(2, "0");
+    const seconds = String(sendTime.getSeconds()).padStart(2, "0");
+    const milliseconds = String(sendTime.getMilliseconds()).padStart(3, "0");
+    parts.push(`送信時刻: ${hours}:${minutes}:${seconds}.${milliseconds}`);
   }
 
   // 記載時刻（タスク完了時刻を使用）
   if (request.completionTime) {
     const recordTime = new Date(request.completionTime);
-    const timeDiff = request.sendTime
-      ? Math.round(
-          (recordTime.getTime() - new Date(request.sendTime).getTime()) / 1000,
-        )
-      : 0;
-    parts.push(
-      `記載時刻: ${recordTime.toLocaleString("ja-JP")} (${timeDiff}秒後)`,
-    );
+    const hours = String(recordTime.getHours()).padStart(2, "0");
+    const minutes = String(recordTime.getMinutes()).padStart(2, "0");
+    const seconds = String(recordTime.getSeconds()).padStart(2, "0");
+    const milliseconds = String(recordTime.getMilliseconds()).padStart(3, "0");
+    parts.push(`記録時刻: ${hours}:${minutes}:${seconds}.${milliseconds}`);
   } else {
     // completionTimeが無い場合は現在時刻を使用（後方互換性）
     const recordTime = new Date();
-    const timeDiff = request.sendTime
-      ? Math.round(
-          (recordTime.getTime() - new Date(request.sendTime).getTime()) / 1000,
-        )
-      : 0;
-    parts.push(
-      `記載時刻: ${recordTime.toLocaleString("ja-JP")} (${timeDiff}秒後)`,
-    );
+    const hours = String(recordTime.getHours()).padStart(2, "0");
+    const minutes = String(recordTime.getMinutes()).padStart(2, "0");
+    const seconds = String(recordTime.getSeconds()).padStart(2, "0");
+    const milliseconds = String(recordTime.getMilliseconds()).padStart(3, "0");
+    parts.push(`記録時刻: ${hours}:${minutes}:${seconds}.${milliseconds}`);
   }
 
   // URLが存在し、空文字列でない場合に追加（プレーンテキストとして）
@@ -1080,6 +1078,10 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     console.log("📝 タスク完了時刻記録要求を受信:", {
       taskId: request.taskId,
       completionTime: request.completionTime,
+      hasTaskInfo: !!request.taskInfo,
+      taskInfoUrl: request.taskInfo?.url,
+      requestKeys: Object.keys(request),
+      fullRequest: request,
     });
 
     // 非同期処理を適切にラップして実行
@@ -1153,6 +1155,19 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
           // スプレッドシートにログを記録
           try {
+            console.log(
+              "📊 [BEFORE-RECORD] recordLogToSpreadsheet呼び出し前:",
+              {
+                taskId: request.taskId,
+                hasTaskInfo: !!taskLogData.taskInfo,
+                taskInfoUrl: taskLogData.taskInfo?.url,
+                taskInfoKeys: taskLogData.taskInfo
+                  ? Object.keys(taskLogData.taskInfo)
+                  : [],
+                fullTaskLogData: taskLogData,
+              },
+            );
+
             await recordLogToSpreadsheet(taskLogData);
             console.log("📊 タスク完了ログ記録成功:", request.taskId);
 

@@ -1062,6 +1062,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
       'button:has(svg path[d*="M4.5 5.75"])',
       'button[aria-label="Stop generating"]',
       ".stop-button",
+      // 追加のセレクター（テストコード・実環境から）
+      'button:has(svg[width="20"][height="20"])',
+      '[aria-label*="停止"]',
+      '[aria-label*="stop"]',
+      '[aria-label*="Stop"]',
+      'button[data-testid*="stop"]',
     ],
     // 結果取得関連（テストコードから更新）
     canvasText: [
@@ -1295,42 +1301,191 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
   // Canvasモード専用のテキスト取得
   function getCanvasText(canvasElement) {
-    if (!canvasElement) return "";
+    if (!canvasElement) {
+      console.warn("[ChatGPT] getCanvasText: canvasElement is null");
+      return "";
+    }
 
     try {
+      console.log("[ChatGPT] getCanvasText: 処理開始", canvasElement.className);
+
       // ProseMirrorエディタからテキストを抽出
       const clone = canvasElement.cloneNode(true);
 
-      // 不要な要素を削除
+      // 不要な要素を削除（hrは区切り線として重要なので削除しない）
       const unwantedElements = clone.querySelectorAll(
-        "svg, .icon, .ripple, hr, [contenteditable='false']:not(.ProseMirror)",
+        "svg, .icon, .ripple, [contenteditable='false']:not(.ProseMirror):not(hr)",
       );
       unwantedElements.forEach((el) => el.remove());
 
       // テキストを段落ごとに整理
       const paragraphs = [];
 
-      // 見出し、段落、リストアイテムなどを順番に処理
-      const elements = clone.querySelectorAll(
+      // テキスト要素を段階的に取得（span要素も含む）
+      let textElements = [];
+
+      // 1. まず構造化された要素から取得
+      const structuredElements = clone.querySelectorAll(
         "h1, h2, h3, h4, h5, h6, p, li, blockquote",
       );
-      elements.forEach((el) => {
-        const text = el.textContent?.trim();
-        if (text && text.length > 0) {
+
+      // 2. 構造化要素がない場合はdiv要素も含める
+      if (structuredElements.length === 0) {
+        console.log("[ChatGPT] getCanvasText: 構造化要素なし、div要素も検索");
+        textElements = clone.querySelectorAll("div, p, span");
+      } else {
+        textElements = structuredElements;
+      }
+
+      console.log(
+        `[ChatGPT] getCanvasText: 見つかった要素数 ${textElements.length}`,
+      );
+
+      // 各要素からテキストを抽出
+      const processedTexts = new Set(); // 重複除去用
+
+      Array.from(textElements).forEach((el, index) => {
+        const text = extractElementText(el);
+        if (text && text.length > 0 && !processedTexts.has(text)) {
+          processedTexts.add(text);
           paragraphs.push(text);
+          console.log(
+            `[ChatGPT] getCanvasText: 段落${index}: ${text.substring(0, 100)}...`,
+          );
         }
       });
 
-      // 要素がない場合は全体のテキストを返す
-      if (paragraphs.length === 0) {
-        return clone.textContent?.trim() || "";
+      console.log(
+        "[ChatGPT] getCanvasText: 抽出された段落数",
+        paragraphs.length,
+      );
+
+      // hr要素を区切り線として処理
+      const hrElements = clone.querySelectorAll("hr");
+      if (hrElements.length > 0) {
+        console.log(
+          `[ChatGPT] getCanvasText: ${hrElements.length}個のhr要素を検出`,
+        );
+        // hr要素の前後で段落を分割するため、区切り線を挿入
+        paragraphs.push("---"); // 区切り線を表現
       }
 
-      return paragraphs.join("\n\n");
+      // 要素がない場合は全体のテキストを返す
+      if (
+        paragraphs.length === 0 ||
+        (paragraphs.length === 1 && paragraphs[0] === "---")
+      ) {
+        console.warn(
+          "[ChatGPT] getCanvasText: 段落が見つからないため、フォールバック処理を実行",
+        );
+
+        // 最後の手段：より寛容な方法でテキスト取得を試行
+        const fallbackMethods = [
+          // 方法1: すべてのテキストノードを取得
+          () => {
+            const walker = document.createTreeWalker(
+              clone,
+              NodeFilter.SHOW_TEXT,
+              null,
+              false,
+            );
+            const textNodes = [];
+            let node;
+            while ((node = walker.nextNode())) {
+              const text = node.textContent?.trim();
+              if (text && text.length > 0) {
+                textNodes.push(text);
+              }
+            }
+            return textNodes.join(" ");
+          },
+
+          // 方法2: innerTextを使用
+          () => {
+            return clone.innerText?.trim() || "";
+          },
+
+          // 方法3: textContentを使用
+          () => {
+            return clone.textContent?.trim() || "";
+          },
+        ];
+
+        for (let i = 0; i < fallbackMethods.length; i++) {
+          try {
+            const fallbackText = fallbackMethods[i]();
+            if (fallbackText && fallbackText.length > 0) {
+              console.log(
+                `[ChatGPT] getCanvasText: フォールバック方法${i + 1}成功 - ${fallbackText.length}文字`,
+              );
+              return fallbackText;
+            }
+          } catch (error) {
+            console.warn(
+              `[ChatGPT] getCanvasText: フォールバック方法${i + 1}失敗:`,
+              error,
+            );
+          }
+        }
+
+        console.error(
+          "[ChatGPT] getCanvasText: すべてのフォールバック方法が失敗",
+        );
+        return "";
+      }
+
+      // 段落を適切な間隔で結合
+      const result = paragraphs.join("\n\n");
+      console.log("[ChatGPT] getCanvasText: 最終結果長", result.length);
+      return result;
     } catch (error) {
       console.warn("[ChatGPT] getCanvasText処理中にエラーが発生:", error);
       // フォールバック
-      return canvasElement.textContent?.trim() || "";
+      const fallbackText = canvasElement.textContent?.trim() || "";
+      console.log(
+        "[ChatGPT] getCanvasText: フォールバックテキスト長",
+        fallbackText.length,
+      );
+      return fallbackText;
+    }
+  }
+
+  // Canvas要素からテキストを抽出する専用関数
+  function extractElementText(element) {
+    if (!element) return "";
+
+    try {
+      // 1. 要素に子要素がない場合は直接textContent
+      if (!element.children || element.children.length === 0) {
+        return element.textContent?.trim() || "";
+      }
+
+      // 2. span要素を含む複雑な構造の場合
+      let textParts = [];
+
+      for (const node of element.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent?.trim();
+          if (text) textParts.push(text);
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const tagName = node.tagName.toLowerCase();
+          // span, strong, em, bなどのインライン要素のテキストを取得
+          if (
+            ["span", "strong", "em", "b", "i", "code", "a"].includes(tagName)
+          ) {
+            const text = node.textContent?.trim();
+            if (text) textParts.push(text);
+          } else if (["br"].includes(tagName)) {
+            // 改行要素は空白として扱う
+            textParts.push(" ");
+          }
+        }
+      }
+
+      return textParts.join("").trim();
+    } catch (error) {
+      console.warn("[ChatGPT] extractElementText エラー:", error);
+      return element.textContent?.trim() || "";
     }
   }
 
@@ -2151,25 +2306,61 @@ async function reportSelectorError(selectorKey, error, selectors) {
    * @throws {Error} アシスタントの回答が見つからない場合
    */
   window.getResponseTextChatGPT = async function getResponseTextChatGPT() {
-    // Canvasモードの複数セレクターをチェック
+    console.log("[ChatGPT] getResponseTextChatGPT: テキスト取得開始");
+
+    // Canvasモードの複数セレクターをチェック（提供されたHTML構造に対応）
     const canvasSelectors = [
+      // 基本的なCanvas検出
       "#prosemirror-editor-container .ProseMirror",
       '.ProseMirror[contenteditable="false"]',
+      'div.ProseMirror[contenteditable="false"]',
+
+      // 提供されたHTML構造に対応（_main_で始まるクラス名）
+      'div[class^="_main_"][class*="ProseMirror"]',
+      'div[class*="_main_"][class*="ProseMirror"]',
+      'div[class*="_main_"].ProseMirror',
+
+      // markdown prose 組み合わせ
+      ".ProseMirror.markdown.prose",
+      "div.markdown.prose.ProseMirror",
+      'div.markdown.prose[class*="_main_"]',
+
+      // data属性やclass名での検出
       '[data-testid="canvas-content"]',
       ".canvas-content .ProseMirror",
-      'div[class*="_main_"][class*="ProseMirror"]',
+      ".canvas-content",
+
+      // より広範囲な検出（最後の手段）
+      'div[contenteditable="false"][class*="ProseMirror"]',
+      'div[translate="no"][class*="ProseMirror"]',
     ];
 
     for (const selector of canvasSelectors) {
+      console.log(`[ChatGPT] Canvasセレクターをチェック: ${selector}`);
       const canvasElement = document.querySelector(selector);
       if (canvasElement) {
         console.log(`[ChatGPT] Canvasモードを検出 (${selector})`);
+        console.log("[ChatGPT] Canvas要素のクラス:", canvasElement.className);
+        console.log(
+          "[ChatGPT] Canvas要素のcontenteditable:",
+          canvasElement.getAttribute("contenteditable"),
+        );
+
         const canvasText = getCanvasText(canvasElement);
         if (canvasText && canvasText.trim().length > 0) {
+          console.log(
+            `[ChatGPT] Canvasテキスト取得成功: ${canvasText.length}文字`,
+          );
           return canvasText;
+        } else {
+          console.warn(`[ChatGPT] Canvasテキスト取得失敗: 空またはnull`);
         }
+      } else {
+        console.log(`[ChatGPT] セレクターにマッチする要素なし: ${selector}`);
       }
     }
+
+    console.log("[ChatGPT] Canvasモード検出失敗、通常モードにフォールバック");
 
     // 通常モードの処理
     const responseElements = document.querySelectorAll(
@@ -2179,9 +2370,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
       throw new Error("アシスタントの回答が見つかりません");
     }
 
+    console.log(
+      `[ChatGPT] 通常モード: ${responseElements.length}個のresponse要素を検出`,
+    );
+
     const latestResponse = responseElements[responseElements.length - 1];
     const responseText = getCleanText(latestResponse);
 
+    console.log(`[ChatGPT] 通常モードテキスト取得: ${responseText.length}文字`);
     return responseText;
   };
 
@@ -3161,39 +3357,79 @@ async function reportSelectorError(selectorKey, error, selectors) {
         }
 
         // ========================================
-        // ステップ6: 応答待機
+        // ステップ6: 応答待機（エラーハンドリング強化版）
         // ========================================
         logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
 
         // 停止ボタンが表示されるまで待機
         let stopBtn = null;
+        let stopBtnFound = false;
+
         for (let i = 0; i < 30; i++) {
-          stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
-          if (stopBtn) {
-            logWithTimestamp(
-              "停止ボタンが表示されました（応答生成中）",
-              "success",
-            );
-            break;
+          try {
+            stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
+            if (stopBtn) {
+              logWithTimestamp(
+                "停止ボタンが表示されました（応答生成中）",
+                "success",
+              );
+              stopBtnFound = true;
+              break;
+            }
+          } catch (error) {
+            log.debug(`停止ボタン検索エラー (${i + 1}/30): ${error.message}`);
           }
+
+          // 停止ボタンが見つからなくても、アシスタントメッセージがあれば処理を継続
+          if (i >= 5) {
+            // 5秒待ってから確認開始
+            const assistantMessages = document.querySelectorAll(
+              '[data-message-author-role="assistant"]',
+            );
+            if (assistantMessages.length > 0) {
+              logWithTimestamp(
+                "停止ボタンは見つからないが、アシスタントメッセージを検出",
+                "warning",
+              );
+              break;
+            }
+          }
+
           await sleep(1000);
         }
 
         // 停止ボタンが消えるまで待機
-        if (stopBtn) {
+        if (stopBtnFound && stopBtn) {
           const maxWaitSeconds = AI_WAIT_CONFIG.MAX_WAIT / 1000;
           logWithTimestamp("応答生成を待機中...", "info");
           for (let i = 0; i < maxWaitSeconds; i++) {
-            stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
-            if (!stopBtn) {
-              logWithTimestamp("✅ 応答生成完了", "success");
-              break;
+            try {
+              stopBtn = await findElement(
+                SELECTORS.stopButton,
+                "停止ボタン",
+                1,
+              );
+              if (!stopBtn) {
+                logWithTimestamp("✅ 応答生成完了", "success");
+                break;
+              }
+            } catch (error) {
+              log.debug(`停止ボタン再検索エラー: ${error.message}`);
+              // エラーが発生しても続行
             }
+
             if (i % 10 === 0) {
               logWithTimestamp(`応答待機中... (${i}秒経過)`, "info");
             }
             await sleep(1000);
           }
+        } else if (!stopBtnFound) {
+          // 停止ボタンが見つからなかった場合の代替待機
+          logWithTimestamp(
+            "停止ボタンが見つからないため、代替待機を実行",
+            "warning",
+          );
+          await sleep(5000); // 5秒待機
         }
 
         await sleep(2000); // 追加の待機
@@ -3244,7 +3480,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             taskInfo: {
               aiType: "ChatGPT",
               model: modelName,
-              function: functionName,
+              function: featureName || taskData?.function || "",
               url: window.location.href,
             },
           });
