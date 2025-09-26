@@ -428,7 +428,7 @@ function attachRowEventListeners(row) {
 }
 
 // 保存ダイアログを表示
-function showSaveUrlDialog(url, targetInput) {
+function showSaveUrlDialog(url) {
   saveUrlTitle.value = "";
   saveUrlDialog.style.display = "block";
   saveUrlTitle.focus();
@@ -1176,7 +1176,7 @@ function updateSelectOptions(selectId, options) {
 
   // 新しいオプションを追加
   if (options && options.length > 0) {
-    options.forEach((opt, index) => {
+    options.forEach((opt) => {
       const option = document.createElement("option");
 
       // オプションが文字列かオブジェクトかで処理を分岐
@@ -1342,7 +1342,7 @@ if (
   chrome.runtime &&
   chrome.runtime.onMessage
 ) {
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
     if (message.type === "AI_MODEL_FUNCTION_UPDATE") {
       // 変更検出
 
@@ -1631,7 +1631,7 @@ function initializeAITable() {
       "Gemini機能",
     ];
 
-    headers.forEach((header, index) => {
+    headers.forEach(() => {
       const cell = document.createElement("td");
       cell.style.cssText =
         "border: 1px solid #dee2e6; padding: 12px; text-align: left; vertical-align: top; font-size: 13px; min-height: 60px; line-height: 1.4;";
