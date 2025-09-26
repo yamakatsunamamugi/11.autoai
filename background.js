@@ -1084,10 +1084,11 @@ class AITestController {
 
 // Extension間メッセージの中継
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // log.debug("📨 Message received in background:", {
-  //   type: request.type,
-  //   from: sender.tab ? `Tab ${sender.tab.id}` : "Extension",
-  // });
+  console.log("📨 Message received in background:", {
+    type: request.type,
+    action: request.action,
+    from: sender.tab ? `Tab ${sender.tab.id}` : "Extension",
+  });
 
   // Content Script初期化確認
   if (request.type === "content_script_ready") {
@@ -1473,6 +1474,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   // 🧹 スプレッドシートのログクリア要求
+  console.log("🔍 [デバッグ] チェック中:", {
+    type: request.type,
+    action: request.action,
+    checkResult:
+      request.type === "CLEAR_SPREADSHEET_LOG" ||
+      request.action === "CLEAR_SPREADSHEET_LOG",
+  });
+
   if (
     request.type === "CLEAR_SPREADSHEET_LOG" ||
     request.action === "CLEAR_SPREADSHEET_LOG"
