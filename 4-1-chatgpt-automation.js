@@ -1812,6 +1812,13 @@ async function reportSelectorError(selectorKey, error, selectors) {
     maxRetries = 5,
     selectorKey = null,
   ) {
+    console.warn("🔍 [ZERO-DEBUG-FIND-1] findElement呼び出し", {
+      description: description,
+      selectorsCount: Array.isArray(selectors) ? selectors.length : 1,
+      maxRetries: maxRetries,
+      firstSelector: Array.isArray(selectors) ? selectors[0] : selectors,
+    });
+
     for (let retry = 0; retry < maxRetries; retry++) {
       for (const selector of selectors) {
         try {
@@ -1832,6 +1839,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
           }
 
           if (element && isElementInteractable(element)) {
+            console.warn(`🔍 [ZERO-DEBUG-FIND-2] 要素発見: ${description}`, {
+              selector: selector,
+              retry: retry + 1,
+              element: element.tagName,
+            });
             if (description && retry > 0) {
               logWithTimestamp(
                 `${description}を発見: ${selector} (${retry + 1}回目の試行)`,
@@ -3465,6 +3477,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             }
 
             await sleep(1000);
+            console.warn("🔍 [ZERO-DEBUG-SEND-1] 送信後1秒待機完了");
           } else {
             logWithTimestamp("⚠️ 送信ボタンが見つかりません", "warning");
             // Enterキーでの送信を試みる
@@ -3483,30 +3496,53 @@ async function reportSelectorError(selectorKey, error, selectors) {
             }
           }
         } catch (error) {
+          console.error("🔍 [ZERO-DEBUG-SEND-ERROR] 送信エラー:", error);
           logWithTimestamp(`❌ 送信エラー: ${error.message}`, "error");
         }
+
+        console.warn("🔍 [ZERO-DEBUG-STEP-6] Step 4-1-6移行前");
 
         // ========================================
         // ステップ6: 応答待機（エラーハンドリング強化版）
         // ========================================
         logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
+        console.warn("🔍 [ZERO-DEBUG-STEP-6-START] 応答待機開始");
 
         // 停止ボタンが表示されるまで待機
         let stopBtn = null;
         let stopBtnFound = false;
 
+        console.warn("🔍 [ZERO-DEBUG-STOP-1] 停止ボタン検索開始", {
+          selectors: SELECTORS.stopButton,
+          selectorsCount: SELECTORS.stopButton?.length,
+        });
+
         for (let i = 0; i < 30; i++) {
+          console.warn(`🔍 [ZERO-DEBUG-STOP-2] 停止ボタン検索 ${i + 1}/30`);
           try {
             stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
+            console.warn(`🔍 [ZERO-DEBUG-STOP-3] findElement結果:`, {
+              found: !!stopBtn,
+              elementType: stopBtn ? stopBtn.tagName : null,
+            });
             if (stopBtn) {
+              console.warn("🔍 [ZERO-DEBUG-STOP-4] 停止ボタン発見！");
               logWithTimestamp(
                 "停止ボタンが表示されました（応答生成中）",
                 "success",
               );
               stopBtnFound = true;
               break;
+            } else {
+              console.warn(
+                `🔍 [ZERO-DEBUG-STOP-5] 停止ボタン未検出 (${i + 1}/30)`,
+              );
             }
           } catch (error) {
+            console.error(
+              `🔍 [ZERO-DEBUG-STOP-ERROR] 停止ボタン検索エラー (${i + 1}/30):`,
+              error,
+            );
             log.debug(`停止ボタン検索エラー (${i + 1}/30): ${error.message}`);
           }
 
@@ -3527,6 +3563,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
           await sleep(1000);
         }
+
+        console.warn("🔍 [ZERO-DEBUG-STOP-6] 停止ボタン検索ループ終了", {
+          stopBtnFound: stopBtnFound,
+          stopBtn: !!stopBtn,
+        });
 
         // 停止ボタンが消えるまで待機
         if (stopBtnFound && stopBtn) {
