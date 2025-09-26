@@ -1054,20 +1054,27 @@ async function reportSelectorError(selectorKey, error, selectors) {
       'button[aria-label="Send message"]',
       ".send-button",
     ],
-    // 停止ボタン（テストコードから更新）
+    // 停止ボタン（実際のHTMLから確認済み）
     stopButton: [
-      '[data-testid="stop-button"]',
+      // 最優先: 実際のHTMLから確認したセレクター
       '#composer-submit-button[aria-label="ストリーミングの停止"]',
+      '[data-testid="stop-button"]',
+      '#composer-submit-button[data-testid="stop-button"]',
       "button.composer-submit-btn.composer-secondary-button-color",
-      'button:has(svg path[d*="M4.5 5.75"])',
-      'button[aria-label="Stop generating"]',
-      ".stop-button",
-      // 追加のセレクター（テストコード・実環境から）
-      'button:has(svg[width="20"][height="20"])',
-      '[aria-label*="停止"]',
-      '[aria-label*="stop"]',
-      '[aria-label*="Stop"]',
-      'button[data-testid*="stop"]',
+
+      // セカンダリ: 部分一致や代替セレクター
+      '#composer-submit-button[aria-label*="停止"]',
+      'button[aria-label="ストリーミングの停止"]',
+      "button.composer-secondary-button-color",
+
+      // 追加: SVG内のpath要素で特定
+      'button:has(svg path[d^="M4.5 5.75"])',
+      'button:has(svg path[d*="M4.5 5.75C4.5"])',
+
+      // フォールバック
+      'button[aria-label*="Stop"]',
+      'button[aria-label*="stop"]',
+      "#composer-submit-button",
     ],
     // 結果取得関連（テストコードから更新）
     canvasText: [
@@ -1345,7 +1352,25 @@ async function reportSelectorError(selectorKey, error, selectors) {
       const processedTexts = new Set(); // 重複除去用
 
       Array.from(textElements).forEach((el, index) => {
-        const text = extractElementText(el);
+        // シンプルで確実なテキスト抽出方法
+        let text = "";
+        try {
+          // textContentを使用してテキストを取得
+          text = el.textContent?.trim() || "";
+
+          // 空の場合は innerText も試す
+          if (!text) {
+            text = el.innerText?.trim() || "";
+          }
+        } catch (error) {
+          console.warn(
+            `[ChatGPT] getCanvasText: テキスト抽出エラー (要素${index}):`,
+            error,
+          );
+          // エラー時は必ずtextContentを使用
+          text = el.textContent?.trim() || "";
+        }
+
         if (text && text.length > 0 && !processedTexts.has(text)) {
           processedTexts.add(text);
           paragraphs.push(text);
@@ -1384,7 +1409,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           // 方法1: すべてのテキストノードを取得
           () => {
             const walker = document.createTreeWalker(
-              clone,
+              canvasElement, // cloneではなく元の要素を使用
               NodeFilter.SHOW_TEXT,
               null,
               false,
@@ -1400,14 +1425,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
             return textNodes.join(" ");
           },
 
-          // 方法2: innerTextを使用
+          // 方法2: innerTextを使用（元の要素から）
           () => {
-            return clone.innerText?.trim() || "";
+            return canvasElement.innerText?.trim() || "";
           },
 
-          // 方法3: textContentを使用
+          // 方法3: textContentを使用（元の要素から）
           () => {
-            return clone.textContent?.trim() || "";
+            return canvasElement.textContent?.trim() || "";
           },
         ];
 

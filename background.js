@@ -88,11 +88,25 @@ class SimpleSheetsClient {
         .reduce((sum, char) => sum * 26 + char.charCodeAt(0) - 64, 0) - 1;
     const row = parseInt(cellMatch[2]) - 1;
 
-    // URL部分を見つける
-    const urlStartIndex = text.indexOf(linkUrl);
+    // URL部分を見つける（"URL: "プレフィックスを考慮）
+    let urlStartIndex = text.indexOf(linkUrl);
     if (urlStartIndex === -1) {
-      console.warn("リッチテキスト設定失敗: URLがテキスト内に見つかりません");
-      return;
+      // "URL: "付きで検索
+      const urlWithPrefix = `URL: ${linkUrl}`;
+      const prefixIndex = text.indexOf(urlWithPrefix);
+      if (prefixIndex !== -1) {
+        urlStartIndex = prefixIndex + 5; // "URL: "の長さ分ずらす
+      } else {
+        console.warn(
+          "リッチテキスト設定失敗: URLがテキスト内に見つかりません",
+          {
+            searchedUrl: linkUrl,
+            textLength: text.length,
+            textPreview: text.substring(0, 200),
+          },
+        );
+        return;
+      }
     }
 
     const urlEndIndex = urlStartIndex + linkUrl.length;
@@ -199,6 +213,15 @@ class SimpleSheetsClient {
       },
     ];
 
+    console.log("📝 リッチテキスト設定リクエスト:", {
+      spreadsheetId: spreadsheetId,
+      range: range,
+      urlStartIndex: urlStartIndex,
+      urlEndIndex: urlEndIndex,
+      linkUrl: linkUrl,
+      textPreview: text.substring(0, 100) + "...",
+    });
+
     const response = await fetch(batchUpdateUrl, {
       method: "POST",
       headers: {
@@ -213,8 +236,10 @@ class SimpleSheetsClient {
       console.error(
         `リッチテキスト設定失敗: HTTP ${response.status}, ${errorText}`,
       );
+      throw new Error(`リッチテキスト設定失敗: ${errorText}`);
     }
 
+    console.log("✅ リッチテキスト設定成功");
     return await response.json();
   }
 
