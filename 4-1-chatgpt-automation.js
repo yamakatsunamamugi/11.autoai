@@ -3437,29 +3437,76 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ7: テキスト取得
         // ========================================
-        logWithTimestamp("\n【Step 4-1-7】テキスト取得", "step");
+        logWithTimestamp(
+          "\n【Step 4-1-7】テキスト取得（Canvas対応版）",
+          "step",
+        );
 
         let responseText = "";
         try {
-          // 最新のアシスタントメッセージを取得
-          const assistantMessages = document.querySelectorAll(
-            '[data-message-author-role="assistant"]',
-          );
-          if (assistantMessages.length > 0) {
-            const lastMessage = assistantMessages[assistantMessages.length - 1];
-            responseText = lastMessage.textContent?.trim() || "";
+          // getResponseTextChatGPT関数を使用（Canvas対応済み）
+          logWithTimestamp("getResponseTextChatGPT関数を呼び出し中...", "info");
+          responseText = await getResponseTextChatGPT();
+
+          if (responseText && responseText.trim().length > 0) {
             logWithTimestamp(
-              `✅ 応答取得成功: ${responseText.length}文字`,
+              `✅ テキスト取得成功: ${responseText.substring(0, 100)}...`,
               "success",
             );
-          } else {
-            logWithTimestamp(
-              "⚠️ アシスタントメッセージが見つかりません",
-              "warning",
+            logWithTimestamp(`取得文字数: ${responseText.length}文字`, "info");
+
+            // Canvasモードかどうか判定してログ出力
+            const canvasElement = document.querySelector(
+              "#prosemirror-editor-container .ProseMirror",
             );
+            if (canvasElement) {
+              logWithTimestamp("📝 Canvasモードで取得されました", "info");
+            } else {
+              logWithTimestamp("💬 通常モードで取得されました", "info");
+            }
+          } else {
+            throw new Error("テキストが空または取得できませんでした");
           }
         } catch (error) {
           logWithTimestamp(`❌ テキスト取得エラー: ${error.message}`, "error");
+
+          // フォールバック: 従来の方法で再試行
+          logWithTimestamp("フォールバック: 従来の方法で再試行", "warning");
+          try {
+            const assistantMessages = document.querySelectorAll(
+              '[data-message-author-role="assistant"]',
+            );
+            if (assistantMessages.length > 0) {
+              const lastMessage =
+                assistantMessages[assistantMessages.length - 1];
+              responseText = getCleanText(lastMessage);
+              if (responseText && responseText.trim().length > 0) {
+                logWithTimestamp(
+                  `✅ フォールバック成功: ${responseText.substring(0, 100)}...`,
+                  "success",
+                );
+                logWithTimestamp(
+                  `フォールバック取得文字数: ${responseText.length}文字`,
+                  "info",
+                );
+              } else {
+                logWithTimestamp(
+                  "⚠️ フォールバックでもテキストが取得できません",
+                  "warning",
+                );
+              }
+            } else {
+              logWithTimestamp(
+                "⚠️ アシスタントメッセージが見つかりません",
+                "warning",
+              );
+            }
+          } catch (fallbackError) {
+            logWithTimestamp(
+              `❌ フォールバックエラー: ${fallbackError.message}`,
+              "error",
+            );
+          }
         }
 
         // 結果を返す
