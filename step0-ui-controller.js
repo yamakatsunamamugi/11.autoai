@@ -261,6 +261,9 @@ const cancelOpenUrlBtn = document.getElementById("cancelOpenUrlBtn");
 
 // メインボタン
 const stepOnlyBtn = document.getElementById("stepOnlyBtn");
+const stopBtn = document.getElementById("stopBtn");
+const clearLogBtn = document.getElementById("clearLogBtn");
+const deleteAnswersBtn = document.getElementById("deleteAnswersBtn");
 
 // AI検出機能ボタン
 const aiDetectionSystemBtn = document.getElementById("aiDetectionSystemBtn");
@@ -755,6 +758,90 @@ if (stepOnlyBtn) {
       stepOnlyBtn.classList.remove("processing");
       stepOnlyBtn.textContent = originalText;
       stepOnlyBtn.disabled = false;
+    }
+  });
+}
+
+// ========================================
+// Section 6.5: ログクリア・回答削除ボタンのイベントリスナー
+// ========================================
+
+// ログクリアボタン
+if (clearLogBtn) {
+  clearLogBtn.addEventListener("click", async () => {
+    // 確認ダイアログを表示
+    if (
+      !confirm(
+        "スプレッドシートのログ列(メニューのログ列)とA列の1行目以降のデータをクリアしますか？",
+      )
+    ) {
+      return;
+    }
+
+    log.info("🧹 [ログクリア] 処理開始");
+
+    // ボタンを無効化
+    clearLogBtn.disabled = true;
+    const originalText = clearLogBtn.innerHTML;
+    clearLogBtn.innerHTML = '<span class="btn-icon">⏳</span> 処理中...';
+
+    try {
+      // background.jsにメッセージを送信
+      const response = await chrome.runtime.sendMessage({
+        type: "CLEAR_SPREADSHEET_LOG",
+      });
+
+      if (response && response.success) {
+        log.info("✅ [ログクリア] 処理完了");
+        showFeedback("ログをクリアしました", "success");
+      } else {
+        throw new Error(response?.error || "ログクリアに失敗しました");
+      }
+    } catch (error) {
+      log.error("❌ [ログクリア] エラー:", error);
+      showFeedback(`エラー: ${error.message}`, "error");
+    } finally {
+      // ボタンを復元
+      clearLogBtn.disabled = false;
+      clearLogBtn.innerHTML = originalText;
+    }
+  });
+}
+
+// 回答削除ボタン
+if (deleteAnswersBtn) {
+  deleteAnswersBtn.addEventListener("click", async () => {
+    // 確認ダイアログを表示
+    if (!confirm("AI回答を削除しますか？")) {
+      return;
+    }
+
+    log.info("🗑️ [回答削除] 処理開始");
+
+    // ボタンを無効化
+    deleteAnswersBtn.disabled = true;
+    const originalText = deleteAnswersBtn.innerHTML;
+    deleteAnswersBtn.innerHTML = '<span class="btn-icon">⏳</span> 処理中...';
+
+    try {
+      // background.jsにメッセージを送信
+      const response = await chrome.runtime.sendMessage({
+        type: "DELETE_SPREADSHEET_ANSWERS",
+      });
+
+      if (response && response.success) {
+        log.info("✅ [回答削除] 処理完了");
+        showFeedback("回答を削除しました", "success");
+      } else {
+        throw new Error(response?.error || "回答削除に失敗しました");
+      }
+    } catch (error) {
+      log.error("❌ [回答削除] エラー:", error);
+      showFeedback(`エラー: ${error.message}`, "error");
+    } finally {
+      // ボタンを復元
+      deleteAnswersBtn.disabled = false;
+      deleteAnswersBtn.innerHTML = originalText;
     }
   });
 }

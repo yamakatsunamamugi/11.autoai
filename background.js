@@ -1387,6 +1387,256 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     return true; // 非同期レスポンス許可
   }
 
+  // 🧹 スプレッドシートのログクリア要求
+  if (request.type === "CLEAR_SPREADSHEET_LOG") {
+    console.log("🧹 [ログクリア] 要求受信");
+
+    (async () => {
+      try {
+        // 現在のスプレッドシートIDとシート情報を取得
+        const result = await chrome.storage.local.get([
+          "step1Result",
+          "globalState",
+          "spreadsheetId", // 直接保存されたIDも確認
+        ]);
+
+        // デバッグログ: storage内容を詳細に出力
+        console.log("🔍 [ログクリア] chrome.storage.local内容:", {
+          step1Result: result.step1Result,
+          globalState: result.globalState,
+          directSpreadsheetId: result.spreadsheetId,
+        });
+
+        const step1Result = result.step1Result || {};
+        const globalState = result.globalState || {};
+
+        // spreadsheetIDの取得: 複数の場所から試行
+        const spreadsheetId =
+          step1Result.spreadsheetId ||
+          globalState.spreadsheetId ||
+          result.spreadsheetId; // 直接保存されたIDも確認
+
+        const specialRows =
+          step1Result.specialRows || globalState.specialRows || {};
+        const menuRow = specialRows.menuRow;
+        const dataStartRow = specialRows.dataStartRow;
+
+        console.log("🔍 [ログクリア] 現在の設定:", {
+          spreadsheetId,
+          menuRow,
+          dataStartRow,
+        });
+
+        if (!spreadsheetId) {
+          console.error("❌ [ログクリア] spreadsheetID取得失敗の詳細:", {
+            "result.step1Result": result.step1Result,
+            "result.globalState": result.globalState,
+            "result.spreadsheetId": result.spreadsheetId,
+            "step1Result.spreadsheetId": step1Result?.spreadsheetId,
+            "globalState.spreadsheetId": globalState?.spreadsheetId,
+          });
+          throw new Error(
+            "スプレッドシートIDが見つかりません。Step1(セットアップ)が完了していることを確認してください。",
+          );
+        }
+
+        const sheetsClient = new SimpleSheetsClient();
+
+        // 1. スプレッドシート全体を取得
+        const sheetData = await sheetsClient.getAllValues(spreadsheetId);
+
+        // 2. メニュー行から"ログ"列を検索
+        const menuRowData = sheetData[menuRow - 1] || [];
+        const logColumns = [];
+        menuRowData.forEach((cell, index) => {
+          if (cell === "ログ") {
+            logColumns.push(index);
+          }
+        });
+
+        console.log("🔍 [ログクリア] ログ列検出:", logColumns);
+
+        // 3. A列から"1"が入っている行を検索
+        let targetStartRow = dataStartRow;
+        if (!targetStartRow) {
+          for (let i = 0; i < sheetData.length; i++) {
+            if (sheetData[i] && sheetData[i][0] === "1") {
+              targetStartRow = i + 1; // 1ベースの行番号
+              break;
+            }
+          }
+        }
+
+        if (!targetStartRow) {
+          throw new Error("A列に'1'が入っている行が見つかりません");
+        }
+
+        console.log("🔍 [ログクリア] データ開始行:", targetStartRow);
+
+        // 4. バッチ更新リクエストを作成
+        const updateRequests = [];
+
+        // 各ログ列に対してクリアリクエストを作成
+        logColumns.forEach((colIndex) => {
+          const columnLetter = String.fromCharCode(65 + colIndex); // A, B, C...
+          const range = `${columnLetter}${targetStartRow}:${columnLetter}`;
+
+          updateRequests.push({
+            range: range,
+            values: [], // 空の配列でクリア
+          });
+        });
+
+        console.log("🔍 [ログクリア] クリア対象:", updateRequests);
+
+        // 5. バッチ更新を実行
+        if (updateRequests.length > 0) {
+          await sheetsClient.batchUpdate(spreadsheetId, updateRequests);
+          console.log("✅ [ログクリア] 完了");
+        }
+
+        sendResponse({
+          success: true,
+          clearedColumns: logColumns.length,
+          message: `${logColumns.length}列のログをクリアしました`,
+        });
+      } catch (error) {
+        console.error("❌ [ログクリア] エラー:", error);
+        sendResponse({
+          success: false,
+          error: error.message,
+        });
+      }
+    })();
+
+    return true; // 非同期レスポンス許可
+  }
+
+  // 🗑️ スプレッドシートの回答削除要求
+  if (request.type === "DELETE_SPREADSHEET_ANSWERS") {
+    console.log("🗑️ [回答削除] 要求受信");
+
+    (async () => {
+      try {
+        // 現在のスプレッドシートIDとシート情報を取得
+        const result = await chrome.storage.local.get([
+          "step1Result",
+          "globalState",
+          "spreadsheetId", // 直接保存されたIDも確認
+        ]);
+
+        // デバッグログ: storage内容を詳細に出力
+        console.log("🔍 [回答削除] chrome.storage.local内容:", {
+          step1Result: result.step1Result,
+          globalState: result.globalState,
+          directSpreadsheetId: result.spreadsheetId,
+        });
+
+        const step1Result = result.step1Result || {};
+        const globalState = result.globalState || {};
+
+        // spreadsheetIDの取得: 複数の場所から試行
+        const spreadsheetId =
+          step1Result.spreadsheetId ||
+          globalState.spreadsheetId ||
+          result.spreadsheetId; // 直接保存されたIDも確認
+
+        const specialRows =
+          step1Result.specialRows || globalState.specialRows || {};
+        const menuRow = specialRows.menuRow;
+        const dataStartRow = specialRows.dataStartRow;
+
+        console.log("🔍 [回答削除] 現在の設定:", {
+          spreadsheetId,
+          menuRow,
+          dataStartRow,
+        });
+
+        if (!spreadsheetId) {
+          console.error("❌ [回答削除] spreadsheetID取得失敗の詳細:", {
+            "result.step1Result": result.step1Result,
+            "result.globalState": result.globalState,
+            "result.spreadsheetId": result.spreadsheetId,
+            "step1Result.spreadsheetId": step1Result?.spreadsheetId,
+            "globalState.spreadsheetId": globalState?.spreadsheetId,
+          });
+          throw new Error(
+            "スプレッドシートIDが見つかりません。Step1(セットアップ)が完了していることを確認してください。",
+          );
+        }
+
+        const sheetsClient = new SimpleSheetsClient();
+
+        // 1. スプレッドシート全体を取得
+        const sheetData = await sheetsClient.getAllValues(spreadsheetId);
+
+        // 2. メニュー行から"回答"列を検索
+        const menuRowData = sheetData[menuRow - 1] || [];
+        const answerColumns = [];
+        menuRowData.forEach((cell, index) => {
+          if (cell === "回答") {
+            answerColumns.push(index);
+          }
+        });
+
+        console.log("🔍 [回答削除] 回答列検出:", answerColumns);
+
+        // 3. A列から"1"が入っている行を検索
+        let targetStartRow = dataStartRow;
+        if (!targetStartRow) {
+          for (let i = 0; i < sheetData.length; i++) {
+            if (sheetData[i] && sheetData[i][0] === "1") {
+              targetStartRow = i + 1; // 1ベースの行番号
+              break;
+            }
+          }
+        }
+
+        if (!targetStartRow) {
+          throw new Error("A列に'1'が入っている行が見つかりません");
+        }
+
+        console.log("🔍 [回答削除] データ開始行:", targetStartRow);
+
+        // 4. バッチ更新リクエストを作成
+        const updateRequests = [];
+
+        // 各回答列に対してクリアリクエストを作成
+        answerColumns.forEach((colIndex) => {
+          const columnLetter = String.fromCharCode(65 + colIndex); // A, B, C...
+          const range = `${columnLetter}${targetStartRow}:${columnLetter}`;
+
+          updateRequests.push({
+            range: range,
+            values: [], // 空の配列でクリア
+          });
+        });
+
+        console.log("🔍 [回答削除] 削除対象:", updateRequests);
+
+        // 5. バッチ更新を実行
+        if (updateRequests.length > 0) {
+          await sheetsClient.batchUpdate(spreadsheetId, updateRequests);
+          console.log("✅ [回答削除] 完了");
+        }
+
+        sendResponse({
+          success: true,
+          clearedColumns: answerColumns.length,
+          message: `${answerColumns.length}列の回答を削除しました`,
+        });
+      } catch (error) {
+        console.error("❌ [回答削除] エラー:", error);
+        sendResponse({
+          success: false,
+          error: error.message,
+        });
+      }
+    })();
+
+    return true; // 非同期レスポンス許可
+  }
+
   // 注意: Content Script注入はmanifest.json自動注入に移行済み
   // Content Script注入要求は廃止
 

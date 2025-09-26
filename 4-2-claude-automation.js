@@ -2497,11 +2497,11 @@
     const getCurrentModelInfo = () => {
       log.debug("\n📊 【Claude-ステップ1-1】現在のモデル情報を取得");
 
-      // 新しいセレクタ: ユーザーが提供したモデル表示要素
+      // 新しいセレクタ: モデル選択ボタン内の正確なモデル名を取得
       const newModelSelectors = [
-        ".font-claude-response .whitespace-nowrap.tracking-tight.select-none", // 最も具体的
-        ".font-claude-response div.select-none", // 少し汎用的
-        "div.font-claude-response", // 親要素全体
+        '[data-testid="model-selector-dropdown"] .whitespace-nowrap.select-none', // 最も正確
+        '[data-testid="model-selector-dropdown"] .font-claude-response .whitespace-nowrap', // フォールバック1
+        'button[data-testid="model-selector-dropdown"] .select-none', // フォールバック2
         ".claude-logo-model-selector", // SVGロゴの隣接要素を探す
       ];
 
@@ -6169,12 +6169,15 @@
                 const previousCount = confirmCount;
                 confirmCount++;
 
+                const stopCheckThreshold = Math.ceil(
+                  AI_WAIT_CONFIG.CHECK_INTERVAL / 1000,
+                );
                 log.debug(
-                  `🔍 [STOP-BUTTON-CHECK] 停止ボタン非検出 (confirmCount: ${confirmCount}/10, 経過時間: ${disappearWaitCount}秒)`,
+                  `🔍 [STOP-BUTTON-CHECK] 停止ボタン非検出 (confirmCount: ${confirmCount}/${stopCheckThreshold}, 経過時間: ${disappearWaitCount}秒)`,
                 );
 
-                if (confirmCount >= 10) {
-                  // 10秒連続で停止ボタンが見つからない場合のみ完了と判定
+                if (confirmCount >= stopCheckThreshold) {
+                  // UI設定秒数連続で停止ボタンが見つからない場合のみ完了と判定
 
                   stopButtonGone = true;
                   log.debug(

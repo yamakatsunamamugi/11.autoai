@@ -681,10 +681,12 @@ const log = {
           return;
         }
 
-        // 10秒間変化がなければ完了とみなす
-        if (Date.now() - lastChangeTime > 10000) {
+        // UI設定秒数間変化がなければ完了とみなす
+        if (Date.now() - lastChangeTime > AI_WAIT_CONFIG.CHECK_INTERVAL) {
           clearInterval(monitor);
-          log.debug("10秒間テキストの更新がなかったため、応答完了と判断");
+          log.debug(
+            `${AI_WAIT_CONFIG.CHECK_INTERVAL / 1000}秒間テキストの更新がなかったため、応答完了と判断`,
+          );
           resolve({ success: true, partial: false, timeout: false });
         }
       }, 2000); // 2秒ごとに監視
@@ -963,8 +965,10 @@ const log = {
           if (findElement([SELECTORS.stopButton])) {
             lastSeenTime = Date.now();
           } else {
-            if (Date.now() - lastSeenTime > 10000) {
-              logDr("停止ボタンが10秒間表示されません。応答完了とみなします");
+            if (Date.now() - lastSeenTime > AI_WAIT_CONFIG.CHECK_INTERVAL) {
+              logDr(
+                `停止ボタンが${AI_WAIT_CONFIG.CHECK_INTERVAL / 1000}秒間表示されません。応答完了とみなします`,
+              );
               cleanup();
               resolve("Deep Researchの応答が完了しました");
             }

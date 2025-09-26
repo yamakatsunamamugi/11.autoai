@@ -2144,7 +2144,25 @@ async function reportSelectorError(selectorKey, error, selectors) {
    * @throws {Error} タイムアウトの場合
    */
   async function waitForResponseChatGPT() {
-    const maxWaitTime = AI_WAIT_CONFIG.MAX_WAIT; // 設定から取得
+    // エージェント機能判定による待機時間設定
+    let maxWaitTime = AI_WAIT_CONFIG.MAX_WAIT; // デフォルト: 通常モード
+    try {
+      const currentFunction = await getCurrentFunctionChatGPT();
+      if (
+        currentFunction &&
+        (currentFunction.includes("Agent") ||
+          currentFunction.includes("エージェント"))
+      ) {
+        maxWaitTime = AI_WAIT_CONFIG.AGENT_MODE_WAIT; // エージェントモード: 40分
+        logWithTimestamp(
+          `🤖 エージェントモード検出: ${maxWaitTime / 60000}分待機`,
+          "info",
+        );
+      }
+    } catch (error) {
+      logWithTimestamp("⚠️ 機能判定エラー: 通常モードで継続", "warning");
+    }
+
     const checkInterval = 1000;
     let elapsedTime = 0;
 
@@ -3070,7 +3088,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
         if (stopBtnFound) {
           const maxWaitSeconds = AI_WAIT_CONFIG.MAX_WAIT / 1000;
-          const CHECK_INTERVAL = 10; // 10秒間連続で停止ボタンが消えたら完了
+          const CHECK_INTERVAL = Math.ceil(
+            AI_WAIT_CONFIG.CHECK_INTERVAL / 1000,
+          ); // UI設定秒数連続で停止ボタンが消えたら完了
 
           logWithTimestamp("応答生成を待機中...", "info");
 
