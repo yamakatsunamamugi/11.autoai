@@ -1604,7 +1604,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
     // タスク開始を記録
     startTask(taskData) {
-      console.warn("🔍 [ZERO-DEBUG-LOG-1] startTask内部", {
         hasLogFileManager: !!this.logFileManager,
         logFileManagerType: typeof this.logFileManager,
         hasLogTaskStart: this.logFileManager
@@ -1619,19 +1618,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
           typeof this.logFileManager.logTaskStart === "function"
         ) {
           this.logFileManager.logTaskStart(taskData);
-          console.warn("🔍 [ZERO-DEBUG-LOG-2] logTaskStart成功");
         } else {
-          console.warn("🔍 [ZERO-DEBUG-LOG-3] logTaskStartスキップ");
         }
       } catch (logError) {
         console.error(
-          "🔍 [ZERO-DEBUG-LOG-ERROR] logTaskStartエラー:",
           logError,
         );
       }
 
       logWithTimestamp(`🚀 [タスク開始]`, "info");
-      console.warn("🔍 [ZERO-DEBUG-LOG-4] startTask完了");
     },
 
     // タスク完了を記録
@@ -1717,7 +1712,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
     maxRetries = 5,
     selectorKey = null,
   ) {
-    console.warn("🔍 [ZERO-DEBUG-FIND-1] findElement呼び出し", {
       description: description,
       selectorsCount: Array.isArray(selectors) ? selectors.length : 1,
       maxRetries: maxRetries,
@@ -1744,7 +1738,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
           }
 
           if (element && isElementInteractable(element)) {
-            console.warn(`🔍 [ZERO-DEBUG-FIND-2] 要素発見: ${description}`, {
               selector: selector,
               retry: retry + 1,
               element: element.tagName,
@@ -1803,7 +1796,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // Step 4-1-0: ページ準備確認
   // ========================================
   async function waitForPageReady() {
-    console.warn("🔍 [ZERO-DEBUG-PAGE-1] waitForPageReady開始", {
       readyState: document.readyState,
       url: window.location.href,
       hasBody: !!document.body,
@@ -1829,7 +1821,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       );
 
       if (inputElement && isElementInteractable(inputElement)) {
-        console.warn("🔍 [ZERO-DEBUG-PAGE-2] ページ準備OK", {
           inputFound: true,
           interactable: true,
           attempts: attempts,
@@ -1841,7 +1832,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       await sleep(1000);
     }
 
-    console.error("🔍 [ZERO-DEBUG-PAGE-ERROR] ページ準備タイムアウト", {
       attempts: attempts,
       lastInputElement: !!inputElement,
       documentState: document.readyState,
@@ -2395,8 +2385,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
   let executeTask; // 関数を変数として宣言
   try {
     executeTask = async function executeTaskImpl(taskData) {
+      console.log("🔍 [ChatGPT] タスク実行開始");
+
       // 🔍 包括的デバッグ: 実行コンテキスト検証
-      console.warn("🔍 [ZERO-DEBUG-1] executeTaskImpl開始", {
         functionName: "executeTaskImpl",
         thisContext: this,
         windowExecuteTask: typeof window.executeTask,
@@ -2407,7 +2398,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       });
 
       // 🔍 グローバル変数状態検証
-      console.warn("🔍 [ZERO-DEBUG-2] グローバル状態", {
         hasLogManager: !!ChatGPTLogManager,
         logManagerType: typeof ChatGPTLogManager,
         hasStartTask: ChatGPTLogManager
@@ -2428,7 +2418,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       window.__v2_execution_result = null;
 
       // 🔍 タスクデータ詳細検証
-      console.warn("🔍 [ZERO-DEBUG-3] taskData詳細", {
         taskData: taskData,
         hasPrompt: !!(taskData?.prompt || taskData?.text),
         promptPreview:
@@ -2441,25 +2430,20 @@ async function reportSelectorError(selectorKey, error, selectors) {
       });
 
       // タスク開始をログに記録
-      console.warn("🔍 [ZERO-DEBUG-4] startTask前");
       try {
         ChatGPTLogManager.startTask(taskData);
-        console.warn("🔍 [ZERO-DEBUG-5] startTask成功");
       } catch (startTaskError) {
         console.error(
-          "🔍 [ZERO-DEBUG-ERROR] startTaskエラー:",
           startTaskError,
           startTaskError.stack,
         );
         // エラーでも処理を継続
       }
 
-      console.warn("🔍 [ZERO-DEBUG-6] log.debug前");
       log.debug(
         "%c🚀 ChatGPT V2 タスク実行開始",
         "color: #00BCD4; font-weight: bold; font-size: 16px",
       );
-      console.warn("🔍 [ZERO-DEBUG-7] log.debug後");
 
       log.debug("受信したタスクデータ:", {
         model: taskData.model,
@@ -2469,15 +2453,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
       });
 
       try {
-        console.warn("🔍 [ZERO-DEBUG-8] tryブロック開始");
 
         // ========================================
         // Step 4-1-0: ページ準備確認
         // ========================================
-        console.warn("🔍 [ZERO-DEBUG-9] waitForPageReady前");
-        await waitForPageReady();
-        console.warn("🔍 [ZERO-DEBUG-10] waitForPageReady後");
-
+        console.log("📋 [ChatGPT] ページ準備状態確認中...");        await waitForPageReady();
+        console.log("✅ [ChatGPT] ページ準備完了");
         // ========================================
         // ステップ1: ページ準備状態チェック（初回実行の問題を解決）
         // ========================================
@@ -2592,7 +2573,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
             "モデル切り替えボタン",
           );
           if (modelButton) {
-            console.warn("🔍 [ZERO-DEBUG-MODEL] openModelMenu呼び出し", {
               caller: new Error().stack?.split("\n").slice(1, 4),
             });
             await openModelMenu(modelButton);
@@ -2677,7 +2657,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ2: テキスト入力（堅牢性強化版）
         // ========================================
-        logWithTimestamp("\n【Step 4-1-2】テキスト入力", "step");
+        console.log("📝 [ChatGPT] テキスト入力開始");        logWithTimestamp("\n【Step 4-1-2】テキスト入力", "step");
 
         // デバッグ: 使用するセレクタ一覧を表示
         logWithTimestamp(
@@ -2758,10 +2738,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
           input.classList.remove("ql-blank");
           input.dispatchEvent(new Event("input", { bubbles: true }));
           input.dispatchEvent(new Event("change", { bubbles: true }));
+          console.log("✅ [ChatGPT] テキスト入力完了");
           logWithTimestamp("テキスト入力完了", "success");
         } else {
           input.textContent = prompt;
           input.dispatchEvent(new Event("input", { bubbles: true }));
+          console.log("✅ [ChatGPT] テキスト入力完了");
           logWithTimestamp("テキスト入力完了", "success");
         }
 
@@ -2775,7 +2757,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ステップ3: モデル選択（簡素化版）
         // ========================================
         if (modelName) {
-          logWithTimestamp("\n【Step 4-1-3】モデル選択", "step");
+          console.log("🤖 [ChatGPT] モデル選択処理開始");          logWithTimestamp("\n【Step 4-1-3】モデル選択", "step");
           logWithTimestamp(`選択するモデル: ${modelName}`, "info");
 
           try {
@@ -2856,7 +2838,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           featureName !== "none" &&
           featureName !== "通常"
         ) {
-          logWithTimestamp("\n【Step 4-1-4】機能選択", "step");
+          console.log("🛠️ [ChatGPT] 機能選択処理開始");          logWithTimestamp("\n【Step 4-1-4】機能選択", "step");
           logWithTimestamp(`選択する機能: ${featureName}`, "info");
 
           try {
@@ -3019,7 +3001,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ5: メッセージ送信（最重要）
         // ========================================
-        logWithTimestamp("\n【Step 4-1-5】メッセージ送信", "step");
+        console.log("📤 [ChatGPT] メッセージ送信準備");        logWithTimestamp("\n【Step 4-1-5】メッセージ送信", "step");
         logWithTimestamp("🎯 送信ボタンを探しています...", "debug");
 
         try {
@@ -3076,7 +3058,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
             }
 
             await sleep(1000);
-            console.warn("🔍 [ZERO-DEBUG-SEND-1] 送信後1秒待機完了");
           } else {
             logWithTimestamp("⚠️ 送信ボタンが見つかりません", "warning");
             // Enterキーでの送信を試みる
@@ -3095,14 +3076,13 @@ async function reportSelectorError(selectorKey, error, selectors) {
             }
           }
         } catch (error) {
-          console.error("🔍 [ZERO-DEBUG-SEND-ERROR] 送信エラー:", error);
           logWithTimestamp(`❌ 送信エラー: ${error.message}`, "error");
         }
 
         // ========================================
         // ステップ6: 応答待機（エラーハンドリング強化版）
         // ========================================
-        logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
+        console.log("⏳ [ChatGPT] 応答待機開始");        logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
 
         // 停止ボタンが表示されるまで待機
         let stopBtn = null;
@@ -3216,7 +3196,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
               const messageText = lastMessage.textContent || "";
               if (messageText.length > 10) {
                 console.warn(
-                  "🔍 [ZERO-DEBUG-FALLBACK-SUCCESS] アシスタントメッセージ検出",
                 );
                 logWithTimestamp("アシスタントの応答を検出しました", "success");
                 break;
@@ -3225,7 +3204,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
             await sleep(1000);
             if (i % 5 === 0 && i > 0) {
               console.warn(
-                `🔍 [ZERO-DEBUG-FALLBACK-WAIT] フォールバック待機中 ${i}/30秒`,
               );
             }
           }
@@ -3372,7 +3350,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
         logWithTimestamp("✅ タスク完了", "success");
         return result;
       } catch (error) {
-        console.error("🔍 [ZERO-DEBUG-CATCH] executeTaskエラーキャッチ", {
           errorName: error?.name,
           errorMessage: error?.message,
           errorStack: error?.stack,
@@ -3382,7 +3359,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
     };
   } catch (defineError) {
-    console.error("🔍 [ZERO-DEBUG-DEFINE-ERROR] executeTask定義エラー", {
       errorName: defineError?.name,
       errorMessage: defineError?.message,
       errorStack: defineError?.stack,
@@ -3821,14 +3797,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
             (async () => {
               try {
-                console.warn("🔍 [ZERO-DEBUG-MSG-1] executeTask呼び出し前", {
                   executeTaskType: typeof executeTask,
                   executeTaskName: executeTask?.name,
                   taskToExecute: taskToExecute,
                   requestId: requestId,
                 });
                 const result = await executeTask(taskToExecute);
-                console.warn("🔍 [ZERO-DEBUG-MSG-2] executeTask呼び出し後", {
                   resultKeys: result ? Object.keys(result) : null,
                   success: result?.success,
                 });
