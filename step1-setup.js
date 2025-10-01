@@ -883,8 +883,30 @@ async function findSpecialRows() {
       );
     }
 
-    // シート名の推測（GIDから）
-    const sheetName = gid === "0" ? "シート1" : `シート${gid}`;
+    // シート名をAPI経由で取得（GIDから実際のシート名を取得）
+    let sheetName;
+    try {
+      log.debug("[step1-setup.js] [Step 1-4] GIDからシート名を取得中...");
+      const metadataUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}`;
+      const metadataResponse = await fetchWithTokenRefresh(metadataUrl, {
+        headers: window.globalState.apiHeaders,
+      });
+      const metadata = await metadataResponse.json();
+
+      const sheet = metadata.sheets.find((s) => s.properties.sheetId == gid);
+      sheetName = sheet ? sheet.properties.title : `シート${gid}`;
+      log.debug(
+        `[step1-setup.js] [Step 1-4] ✅ シート名取得成功: ${sheetName}`,
+      );
+    } catch (error) {
+      log.warn(
+        `[step1-setup.js] [Step 1-4] ⚠️ シート名取得エラー、デフォルト使用: ${error.message}`,
+      );
+      sheetName = gid === "0" ? "シート1" : `シート${gid}`;
+    }
+
+    // globalStateにシート名を保存
+    window.globalState.sheetName = sheetName;
 
     log.debug(
       `[step1-setup.js] [Step 1-4] 抽出完了: ID=${spreadsheetId}, GID=${gid}, シート=${sheetName}`,
@@ -1064,6 +1086,13 @@ async function setupColumnStructure() {
     log.debug(
       `[step1-setup.js] [Step 1-5-1] ✅ メニュー行取得: ${headerRow.length}列`,
     );
+
+    // 🔍 診断ログ：メニュー行の内容を表示
+    log.debug(`[DIAGNOSIS] メニュー行(${menuRowNumber}行目)の内容:`);
+    headerRow.forEach((cell, index) => {
+      const colLetter = indexToColumn(index);
+      log.debug(`  ${colLetter}列: "${cell}"`);
+    });
 
     // プロンプト列を検索
     const promptColumns = [];

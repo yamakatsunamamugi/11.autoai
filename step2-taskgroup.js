@@ -133,17 +133,19 @@ async function identifyTaskGroups() {
     setupResult = {
       spreadsheetId: window.globalState.spreadsheetId,
       specialRows: window.globalState.specialRows || {},
-      apiHeaders: {
+      apiHeaders: window.globalState.apiHeaders || {
         Authorization: `Bearer ${window.globalState.authToken}`,
         "Content-Type": "application/json",
       },
-      sheetsApiBase: "https://sheets.googleapis.com/v4/spreadsheets",
+      sheetsApiBase:
+        window.globalState.sheetsApiBase ||
+        "https://sheets.googleapis.com/v4/spreadsheets",
     };
     log.debug(
       "[step2-taskgroup.js] [Step 2-1] ✅ globalStateからsetupResultを構築",
     );
   } else {
-    // 従来の方法
+    // 従来の方法（フォールバック）
     setupResult =
       window.setupResult ||
       JSON.parse(localStorage.getItem("step1Result") || "null");
@@ -408,9 +410,11 @@ async function applyColumnControls() {
   log.debug("[step2-taskgroup.js→Step2-2] 列制御の適用");
   log.debug("========");
 
-  const setupResult =
-    window.setupResult || JSON.parse(localStorage.getItem("step1Result"));
-  const { spreadsheetId, specialRows, apiHeaders, sheetsApiBase } = setupResult;
+  // globalStateから最新のデータを取得
+  const spreadsheetId = window.globalState.spreadsheetId;
+  const specialRows = window.globalState.specialRows;
+  const apiHeaders = window.globalState.apiHeaders;
+  const sheetsApiBase = window.globalState.sheetsApiBase;
   const { controlRow } = specialRows;
 
   if (!controlRow) {
@@ -557,11 +561,17 @@ async function applySkipConditions() {
   log.debug("[step2-taskgroup.js→Step2-3] スキップ判定の適用");
   log.debug("========");
 
-  const setupResult =
-    window.setupResult || JSON.parse(localStorage.getItem("step1Result"));
-  const { spreadsheetId, specialRows, sheetsApiBase } = setupResult;
+  // globalStateから最新のspreadsheetIdを取得（localStorageは古い可能性がある）
+  const spreadsheetId = window.globalState.spreadsheetId;
+  const gid = window.globalState.gid;
+  const specialRows = window.globalState.specialRows;
+  const sheetsApiBase = window.globalState.sheetsApiBase;
   const { dataStartRow } = specialRows;
   const taskGroups = window.globalState.taskGroups;
+
+  log.debug(
+    `[step2-taskgroup.js] [Step 2-3] 使用するspreadsheetId: ${spreadsheetId}`,
+  );
 
   // 現在のトークンで最新のAPIヘッダーを作成
   const currentToken = window.globalState.authToken;
@@ -624,30 +634,50 @@ async function applySkipConditions() {
         result.cellRange = `${logCol}${dataStartRow}:${finalAnswerCol}${endRow}`;
 
         // プロンプト列の取得
-        const promptRange = `${promptCol}${dataStartRow}:${promptCol}${endRow}`;
+        // Step1で取得したシート名を使用
+        const sheetName = window.globalState.sheetName || `シート${gid}`;
+        const promptRange = `'${sheetName}'!${promptCol}${dataStartRow}:${promptCol}${endRow}`;
         const promptUrl = `${sheetsApiBase}/${spreadsheetId}/values/${promptRange}`;
 
         // プロンプト列取得
+        log.debug(`[step2-taskgroup.js] API呼び出し: ${promptUrl}`);
 
         const promptResponse = await window.fetchWithTokenRefresh(promptUrl, {
           headers: apiHeaders,
         });
+
+        log.debug(
+          `[step2-taskgroup.js] API応答ステータス: ${promptResponse.status}`,
+        );
+
         const promptData = await promptResponse.json();
         const promptValues = promptData.values || [];
 
-        // プロンプト取得完了: ${promptValues.length}行
+        log.debug(
+          `[step2-taskgroup.js] ✅ プロンプト取得完了: ${promptValues.length}行`,
+        );
 
         // 回答列の取得
-        const answerRange = `${answerCol}${dataStartRow}:${answerCol}${endRow}`;
+        const answerRange = `'${sheetName}'!${answerCol}${dataStartRow}:${answerCol}${endRow}`;
         const answerUrl = `${sheetsApiBase}/${spreadsheetId}/values/${answerRange}`;
 
         // 回答列取得
+        log.debug(`[step2-taskgroup.js] API呼び出し: ${answerUrl}`);
 
         const answerResponse = await window.fetchWithTokenRefresh(answerUrl, {
           headers: apiHeaders,
         });
+
+        log.debug(
+          `[step2-taskgroup.js] API応答ステータス: ${answerResponse.status}`,
+        );
+
         const answerData = await answerResponse.json();
         const answerValues = answerData.values || [];
+
+        log.debug(
+          `[step2-taskgroup.js] ✅ 回答取得完了: ${answerValues.length}行`,
+        );
 
         // 回答取得完了: ${answerValues.length}行
 
@@ -692,6 +722,21 @@ async function applySkipConditions() {
     } catch (error) {
       result.status = "error";
       result.error = error.message;
+
+      // エラー詳細をログ出力
+      log.error(
+        `[step2-taskgroup.js] ❌ グループ${group.groupNumber}処理エラー:`,
+        {
+          エラーメッセージ: error.message,
+          スタック: error.stack,
+          グループ情報: {
+            groupNumber: group.groupNumber,
+            type: group.type,
+            promptColumns: group.promptColumns,
+          },
+        },
+      );
+
       // エラーの場合はスキップしない（安全のため処理対象として扱う）
     }
 
@@ -793,9 +838,11 @@ async function logTaskGroups() {
   log.debug("2-5. タスクグループ情報の調査開始");
   log.debug("========");
 
-  const setupResult =
-    window.setupResult || JSON.parse(localStorage.getItem("step1Result"));
-  const { spreadsheetId, specialRows, apiHeaders, sheetsApiBase } = setupResult;
+  // globalStateから最新のデータを取得
+  const spreadsheetId = window.globalState.spreadsheetId;
+  const specialRows = window.globalState.specialRows;
+  const apiHeaders = window.globalState.apiHeaders;
+  const sheetsApiBase = window.globalState.sheetsApiBase;
   const { modelRow, menuRow } = specialRows;
   const taskGroups = window.globalState.taskGroups.filter((g) => !g.skip);
 

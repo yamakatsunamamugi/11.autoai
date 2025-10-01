@@ -6866,7 +6866,8 @@ async function createTaskListFromGroup(groupData) {
       taskGroup = groupData.taskGroup;
       spreadsheetData = groupData.spreadsheetData || [];
       specialRows = groupData.specialRows || {};
-      dataStartRow = groupData.dataStartRow || 4;
+      dataStartRow =
+        groupData.dataStartRow || window.globalState?.specialRows?.dataStartRow;
       options = groupData.options || {};
 
       ExecuteLogger.info("✅ [Step 4-1-2] Step6遷移データ形式を検出:", {
@@ -6882,7 +6883,7 @@ async function createTaskListFromGroup(groupData) {
       // 現在のコンテキストからスプレッドシートデータを取得
       spreadsheetData = window.globalState?.currentSpreadsheetData || [];
       specialRows = window.globalState?.specialRows || {};
-      dataStartRow = window.globalState?.dataStartRow || 4;
+      dataStartRow = window.globalState?.specialRows?.dataStartRow;
       options = {
         spreadsheetUrl: window.globalState?.spreadsheetUrl || "",
         spreadsheetId: window.globalState?.spreadsheetId || "",
@@ -6946,8 +6947,27 @@ async function createTaskListFromGroup(groupData) {
 async function executeStep4(taskList) {
   // executeStep4関数定義開始
 
+  // 🔧 [FIX] 引数なしで呼ばれた場合、window.globalState.taskGroupsを使用
+  if (taskList === undefined || taskList === null) {
+    ExecuteLogger.info(
+      "🔧 [DATA-SOURCE] 引数なし、window.globalState.taskGroupsを使用:",
+      {
+        hasGlobalState: !!window.globalState,
+        taskGroupsCount: window.globalState?.taskGroups?.length || 0,
+      },
+    );
+
+    taskList = window.globalState?.taskGroups || [];
+
+    if (taskList.length === 0) {
+      ExecuteLogger.warn("⚠️ [DATA-SOURCE] タスクグループが見つかりません");
+      throw new Error(
+        "executeStep4: タスクグループが見つかりません。Step2を先に実行してください。",
+      );
+    }
+  }
+
   // 🔧 [FIX] 入力データ検証・変換処理
-  // グループオブジェクトが渡された場合、タスク配列に変換する
   if (!Array.isArray(taskList)) {
     ExecuteLogger.info(
       "🔧 [DATA-CONVERSION] グループオブジェクトを検出、タスク配列に変換中:",
@@ -6993,6 +7013,47 @@ async function executeStep4(taskList) {
         "executeStep4: taskListは配列またはグループオブジェクトである必要があります",
       );
     }
+  }
+
+  // 🔧 [FIX] taskGroupsの配列が渡された場合、各グループを順次処理
+  // タスク配列とグループ配列を区別：タスクは必ずpromptを持ち、グループはpromptを持たない
+  if (
+    Array.isArray(taskList) &&
+    taskList.length > 0 &&
+    taskList[0]?.columns &&
+    !taskList[0]?.prompt
+  ) {
+    ExecuteLogger.info(
+      "🔧 [DATA-CONVERSION] タスクグループ配列を検出、各グループを順次処理:",
+      {
+        groupCount: taskList.length,
+        groupNumbers: taskList.map((g) => g.groupNumber),
+      },
+    );
+
+    const allResults = [];
+    for (const group of taskList) {
+      try {
+        ExecuteLogger.info(`🔄 グループ ${group.groupNumber} 処理開始`);
+        const groupTaskList = await createTaskListFromGroup(group);
+
+        // 各グループのタスクリストを処理
+        // ここで再帰的にexecuteStep4を呼び出すのではなく、
+        // 全てのタスクを1つの配列にまとめる
+        allResults.push(...groupTaskList);
+      } catch (error) {
+        ExecuteLogger.error(
+          `❌ グループ ${group.groupNumber} 処理エラー:`,
+          error,
+        );
+        throw error;
+      }
+    }
+
+    taskList = allResults;
+    ExecuteLogger.info("✅ [DATA-CONVERSION] 全グループ変換完了:", {
+      totalTaskCount: taskList.length,
+    });
   }
 
   ExecuteLogger.info("🚀 Step 4-6 Execute 統合実行開始", taskList);
