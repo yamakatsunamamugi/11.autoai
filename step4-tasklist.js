@@ -5805,10 +5805,24 @@ class WindowLifecycleManager {
    */
   calculateCellReference(task) {
     // answerCellのみを使用（確実な回答列への記載）
-    if (task.answerCell) return task.answerCell;
+    if (!task.answerCell) {
+      throw new Error(
+        `answerCellが存在しません: taskId=${task.id || "unknown"}`,
+      );
+    }
 
-    // answerCellが存在しない場合はエラー
-    throw new Error(`answerCellが存在しません: taskId=${task.id || "unknown"}`);
+    // シート名を動的に取得（ハードコーディング禁止）
+    const sheetName =
+      window.globalState?.sheetName ||
+      `シート${window.globalState?.gid || "0"}`;
+
+    // シート名が既に含まれている場合はそのまま返す
+    if (task.answerCell.includes("!")) {
+      return task.answerCell;
+    }
+
+    // シート名を追加して返す
+    return `'${sheetName}'!${task.answerCell}`;
   }
 
   /**
