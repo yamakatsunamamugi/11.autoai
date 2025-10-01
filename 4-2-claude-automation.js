@@ -3519,10 +3519,69 @@
         return { element: null, text: "", method: "Not Found" };
       }
 
-      // 最後のClaude応答を取得
-      const lastResponse = claudeResponses[claudeResponses.length - 1];
+      // HTML構造で優先順位判定（モデル名・思考プロセスを除外）
       log.debug(
-        `✓ font-claude-response発見: ${claudeResponses.length}個中の最後`,
+        `✓ font-claude-response発見: ${claudeResponses.length}個 - 優先順位判定開始`,
+      );
+
+      let canvasResponse = null;
+      let normalResponse = null;
+      let excludedCount = 0;
+
+      Array.from(claudeResponses).forEach((el, idx) => {
+        const parent = el.parentElement;
+        const parentClass = parent?.className || "";
+        const parentTag = parent?.tagName;
+        const parentTestId = parent?.getAttribute("data-testid");
+        const textLength = el.textContent?.trim()?.length || 0;
+
+        // 除外: モデル名（親がBUTTONまたはmodel-selector-dropdown）
+        if (
+          parentTag === "BUTTON" ||
+          parentTestId === "model-selector-dropdown"
+        ) {
+          log.debug(
+            `  [${idx}] 除外: モデル名 (${textLength}文字, 親=${parentTag})`,
+          );
+          excludedCount++;
+          return;
+        }
+
+        // 除外: 思考プロセス（親に'overflow-y-auto'）
+        if (parentClass.includes("overflow-y-auto")) {
+          log.debug(`  [${idx}] 除外: 思考プロセス (${textLength}文字)`);
+          excludedCount++;
+          return;
+        }
+
+        // Canvas（最優先）
+        if (parentClass.includes("w-full") && parentClass.includes("h-full")) {
+          canvasResponse = el;
+          log.debug(`  [${idx}] ✅ Canvas発見 (${textLength}文字) - 最優先`);
+          return;
+        }
+
+        // 通常応答
+        if (parentClass.includes("group")) {
+          normalResponse = el;
+          log.debug(`  [${idx}] ✅ 通常応答発見 (${textLength}文字)`);
+          return;
+        }
+
+        log.debug(`  [${idx}] ⚠️ 不明なパターン (${textLength}文字)`);
+      });
+
+      const lastResponse = canvasResponse || normalResponse;
+
+      if (!lastResponse) {
+        log.debug(`❌ 有効な応答が見つかりません (除外: ${excludedCount}個)`);
+        return { element: null, text: "", method: "No Valid Response" };
+      }
+
+      const responseType = canvasResponse ? "Canvas" : "通常応答";
+      const selectedTextLength = lastResponse.textContent?.trim()?.length || 0;
+      log.debug(
+        `✓ ${responseType}を選択 (${selectedTextLength}文字, 除外: ${excludedCount}個)`,
       );
 
       // 2. クローンを作成（元のDOMを変更しないため）
@@ -3550,12 +3609,30 @@
 
       log.debug(`  - 思考プロセス除外: ${thinkingCount}個`);
 
-      // 4. standard-markdownを取得
+      // 4. standard-markdownを取得（Canvas/通常応答の両方に対応）
       const standardMd = clone.querySelector(".standard-markdown");
 
       if (!standardMd) {
-        log.debug("❌ standard-markdownが見つかりません");
-        return { element: null, text: "", method: "No Standard Markdown" };
+        log.debug(
+          "⚠️ standard-markdownが見つかりません - 直接textContentを取得",
+        );
+        const directText = clone.textContent?.trim() || "";
+
+        if (directText.length < 10) {
+          log.debug(
+            `❌ 直接取得したテキストも短すぎます: ${directText.length}文字`,
+          );
+          return { element: null, text: "", method: "No Text Content" };
+        }
+
+        log.debug(`✅ 直接textContentを取得: ${directText.length}文字`);
+        log.debug(`  - 先頭100文字: ${directText.substring(0, 100)}`);
+
+        return {
+          element: lastResponse,
+          text: directText,
+          method: "Direct TextContent",
+        };
       }
 
       // 5. テキスト取得
@@ -3563,16 +3640,19 @@
 
       if (text.length < 10) {
         log.debug(`❌ テキストが短すぎます: ${text.length}文字`);
+        log.debug(`  - 選択した要素タイプ: ${responseType}`);
+        log.debug(`  - 元の要素の文字数: ${selectedTextLength}`);
         return { element: null, text: "", method: "Text Too Short" };
       }
 
-      log.debug(`✅ AI応答取得成功: ${text.length}文字`);
+      log.debug(`✅ AI応答取得成功: ${text.length}文字 (${responseType})`);
       log.debug(`  - 先頭100文字: ${text.substring(0, 100)}`);
+      log.debug(`  - 末尾100文字: ${text.substring(text.length - 100)}`);
 
       return {
         element: lastResponse,
         text: text,
-        method: "Font Claude Response",
+        method: `Font Claude Response (${responseType})`,
       };
     };
 
