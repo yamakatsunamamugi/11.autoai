@@ -2910,8 +2910,7 @@
                     selectorInfo.description &&
                     selectorInfo.description.includes("続けるボタン")
                   ) {
-                    const buttonText =
-                      element.textContent || element.innerText || "";
+                    const buttonText = element.textContent || "";
                     if (!buttonText.includes("続ける")) {
                       continue; // テキストが「続ける」でない場合はスキップ
                     }
@@ -3306,7 +3305,85 @@
     };
 
     /**
-     * 思考プロセス除外の強化
+     * 除外すべき要素かを判定する統一関数
+     * 【動作説明】ユーザーメッセージと思考プロセスを確実に除外
+     * 【引数】element: チェック対象の要素
+     * 【戻り値】boolean: true=除外すべき, false=有効
+     */
+    const shouldExcludeElement = (element) => {
+      if (!element) return true;
+
+      const className = element.className || "";
+
+      // ========== ユーザーメッセージ除外 ==========
+      // 1. data-testid直接チェック
+      if (element.getAttribute("data-testid") === "user-message") {
+        log.debug("  ⚠️ ユーザーメッセージ検出 (data-testid)");
+        return true;
+      }
+
+      // 2. 親要素にuser-messageがあるか
+      if (element.closest('[data-testid="user-message"]')) {
+        log.debug("  ⚠️ ユーザーメッセージの子孫要素");
+        return true;
+      }
+
+      // 3. font-user-messageクラス
+      if (
+        className.includes("font-user-message") ||
+        className.includes("!font-user-message")
+      ) {
+        log.debug("  ⚠️ ユーザーメッセージクラス検出");
+        return true;
+      }
+
+      // ========== 思考プロセス除外 ==========
+      // 4. 親要素を5階層まで遡って思考プロセスボタンをチェック
+      let parent = element;
+      for (let i = 0; i < 5 && parent; i++) {
+        // 思考プロセスボタンの存在チェック
+        const buttons = parent.querySelectorAll("button");
+        for (const btn of buttons) {
+          const btnText = btn.textContent?.trim() || "";
+          if (
+            btnText.includes("思考プロセス") ||
+            btnText.includes("Thinking Process") ||
+            btnText.includes("Show thinking")
+          ) {
+            log.debug(`  ⚠️ 思考プロセスボタン検出: "${btnText}"`);
+            return true;
+          }
+        }
+
+        // 思考プロセスコンテナの特徴的なクラス組み合わせ
+        const parentClass = parent.className || "";
+        if (
+          parentClass.includes("ease-out") &&
+          parentClass.includes("rounded-lg") &&
+          parentClass.includes("border-border-300")
+        ) {
+          log.debug("  ⚠️ 思考プロセスコンテナ検出");
+          return true;
+        }
+
+        parent = parent.parentElement;
+        if (!parent || parent.tagName === "BODY") break;
+      }
+
+      // 5. font-claude-response + text-text-300の組み合わせ（思考プロセス内部の特徴）
+      if (
+        className.includes("font-claude-response") &&
+        className.includes("text-text-300")
+      ) {
+        log.debug("  ⚠️ 思考プロセス内部テキスト検出");
+        return true;
+      }
+
+      return false;
+    };
+
+    /**
+     * 思考プロセス除外の強化（簡略版）
      * 【動作説明】思考プロセス要素を確実に除外
      * 【引数】element: チェック対象の要素
      * 【戻り値】Element or null: クリーンな要素
@@ -3315,66 +3392,8 @@
       if (!element) return null;
 
       log.debug("🧹 [excludeThinkingProcess] 思考プロセス除外チェック開始");
-      log.debug(`  - 要素タイプ: ${element.tagName}`);
-      log.debug(`  - 要素クラス: ${element.className || "(なし)"}`);
-      log.debug(`  - 要素ID: ${element.id || "(なし)"}`);
 
       const textContent = element.textContent?.trim() || "";
-      log.debug(`  - テキスト内容長: ${textContent.length}文字`);
-      log.debug(
-        `  - テキスト先頭: ${textContent.substring(0, 100)}${textContent.length > 100 ? "..." : ""}`,
-      );
-
-      // 思考プロセスインジケータの拡張
-      const thinkingIndicators = [
-        ".ease-out.rounded-lg",
-        '[class*="thinking-process"]',
-        '[class*="thinking"]',
-        '[data-testid*="thinking"]',
-        '[aria-label*="思考"]',
-        '[class*="thought"]',
-        "details[open]", // 折りたたまれた思考プロセス
-      ];
-
-      // 親要素に思考プロセスが含まれていないか確認
-      for (const indicator of thinkingIndicators) {
-        try {
-          if (element.closest(indicator)) {
-            log.debug(
-              `  ❌ 思考プロセス要素を検出（親要素チェック）: ${indicator}`,
-            );
-            return null;
-          }
-        } catch (e) {
-          // セレクタエラーをスキップ
-          log.debug(
-            `  ⚠️ セレクタエラー（スキップ）: ${indicator} - ${e.message}`,
-          );
-        }
-      }
-
-      // 要素のクラスをチェック（より詳細）
-      const classNames = element.className || "";
-      const thinkingClassPatterns = [
-        "thinking",
-        "thought",
-        "process",
-        "reasoning",
-        "reflection",
-        "analysis",
-        "考え",
-        "思考",
-        "プロセス",
-      ];
-
-      for (const pattern of thinkingClassPatterns) {
-        if (classNames.toLowerCase().includes(pattern)) {
-          log.debug(
-            `  ❌ 思考プロセスクラスを検出: "${pattern}" in "${classNames}"`,
-          );
-          return null;
-        }
-      }
 
       // テキスト内容による思考プロセス判定
       const thinkingTextPatterns = [
@@ -3382,33 +3401,11 @@
         "Thinking Process",
         "Let me think",
         "考えてみます",
-        "分析中",
-        "検討中",
-        "reasoning",
-        "analysis",
-        "考察",
-        "まず考えてみましょう",
-        "step by step",
-        "段階的に考える",
       ];
 
       for (const pattern of thinkingTextPatterns) {
         if (textContent.toLowerCase().includes(pattern.toLowerCase())) {
           log.debug(`  ❌ 思考プロセステキストを検出: "${pattern}"`);
-          return null;
-        }
-      }
-
-      // ボタンテキストのチェック（拡張）
-      const buttons = element.querySelectorAll("button, [role='button']");
-      for (const btn of buttons) {
-        const buttonText = btn.textContent?.trim() || "";
-        if (
-          buttonText.includes("思考プロセス") ||
-          buttonText.includes("Show thinking") ||
-          buttonText.includes("Hide thinking")
-        ) {
-          log.debug(`  ❌ 思考プロセスボタンを検出: "${buttonText}"`);
           return null;
         }
       }
@@ -3425,22 +3422,19 @@
         }
       }
 
-      // 非常に短いテキストまたは空のテキストをチェック
+      // 非常に短いテキストをチェック
       if (textContent.length < 10) {
-        log.debug(
-          `  ❌ テキストが短すぎます: ${textContent.length}文字 - "${textContent}"`,
-        );
+        log.debug(`  ❌ テキストが短すぎます: ${textContent.length}文字`);
         return null;
       }
 
-      // 有効性をチェック：実際のコンテンツが含まれているか
+      // 有効性をチェック
       const validContentLength = textContent.replace(/\s+/g, " ").trim().length;
       if (validContentLength < 20) {
         log.debug(`  ❌ 有効なコンテンツが不足: ${validContentLength}文字`);
         return null;
       }
 
-      log.debug("  ✅ 有効なコンテンツと判定");
       log.debug(`  ✅ 有効なコンテンツ: ${validContentLength}文字`);
       return element;
     };
@@ -3454,17 +3448,16 @@
     const validateResponseContent = (element) => {
       if (!element) return false;
 
-      // ユーザーメッセージの子孫要素でないことを確認（最重要チェック）
-      if (element.closest('[data-testid="user-message"]')) {
-        log.debug(`  ⚠️ 要素はユーザーメッセージの子孫です`);
+      // 統一除外関数でチェック
+      if (shouldExcludeElement(element)) {
+        log.debug("  ⚠️ shouldExcludeElement()で除外");
         return false;
       }
 
-      // Content validation
+      // ========== 基本的なコンテンツチェック ==========
       const text = element.textContent?.trim() || "";
 
-      // セレクタベースでの除外がメインのため、テキストパターンチェックは簡略化
-      // 明らかに空のUIラベルのみを除外
+      // UIラベルのみのチェック
       const uiLabels = [
         "User",
         "Assistant",
@@ -3479,17 +3472,6 @@
       // 最小文字数チェック
       if (text.length < 10) {
         log.debug(`  ⚠️ テキストが短すぎます: ${text.length}文字`);
-        return false;
-      }
-
-      // セレクタベースでの除外がメインのため、プロンプトテキストチェックは簡略化
-      // data-testid="user-message"で除外されるため、ここでは基本的なチェックのみ
-      // 特に長いプロンプトが残っている場合のみチェック
-      if (
-        text.length > 2000 &&
-        (text.includes("# 命令書") || text.includes("【現在"))
-      ) {
-        log.debug(`  ⚠️ 長いプロンプトテキストが残存: ${text.length}文字`);
         return false;
       }
 
@@ -3616,18 +3598,24 @@
         log.debug(
           `  - standard-markdownクラスを持つ要素: ${standardMarkdowns.length}個発見`,
         );
-        // ユーザーメッセージでないことを確認
+
         for (const elem of standardMarkdowns) {
-          if (!elem.closest('[data-testid="user-message"]')) {
-            const validated = excludeThinkingProcess(elem);
-            if (validated && validateResponseContent(validated)) {
-              log.debug("  ✓ standard-markdown要素から有効な回答を取得");
-              return {
-                element: validated,
-                text: validated.textContent?.trim() || "",
-                method: "Fallback - Standard Markdown",
-              };
-            }
+          // 統一除外関数でチェック
+          if (shouldExcludeElement(elem)) {
+            log.debug(`  ⚠️ 除外対象要素 - スキップ`);
+            continue;
+          }
+
+          // 通常の検証処理
+          const validated = excludeThinkingProcess(elem);
+          if (validated && validateResponseContent(validated)) {
+            const text = validated.textContent?.trim() || "";
+            log.debug(`  ✓ 有効なstandard-markdown発見: ${text.length}文字`);
+            return {
+              element: validated,
+              text: text,
+              method: "Fallback - Standard Markdown",
+            };
           }
         }
       }
@@ -3638,24 +3626,27 @@
         log.debug(
           `  - grid要素: ${grids.length}個発見、ユーザーメッセージを除外して検索`,
         );
+
         // 最後から順に検索（最新の回答を優先）
         for (let i = grids.length - 1; i >= 0; i--) {
           const grid = grids[i];
-          // ユーザーメッセージの子孫でないことを確認
-          if (!grid.closest('[data-testid="user-message"]')) {
-            const validated = excludeThinkingProcess(grid);
-            if (validated && validateResponseContent(validated)) {
-              log.debug(`  ✓ grid要素[${i}]から有効な回答を取得`);
-              return {
-                element: validated,
-                text: validated.textContent?.trim() || "",
-                method: "Fallback - Last Valid Grid",
-              };
-            }
-          } else {
-            log.debug(
-              `  ⚠️ grid要素[${i}]はユーザーメッセージの子孫のため除外`,
-            );
+
+          // 統一除外関数でチェック
+          if (shouldExcludeElement(grid)) {
+            log.debug(`  ⚠️ grid[${i}]は除外対象 - スキップ`);
+            continue;
+          }
+
+          // 通常の検証処理
+          const validated = excludeThinkingProcess(grid);
+          if (validated && validateResponseContent(validated)) {
+            const text = validated.textContent?.trim() || "";
+            log.debug(`  ✓ grid[${i}]から有効な回答を取得: ${text.length}文字`);
+            return {
+              element: validated,
+              text: text,
+              method: "Fallback - Last Valid Grid",
+            };
           }
         }
       }
@@ -3695,39 +3686,27 @@
       return processedText.trim();
     };
 
-    // Claude-ステップ1-9: テキストプレビュー取得関数（改善版）
+    // Claude-ステップ1-9: テキストプレビュー取得関数（統一版）
     /**
-     * 高度テキスト抽出関数（応答取得の核心）
-     * 【動作説明】新しいAI応答取得ロジックを使用して確実にテキストを取得
+     * テキスト抽出関数（完全一本化）
+     * 【動作説明】getReliableAIResponse()のみを使用してテキストを取得
      * 【引数】element: テキスト抽出対象のDOM要素（オプション）
      * 【戻り値】Object {full: 完全テキスト, preview: プレビュー, length: 文字数}
      */
     const getTextPreview = async (element) => {
-      log.debug("📊 [getTextPreview] テキスト取得開始");
-      log.debug(`  - 要素指定: ${element ? "あり" : "なし"}`);
-      log.debug(`  - 要素タイプ: ${element ? element.tagName : "N/A"}`);
-      log.debug(`  - 要素クラス: ${element ? element.className : "N/A"}`);
+      log.debug("📊 [getTextPreview] テキスト取得開始（統一フロー）");
 
-      // 要素が指定されていない場合は、新しいAI応答取得ロジックを使用
+      // 要素が指定されていない場合のみ、AI応答取得ロジックを使用
       if (!element) {
-        log.debug("  新しいAI応答取得ロジックを使用");
+        log.debug("  要素未指定 → getReliableAIResponse()を実行");
         const response = await getReliableAIResponse();
 
-        log.debug(`🔍 [getTextPreview] getReliableAIResponse結果:`, {
-          elementFound: !!response.element,
-          method: response.method,
-          textLength: response.text?.length || 0,
-          textPreview: response.text?.substring(0, 100) || "(空)",
-        });
-
-        if (response.element) {
-          log.debug(`  取得メソッド: ${response.method}`);
-          log.debug(`  テキスト長: ${response.text.length}文字`);
+        if (response.element && response.text) {
           log.debug(
-            `  テキスト先頭200文字: ${response.text.substring(0, 200)}`,
+            `  ✅ 取得成功: ${response.text.length}文字 (${response.method})`,
           );
-
           const length = response.text.length;
+
           if (length <= 200) {
             return { full: response.text, preview: response.text, length };
           } else {
@@ -3738,220 +3717,26 @@
             return { full: response.text, preview, length };
           }
         } else {
-          log.debug("  AI応答が見つかりませんでした");
+          log.debug("  ❌ AI応答が見つかりません");
           return { full: "", preview: "", length: 0 };
         }
       }
 
-      // 既存のロジック（要素が指定されている場合）
-      log.debug("  - 要素タグ:", element.tagName);
-      log.debug("  - 要素ID:", element.id || "(なし)");
-      log.debug(
-        "  - 要素クラス:",
-        element.className ? element.className.substring(0, 100) : "(なし)",
-      );
-      log.debug("  - 子要素数:", element.children.length);
+      // 要素が指定されている場合
+      // 検証を通過しているはずなので、textContentを直接取得
+      const text = element.textContent?.trim() || "";
+      const length = text.length;
 
-      // まず、思考プロセスとコンテンツ検証をチェック
-      const cleanedElement = excludeThinkingProcess(element);
-      if (!cleanedElement || !validateResponseContent(cleanedElement)) {
-        log.debug("  要素が無効なコンテンツと判定されました");
-        // フォールバック：新しいロジックで再試行
-        const response = await getReliableAIResponse();
-        if (response.element) {
-          const length = response.text.length;
-          if (length <= 200) {
-            return { full: response.text, preview: response.text, length };
-          } else {
-            const preview =
-              response.text.substring(0, 100) +
-              "\n...[中略]...\n" +
-              response.text.substring(length - 100);
-            return { full: response.text, preview, length };
-          }
-        }
-      }
-
-      // 複数の方法でテキスト取得を試みる
-      let fullText = "";
-
-      // 方法1: innerText（表示されているテキスト）
-      if (element.innerText) {
-        fullText = element.innerText.trim();
-        log.debug("  - innerText長:", fullText.length);
-      }
-
-      // 方法2: textContent（全テキスト）
-      if (!fullText || fullText.length < 100) {
-        const textContent = element.textContent.trim();
-        log.debug("  - textContent長:", textContent.length);
-        if (textContent.length > fullText.length) {
-          fullText = textContent;
-        }
-      }
-
-      // 方法3: 特定の子要素からテキスト取得（Canvasの場合）
-      const isCanvasElement =
-        element.classList.contains("code-block__code") ||
-        element.id === "markdown-artifact" ||
-        element.querySelector("#markdown-artifact") ||
-        element.querySelector(".code-block__code") ||
-        element.querySelector(".grid-cols-1.grid.gap-2\\.5");
-
-      // 作業説明文を除外（間違った取得対象）
-      const isTaskExplanation =
-        element.classList.contains("p-3") ||
-        element.classList.contains("pt-0") ||
-        element.classList.contains("pr-8") ||
-        (element.textContent &&
-          element.textContent.includes("The task is complete"));
-
-      // 思考プロセス要素を除外
-      const thinkingButtons = Array.from(
-        element.querySelectorAll("button"),
-      ).filter(
-        (btn) => btn.textContent && btn.textContent.includes("思考プロセス"),
-      );
-      const isThinkingProcess =
-        thinkingButtons.length > 0 ||
-        element.querySelector(".ease-out.rounded-lg") ||
-        (element.textContent && element.textContent.includes("思考プロセス"));
-
-      if (isCanvasElement && !isTaskExplanation && !isThinkingProcess) {
-        log.debug("  📝 Canvas要素を検出、特別処理を実行");
-        log.debug(
-          `    - 要素判定: ${element.classList.contains("code-block__code") ? "code-block__code" : "その他Canvas要素"}`,
-        );
-
-        // code-block__code要素の場合は直接テキストを取得
-        if (element.classList.contains("code-block__code")) {
-          const codeText = element.innerText || element.textContent || "";
-          if (codeText.trim() && codeText.length > fullText.length) {
-            fullText = codeText.trim();
-            log.debug("  - code-block__code テキスト長:", fullText.length);
-          }
-        } else {
-          // その他のCanvas要素の場合は従来の方法
-          const paragraphs = element.querySelectorAll("p");
-          log.debug("  - 段落数:", paragraphs.length);
-
-          if (paragraphs.length > 0) {
-            let combinedText = "";
-            let totalChars = 0;
-            paragraphs.forEach((para, index) => {
-              const paraText = para.innerText || para.textContent || "";
-              if (paraText.trim()) {
-                const charCount = paraText.length;
-                totalChars += charCount;
-                if (index < 5 || index >= paragraphs.length - 2) {
-                  // 最初の5段落と最後の2段落の詳細をログ
-                  log.debug(`    - 段落${index + 1}: ${charCount}文字`);
-                }
-                combinedText += paraText.trim() + "\n\n";
-              }
-            });
-
-            log.debug(`  - 総文字数: ${totalChars}文字`);
-
-            if (combinedText.trim().length > fullText.length) {
-              fullText = combinedText.trim();
-              log.debug("  - 結合テキスト長:", fullText.length);
-            }
-          }
-
-          // pre/codeブロックも探す（コード例が含まれる場合）
-          const codeBlocks = element.querySelectorAll("pre, code");
-          if (codeBlocks.length > 0) {
-            log.debug("  - コードブロック数:", codeBlocks.length);
-            let codeText = "";
-            codeBlocks.forEach((block, index) => {
-              const blockText = block.innerText || block.textContent || "";
-              if (blockText.trim() && !fullText.includes(blockText.trim())) {
-                log.debug(
-                  `    - コードブロック${index + 1}: ${blockText.length}文字`,
-                );
-                codeText += blockText + "\n";
-              }
-            });
-
-            if (codeText.trim()) {
-              fullText += "\n\n" + codeText.trim();
-            }
-          }
-        }
-      } else if (isTaskExplanation) {
-        log.debug("  ⚠️ 作業説明文を検出、除外します");
-        log.debug(
-          `    - 除外理由: ${
-            element.classList.contains("p-3")
-              ? "p-3クラス"
-              : element.classList.contains("pt-0")
-                ? "pt-0クラス"
-                : element.classList.contains("pr-8")
-                  ? "pr-8クラス"
-                  : "タスク完了テキスト"
-          }`,
-        );
-      } else if (isThinkingProcess) {
-        log.debug("  ⚠️ 思考プロセス要素を検出、除外します");
-        log.debug("    - 除外理由: 思考プロセスボタンまたは関連要素を検出");
-        // 思考プロセス以外の要素を探して取得
-        const canvasContent = Array.from(
-          element.querySelectorAll("div.grid-cols-1.grid"),
-        ).find((div) => {
-          const buttons = Array.from(div.querySelectorAll("button"));
-          return !buttons.some(
-            (btn) =>
-              btn.textContent && btn.textContent.includes("思考プロセス"),
-          );
-        });
-        if (canvasContent) {
-          const contentText =
-            canvasContent.innerText || canvasContent.textContent || "";
-          if (contentText.trim()) {
-            fullText = contentText.trim();
-            log.debug("  - 思考プロセス除外後のテキスト長:", fullText.length);
-          }
-        }
-      }
-
-      let length = fullText.length;
-      // Final text length: ${length}
-
-      if (length === 0) {
-        log.warn("  ⚠️ テキストが空です！");
-        log.debug(
-          "  - element.innerHTML長:",
-          element.innerHTML ? element.innerHTML.length : 0,
-        );
-        log.debug(
-          "  - element.outerHTML冒頭:",
-          element.outerHTML ? element.outerHTML.substring(0, 200) : "(なし)",
-        );
-      }
-
-      // セレクタベースでの除外がメインのため、テキスト処理は最小限に
-      const originalLength = fullText.length;
-      fullText = removePromptFromText(fullText); // HTMLの<details>タグのみ除外
-      const finalLength = fullText.length;
-
-      if (originalLength !== finalLength) {
-        log.debug(
-          `📝 HTMLタグクリーニング: ${originalLength}文字 → ${finalLength}文字`,
-        );
-      }
-
-      // length変数を再利用
-      length = finalLength;
+      log.debug(`  ✅ 指定要素からテキスト取得: ${length}文字`);
 
       if (length <= 200) {
-        return { full: fullText, preview: fullText, length };
+        return { full: text, preview: text, length };
       } else {
         const preview =
-          fullText.substring(0, 100) +
+          text.substring(0, 100) +
           "\n...[中略]...\n" +
-          fullText.substring(length - 100);
-        return { full: fullText, preview, length };
+          text.substring(length - 100);
+        return { full: text, preview, length };
       }
     };
 
@@ -5798,8 +5583,7 @@
         );
 
         if (versionElement) {
-          const versionText =
-            versionElement.textContent || versionElement.innerText || "";
+          const versionText = versionElement.textContent || "";
           log.debug(`🔍 検出されたバージョン表示: "${versionText}"`);
 
           // V2以上を検出した場合
