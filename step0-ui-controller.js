@@ -668,6 +668,36 @@ if (stepOnlyBtn) {
   stepOnlyBtn.addEventListener("click", async () => {
     log.debug("🎯 [STEP-ONLY] 実行開始");
 
+    // 🔥 実行開始前に全キャッシュをクリア
+    log.debug("🧹 [CACHE-CLEAR] 前回実行データのクリア開始");
+
+    // globalStateのタスクグループ関連データをクリア
+    if (window.globalState) {
+      window.globalState.taskGroups = [];
+      window.globalState.currentGroupIndex = 0;
+      window.globalState.stats = {
+        totalGroups: 0,
+        completedGroups: 0,
+        totalTasks: 0,
+        successTasks: 0,
+        failedTasks: 0,
+      };
+      log.debug("✅ [CACHE-CLEAR] globalStateをリセット");
+    }
+
+    // SpreadsheetDataManagerのキャッシュをクリア
+    if (
+      window.spreadsheetDataManager &&
+      typeof window.spreadsheetDataManager.clearCache === "function"
+    ) {
+      window.spreadsheetDataManager.clearCache();
+      log.debug("✅ [CACHE-CLEAR] SpreadsheetDataManagerキャッシュをクリア");
+    }
+
+    log.info(
+      "✅ [CACHE-CLEAR] 全キャッシュクリア完了 - クリーンな状態で実行開始",
+    );
+
     // ボタンにアニメーションを追加
     stepOnlyBtn.classList.add("processing");
     const originalText = stepOnlyBtn.textContent;

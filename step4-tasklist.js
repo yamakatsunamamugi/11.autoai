@@ -1698,7 +1698,16 @@ async function updateSpreadsheetCell(cellRef, value) {
       return;
     }
 
-    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${window.globalState.spreadsheetId}/values/${cellRef}?valueInputOption=USER_ENTERED`;
+    // シート名が含まれていない場合は追加
+    let fullCellRef = cellRef;
+    if (!cellRef.includes("!")) {
+      const sheetName =
+        window.globalState?.sheetName ||
+        `シート${window.globalState?.gid || "0"}`;
+      fullCellRef = `'${sheetName}'!${cellRef}`;
+    }
+
+    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${window.globalState.spreadsheetId}/values/${encodeURIComponent(fullCellRef)}?valueInputOption=USER_ENTERED`;
 
     const response = await fetch(apiUrl, {
       method: "PUT",
@@ -3319,8 +3328,11 @@ async function generateTaskList(
         if (setupResult.addedColumns && setupResult.addedColumns.length > 0) {
           // Google Sheets APIから最新データを取得
           const token = window.globalState?.authToken || "";
-          const range = "A1:ZZ1000"; // 十分な範囲を指定
-          const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${options.spreadsheetId}/values/${range}`;
+          const sheetName =
+            window.globalState?.sheetName ||
+            `シート${window.globalState?.gid || "0"}`;
+          const range = `'${sheetName}'!A1:ZZ1000`; // 十分な範囲を指定
+          const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${options.spreadsheetId}/values/${encodeURIComponent(range)}`;
 
           try {
             const response = await window.fetchWithTokenRefresh(apiUrl, {

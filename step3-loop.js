@@ -1203,13 +1203,20 @@ async function checkCompletionStatus(taskGroup) {
 
   try {
     // ========================================
+    // シート名の取得
+    // ========================================
+    const sheetName =
+      window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
+    LoopLogger.info(`[step5-loop.js] 対象シート: ${sheetName}`);
+
+    // ========================================
     // 行制御情報の取得（タスクグループの範囲内）
     // ========================================
     let rowControls = [];
 
     // タスクグループの範囲のデータを取得して行制御を抽出
     // 注意：B列に行制御命令が入っているため、B列を含む範囲を取得する必要がある
-    const controlCheckRange = `B${taskGroup.dataStartRow}:B1000`;
+    const controlCheckRange = `'${sheetName}'!B${taskGroup.dataStartRow}:B1000`;
     let controlData;
     try {
       controlData = await readSpreadsheet(controlCheckRange);
@@ -1269,7 +1276,7 @@ async function checkCompletionStatus(taskGroup) {
     const startCol = taskGroup.columns.prompts[0];
     const endCol =
       taskGroup.columns.prompts[taskGroup.columns.prompts.length - 1];
-    const promptRange = `${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
+    const promptRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
     LoopLogger.info(`[step5-loop.js] [Step 5-1-1] 取得範囲: ${promptRange}`, {
       開始列: taskGroup.columns.prompts[0],
       終了列: taskGroup.columns.prompts[taskGroup.columns.prompts.length - 1],
@@ -1419,7 +1426,7 @@ async function checkCompletionStatus(taskGroup) {
       // 3列をまとめて取得（行ベースで処理するため）
       const startCol = columns[0]; // ChatGPT列
       const endCol = columns[2]; // Gemini列
-      answerRange = `${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
+      answerRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
 
       LoopLogger.info(
         `[step5-loop.js] [Step 5-1-2] 3種類AI回答範囲: ${answerRange}`,
@@ -1493,7 +1500,7 @@ async function checkCompletionStatus(taskGroup) {
 
       // 【シンプル化】primary列を使用して範囲を生成
       const answerColumn = taskGroup.columns.answer.primary || "C";
-      answerRange = `${answerColumn}${taskGroup.dataStartRow}:${answerColumn}1000`;
+      answerRange = `'${sheetName}'!${answerColumn}${taskGroup.dataStartRow}:${answerColumn}1000`;
       LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 取得範囲: ${answerRange}`);
 
       // 【問題特定ログ】通常パターンでのスプレッドシート読み込み前ログ
@@ -2589,8 +2596,12 @@ async function readFullSpreadsheet() {
       throw new Error("スプレッドシートIDが見つかりません");
     }
 
+    // シート名を取得
+    const sheetName =
+      window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
+
     // 全体範囲を取得（A1:ZZ1000の範囲で十分なデータを取得）
-    const fullRange = "A1:ZZ1000";
+    const fullRange = `'${sheetName}'!A1:ZZ1000`;
     const data = await readSpreadsheet(fullRange);
 
     if (!data || !data.values) {

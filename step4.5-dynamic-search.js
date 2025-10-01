@@ -150,9 +150,12 @@ class DynamicTaskSearch {
           await new Promise((resolve) => setTimeout(resolve, retryDelay));
         }
 
-        // 全体データ取得（A1:Z1000）
-        const range = "A1:Z1000";
-        const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+        // シート名を取得
+        const sheetName = window.globalState.sheetName || `シート${gid || "0"}`;
+
+        // 全体データ取得（A1:Z1000）- シート名を含める
+        const range = `'${sheetName}'!A1:Z1000`;
+        const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
 
         const response = await window.fetchWithTokenRefresh(apiUrl, {
           method: "GET",

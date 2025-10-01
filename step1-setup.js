@@ -54,6 +54,11 @@ async function clearWorkingMarkers(allSheetData, spreadsheetId) {
     log.info("🧹 [Step1] 初回実行時の作業中マーカー削除開始");
     let deletedCount = 0;
 
+    // シート名を取得
+    const sheetName =
+      window.globalState?.sheetName ||
+      `シート${window.globalState?.gid || "0"}`;
+
     // 作業中マーカーを検索して削除
     for (let rowIndex = 0; rowIndex < allSheetData.length; rowIndex++) {
       const row = allSheetData[rowIndex];
@@ -70,14 +75,14 @@ async function clearWorkingMarkers(allSheetData, spreadsheetId) {
         ) {
           // セル位置を計算（A1記法）
           const columnLetter = getColumnLetter(colIndex);
-          const cellRef = `${columnLetter}${rowIndex + 1}`;
+          const cellRef = `'${sheetName}'!${columnLetter}${rowIndex + 1}`;
 
           log.info(
             `🎯 [Step1] 作業中マーカー検出: ${cellRef} = "${cellValue}"`,
           );
 
           // セルを空にする（Step1と同じAPI呼び出し方式）
-          const updateUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${cellRef}?valueInputOption=RAW`;
+          const updateUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(cellRef)}?valueInputOption=RAW`;
           const updateResponse = await fetchWithTokenRefresh(updateUrl, {
             method: "PUT",
             headers: window.globalState.apiHeaders,
@@ -731,7 +736,8 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
 
       // 429 (Too Many Requests) エラーの場合
       if (response.status === 429) {
-        const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000); // 最大10秒
+        const waitTimes = [10000, 30000, 60000]; // 10秒, 30秒, 60秒
+        const waitTime = waitTimes[attempt - 1] || 60000;
         log.debug(
           `[step1-setup.js] 429エラー検出 - ${waitTime}ms待機後に再試行`,
         );
@@ -761,7 +767,8 @@ async function fetchWithTokenRefresh(url, options = {}, maxRetries = 3) {
 
         // 再試行後も429の場合は待機
         if (response.status === 429) {
-          const waitTime = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
+          const waitTimes = [10000, 30000, 60000]; // 10秒, 30秒, 60秒
+          const waitTime = waitTimes[attempt - 1] || 60000;
           log.debug(`[step1-setup.js] 再試行後も429エラー - ${waitTime}ms待機`);
           await new Promise((resolve) => setTimeout(resolve, waitTime));
           continue;
@@ -1266,8 +1273,12 @@ async function setupColumnStructure() {
         `[step1-setup.js] [Step 1-5-4] ヘッダー設定中: ${indexToColumn(col.position)}${menuRowNumber} = "${col.name}"`,
       );
 
-      const headerRange = `${indexToColumn(col.position)}${menuRowNumber}`;
-      const headerUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${headerRange}?valueInputOption=USER_ENTERED`;
+      // シート名を取得
+      const sheetName =
+        window.globalState?.sheetName ||
+        `シート${window.globalState?.gid || "0"}`;
+      const headerRange = `'${sheetName}'!${indexToColumn(col.position)}${menuRowNumber}`;
+      const headerUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(headerRange)}?valueInputOption=USER_ENTERED`;
 
       const headerResponse = await fetch(headerUrl, {
         method: "PUT",
@@ -1571,8 +1582,13 @@ async function refreshSpreadsheetData() {
 
     const { spreadsheetId, apiHeaders, sheetsApiBase } = window.globalState;
 
-    // 全データ再取得 (A1:CZ100)
-    const targetUrl = `${sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`;
+    // シート名を取得
+    const sheetName =
+      window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
+
+    // 全データ再取得 (A1:CZ100) - シート名を含める
+    const range = `'${sheetName}'!A1:CZ100`;
+    const targetUrl = `${sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
     log.debug("[step1-setup.js] データ再取得URL:", targetUrl);
 
     const response = await fetchWithTokenRefresh(targetUrl, {
