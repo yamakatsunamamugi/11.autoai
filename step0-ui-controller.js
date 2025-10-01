@@ -981,7 +981,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
           // UI表の更新を待機（AI情報がUI表に反映されるまで待つ）
           log.info("⏳ UI表の更新を待機中...");
-          await new Promise((resolve) => setTimeout(resolve, 3000));
+          await waitForAIDataComplete();
 
           // スプレッドシートへ自動保存
           await saveAIDataToSpreadsheet();
@@ -1656,6 +1656,50 @@ function initializeAITable() {
 // ========================================
 // 表コピー機能
 // ========================================
+
+// AI情報がすべて揃うまで待機
+async function waitForAIDataComplete() {
+  const maxWaitTime = 15000; // 最大15秒待機
+  const checkInterval = 500; // 500ms毎にチェック
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitTime) {
+    // lastAIDataをチェック（3つのAIサービス全てにデータがあるか確認）
+    const chatgptHasData =
+      lastAIData.chatgpt &&
+      (lastAIData.chatgpt.models.length > 0 ||
+        lastAIData.chatgpt.functions.length > 0);
+    const claudeHasData =
+      lastAIData.claude &&
+      (lastAIData.claude.models.length > 0 ||
+        lastAIData.claude.functions.length > 0);
+    const geminiHasData =
+      lastAIData.gemini &&
+      (lastAIData.gemini.models.length > 0 ||
+        lastAIData.gemini.functions.length > 0);
+
+    if (chatgptHasData && claudeHasData && geminiHasData) {
+      log.info("✅ 全AIサービスのデータ取得完了");
+      log.info(
+        `ChatGPT: ${lastAIData.chatgpt.models.length}モデル, ${lastAIData.chatgpt.functions.length}機能`,
+      );
+      log.info(
+        `Claude: ${lastAIData.claude.models.length}モデル, ${lastAIData.claude.functions.length}機能`,
+      );
+      log.info(
+        `Gemini: ${lastAIData.gemini.models.length}モデル, ${lastAIData.gemini.functions.length}機能`,
+      );
+
+      // データ取得後、さらに1秒待機してUI反映を確実にする
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, checkInterval));
+  }
+
+  log.warn("⚠️ タイムアウト: 一部のAIデータが取得できませんでした");
+}
 
 // AI統合表データをスプレッドシートへ自動保存
 async function saveAIDataToSpreadsheet() {
