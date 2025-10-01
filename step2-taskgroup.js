@@ -387,6 +387,132 @@ async function identifyTaskGroups() {
       taskGroups.push(currentGroup);
     }
 
+    // ========================================
+    // Enrichment処理: columnsとdataStartRowを設定
+    // ========================================
+
+    // データ検証関数（自己完結型）
+    function validateTaskGroup(group, groupIndex = null) {
+      const errors = [];
+
+      if (!group) {
+        log.error(
+          `[step2-taskgroup.js] [Step 2-1] グループ${groupIndex ? groupIndex : ""}が未定義`,
+        );
+        errors.push("グループが未定義");
+        return errors;
+      }
+
+      if (!group.columns) {
+        log.error(
+          `[step2-taskgroup.js] [Step 2-1] グループ${groupIndex ? groupIndex : ""}のcolumns構造が未定義`,
+        );
+        errors.push("columns構造が未定義");
+      } else {
+        if (
+          !group.columns.prompts ||
+          !Array.isArray(group.columns.prompts) ||
+          group.columns.prompts.length === 0
+        ) {
+          log.error(
+            `[step2-taskgroup.js] [Step 2-1] グループ${groupIndex ? groupIndex : ""}のprompts列が未定義または空`,
+          );
+          errors.push("prompts列が未定義または空");
+        }
+        if (
+          !group.columns.answer ||
+          (typeof group.columns.answer === "object" &&
+            Object.keys(group.columns.answer).length === 0)
+        ) {
+          log.error(
+            `[step2-taskgroup.js] [Step 2-1] グループ${groupIndex ? groupIndex : ""}のanswer列が未定義または空`,
+          );
+          errors.push("answer列が未定義または空");
+        }
+      }
+
+      if (!group.groupType && !group.type) {
+        log.error(
+          `[step2-taskgroup.js] [Step 2-1] グループ${groupIndex ? groupIndex : ""}のgroupTypeまたはtypeが未定義`,
+        );
+        errors.push("groupTypeまたはtypeが未定義");
+      }
+
+      return errors;
+    }
+
+    log.debug(
+      `[step2-taskgroup.js] [Step 2-1] 📝 タスクグループEnrichment開始 (${taskGroups.length}個)`,
+    );
+
+    let totalValidationErrors = 0;
+    taskGroups.forEach((group, index) => {
+      // dataStartRowを設定（step1で取得した情報を使用）
+      group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
+
+      // 【シンプル化】列情報のみを設定（セル位置計算は実行時に行う）
+      let answerColumns;
+      if (group.groupType === "3種類AI" || group.type === "3種類AI") {
+        // 3種類AIの場合
+        answerColumns = {
+          chatgpt: group.chatgptColumn || "C",
+          claude: group.claudeColumn || "D",
+          gemini: group.geminiColumn || "E",
+        };
+      } else {
+        // 通常処理の場合
+        const primaryColumn =
+          group.answerColumn ||
+          (group.answerColumns && group.answerColumns.length > 0
+            ? group.answerColumns[0].column
+            : "C");
+        answerColumns = {
+          primary: primaryColumn,
+        };
+      }
+
+      // シンプルなcolumns構造（列名のみ）
+      group.columns = {
+        log: group.logColumn || group.startColumn || "A",
+        prompts: group.promptColumns || ["B"],
+        answer: answerColumns,
+        work: group.workColumn || null,
+      };
+
+      // groupTypeが未設定の場合、typeから設定
+      if (!group.groupType) {
+        group.groupType = group.type || "通常処理";
+      }
+
+      // 必要に応じて他の情報も補完
+      if (!group.spreadsheetId) {
+        group.spreadsheetId = window.globalState.spreadsheetId;
+      }
+      if (!group.apiHeaders) {
+        group.apiHeaders = window.globalState.apiHeaders;
+      }
+      if (!group.sheetsApiBase) {
+        group.sheetsApiBase = window.globalState.sheetsApiBase;
+      }
+
+      // データ検証実行
+      const validationErrors = validateTaskGroup(group, group.groupNumber);
+      if (validationErrors.length > 0) {
+        log.warn(
+          `[step2-taskgroup.js] グループ${group.groupNumber}の検証エラー:`,
+          validationErrors,
+        );
+        // エラーがあってもスキップ設定で処理を継続
+        group.hasValidationErrors = true;
+        group.validationErrors = validationErrors;
+        totalValidationErrors += validationErrors.length;
+      }
+    });
+
+    log.debug(
+      `[step2-taskgroup.js] [Step 2-1] ✅ Enrichment完了: ${totalValidationErrors}個の検証エラー`,
+    );
+
     // 内部で作成したtaskGroupsを保存（統計情報用）
     window.globalState.allTaskGroups = taskGroups;
     window.globalState.taskGroups = taskGroups;
@@ -1086,148 +1212,17 @@ async function executeStep2TaskGroups() {
 
     log.debug("[step2-taskgroup.js] ✅ ステップ2: タスクグループ作成 完了");
 
-    // taskGroupsをstep5が使える形式でglobalStateに保存
-    if (!window.globalState.taskGroups) {
-      window.globalState.taskGroups = [];
-    }
-
-    // 処理対象のtaskGroupsのみをglobalStateに保存
-    // taskGroupsは内部で作成されているため、globalStateから一時的に取得
+    // ========================================
+    // スキップ対象を除外してtaskGroupsを更新
+    // ========================================
+    // identifyTaskGroups()で既にenrichment済みなので、skipフィルタリングのみ実行
     const allTaskGroups = window.globalState.allTaskGroups || [];
     window.globalState.taskGroups = allTaskGroups.filter(
       (group) => !group.skip,
     );
 
-    // データ検証関数（自己完結型）
-    function validateTaskGroup(group, groupIndex = null) {
-      const errors = [];
-
-      if (!group) {
-        log.error(
-          `[step2-taskgroup.js] [Step 2-6-1-1] グループ${groupIndex ? groupIndex : ""}が未定義`,
-        );
-        errors.push("グループが未定義");
-        return errors;
-      }
-
-      if (!group.columns) {
-        log.error(
-          `[step2-taskgroup.js] [Step 2-6-1-2] グループ${groupIndex ? groupIndex : ""}のcolumns構造が未定義`,
-        );
-        errors.push("columns構造が未定義");
-      } else {
-        if (
-          !group.columns.prompts ||
-          !Array.isArray(group.columns.prompts) ||
-          group.columns.prompts.length === 0
-        ) {
-          log.error(
-            `[step2-taskgroup.js] [Step 2-6-1-3] グループ${groupIndex ? groupIndex : ""}のprompts列が未定義または空`,
-          );
-          errors.push("prompts列が未定義または空");
-        }
-        if (
-          !group.columns.answer ||
-          (typeof group.columns.answer === "object" &&
-            Object.keys(group.columns.answer).length === 0)
-        ) {
-          log.error(
-            `[step2-taskgroup.js] [Step 2-6-1-4] グループ${groupIndex ? groupIndex : ""}のanswer列が未定義または空`,
-          );
-          errors.push("answer列が未定義または空");
-        }
-      }
-
-      if (!group.groupType && !group.type) {
-        log.error(
-          `[step2-taskgroup.js] [Step 2-6-1-5] グループ${groupIndex ? groupIndex : ""}のgroupTypeまたはtypeが未定義`,
-        );
-        errors.push("groupTypeまたはtypeが未定義");
-      }
-
-      return errors;
-    }
-
-    // 統一データ構造の実装（修正版・検証付き）
     log.debug(
-      `[step2-taskgroup.js] [Step 2-6-1] タスクグループデータ検証開始 (${window.globalState.taskGroups.length}個のグループ)`,
-    );
-
-    let totalValidationErrors = 0;
-    window.globalState.taskGroups.forEach((group, index) => {
-      // dataStartRowを設定（step1で取得した情報を使用）
-      group.dataStartRow = window.globalState.specialRows?.dataStartRow || 9;
-
-      // 【シンプル化】列情報のみを設定（セル位置計算は実行時に行う）
-      let answerColumns;
-      if (group.groupType === "3種類AI" || group.type === "3種類AI") {
-        // 3種類AIの場合
-        answerColumns = {
-          chatgpt: group.chatgptColumn || "C",
-          claude: group.claudeColumn || "D",
-          gemini: group.geminiColumn || "E",
-        };
-      } else {
-        // 通常処理の場合
-        const primaryColumn =
-          group.answerColumn ||
-          (group.answerColumns && group.answerColumns.length > 0
-            ? group.answerColumns[0].column
-            : "C");
-        answerColumns = {
-          primary: primaryColumn,
-        };
-      }
-
-      // シンプルなcolumns構造（列名のみ）
-      group.columns = {
-        log: group.logColumn || group.startColumn || "A",
-        prompts: group.promptColumns || ["B"],
-        answer: answerColumns,
-        work: group.workColumn || null,
-      };
-
-      // groupTypeが未設定の場合、typeから設定
-      if (!group.groupType) {
-        group.groupType = group.type || "通常処理";
-      }
-
-      // 旧フィールドは保持（後方互換性確保）
-      // delete文をコメントアウトして安全性を確保
-      // delete group.logColumn;
-      // delete group.promptColumns;
-      // delete group.answerColumn;
-      // delete group.workColumn;
-      // delete group.type;
-
-      // 必要に応じて他の情報も補完
-      if (!group.spreadsheetId) {
-        group.spreadsheetId = window.globalState.spreadsheetId;
-      }
-      if (!group.apiHeaders) {
-        group.apiHeaders = window.globalState.apiHeaders;
-      }
-      if (!group.sheetsApiBase) {
-        group.sheetsApiBase = window.globalState.sheetsApiBase;
-      }
-
-      // データ検証実行
-      const validationErrors = validateTaskGroup(group, group.groupNumber);
-      if (validationErrors.length > 0) {
-        log.warn(
-          `[step2-taskgroup.js] グループ${group.groupNumber}の検証エラー:`,
-          validationErrors,
-        );
-        // エラーがあってもスキップ設定で処理を継続
-        group.hasValidationErrors = true;
-        group.validationErrors = validationErrors;
-        totalValidationErrors += validationErrors.length;
-      }
-    });
-
-    // 検証結果サマリー
-    log.debug(
-      `[step2-taskgroup.js] [Step 2-6-1-6] 検証完了: ${totalValidationErrors}個のエラー (${window.globalState.taskGroups.length}個のグループを検証)`,
+      `[step2-taskgroup.js] ✅ タスクグループフィルタリング完了: 有効${window.globalState.taskGroups.length}個`,
     );
 
     // 統合ログ出力 - タスクグループ最終結果のみ
