@@ -724,8 +724,19 @@ class DynamicTaskSearch {
     if (cellValue && cellValue.trim()) {
       // 作業中マーカーの場合
       if (cellValue.startsWith("作業中")) {
-        // タイムアウトチェック（必要に応じて実装）
-        return false;
+        // 既存のTaskStatusManagerでタイムアウトチェック
+        if (window.TaskStatusManager) {
+          const taskInfo = this.extractTaskInfo(taskId);
+          if (taskInfo) {
+            const statusManager = new window.TaskStatusManager();
+            const isTimeout = statusManager.isTaskTimedOut(cellValue, taskInfo);
+            if (isTimeout) {
+              log.info(`⏰ タイムアウト検出 - 再実行可能: ${taskId}`);
+              return true; // タイムアウトしたので実行可能
+            }
+          }
+        }
+        return false; // タイムアウトしていないのでブロック
       }
 
       // すでに回答がある場合
@@ -1129,6 +1140,37 @@ class DynamicTaskSearch {
     }
 
     return null;
+  }
+
+  /**
+   * タスクIDからタスク情報を抽出
+   * TaskStatusManager.isTaskTimedOut() に渡すための情報を生成
+   */
+  extractTaskInfo(taskId) {
+    const cellPosition = this.extractCellPosition(taskId);
+    if (!cellPosition) {
+      return null;
+    }
+
+    // 現在のグループ情報を取得
+    const currentGroupNumber = window.getCurrentGroup
+      ? window.getCurrentGroup()?.groupNumber
+      : window.globalState?.currentGroup?.groupNumber;
+
+    // タスク情報オブジェクトを構築
+    const taskInfo = {
+      id: taskId,
+      column: cellPosition.column,
+      row: cellPosition.row,
+      groupNumber: currentGroupNumber,
+      spreadsheetId: window.globalState?.spreadsheetId,
+    };
+
+    // 機能名を取得（タイムアウト判定に使用）
+    // スプレッドシートの機能列から取得する必要がある場合は追加実装
+    // 現在は基本情報のみ
+
+    return taskInfo;
   }
 }
 

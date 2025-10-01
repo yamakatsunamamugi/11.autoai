@@ -5146,7 +5146,7 @@ class WindowController {
 
   /**
    * 利用可能なウィンドウポジションを検索
-   * @returns {number} 利用可能なposition (0-3)
+   * @returns {number} 利用可能なposition (0-2)
    */
   findAvailablePosition() {
     try {
@@ -5169,8 +5169,8 @@ class WindowController {
         currentPositions,
       );
 
-      // positionToWindowマップから利用可能なpositionを検索
-      for (let position = 0; position < 4; position++) {
+      // positionToWindowマップから利用可能なpositionを検索（0-2の3つのみ）
+      for (let position = 0; position < 3; position++) {
         const isUsed = StableWindowManager.positionToWindow.has(position);
         ExecuteLogger.debug(
           `   position ${position}: ${isUsed ? "使用中" : "利用可能"}`,

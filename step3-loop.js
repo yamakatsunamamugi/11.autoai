@@ -95,7 +95,7 @@ if (!window.globalState) {
   const initSource = "step3-loop.js";
 
   // 🔍 [GLOBAL-STATE] グローバル状態初期化ログ
-  console.log(`🔍 [GLOBAL-STATE] globalState初期化開始:`, {
+  log.debug(`🔍 [GLOBAL-STATE] globalState初期化開始:`, {
     initTimestamp,
     initSource,
     previousState: window.globalState,
@@ -1179,7 +1179,7 @@ function validateTaskGroupForStep5(taskGroup) {
 async function checkCompletionStatus(taskGroup) {
   const completionCheckId = `completion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  log.info(
+  log.debug(
     `🔍 [COMPLETION-CHECK] グループ${taskGroup.groupNumber}完了チェック開始`,
   );
 
@@ -1661,7 +1661,7 @@ async function checkCompletionStatus(taskGroup) {
     const completedTasks = [];
 
     // 🔄 【修正】キャッシュを使わず直接APIから最新データ取得
-    console.log(`🔍 [CACHE-FIX] 個別タスク検証のためAPI直接読み取り開始`, {
+    log.debug(`🔍 [CACHE-FIX] 個別タスク検証のためAPI直接読み取り開始`, {
       completionCheckId,
       taskGroupNumber: taskGroup.groupNumber,
       dataStartRow: taskGroup.dataStartRow,
@@ -1726,7 +1726,7 @@ async function checkCompletionStatus(taskGroup) {
         columns: taskGroup.columns,
       });
       // 個別タスク詳細を空で返す
-      console.log(
+      log.debug(
         `🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析（スキップ）`,
         {
           completionCheckId,
@@ -1748,7 +1748,7 @@ async function checkCompletionStatus(taskGroup) {
     const maxCol = promptCol > answerCol ? promptCol : answerCol;
     const batchRange = `${sheetPrefix}${minCol}${startRow}:${maxCol}${endRow}`;
 
-    console.log(`📊 [BATCH-READ] バッチ読み取り開始:`, {
+    log.debug(`📊 [BATCH-READ] バッチ読み取り開始:`, {
       range: batchRange,
       rowCount: promptCount,
       startRow: startRow,
@@ -1792,7 +1792,7 @@ async function checkCompletionStatus(taskGroup) {
 
           // デバッグログ（最初の3件のみ）
           if (row <= startRow + 2) {
-            console.log(
+            log.debug(
               `🔍 [BATCH-READ] ${promptAddress}/${answerAddress}の結果:`,
               {
                 promptValue: promptValue?.substring(0, 50),
@@ -1806,7 +1806,7 @@ async function checkCompletionStatus(taskGroup) {
 
         // デバッグ用：読み込まれたセルを表示
         if (taskGroup.groupNumber === 2) {
-          console.log(`🔍 [GROUP-2-CELLS] Group 2のセルアドレス確認:`);
+          log.debug(`🔍 [GROUP-2-CELLS] Group 2のセルアドレス確認:`);
           spreadsheetData.debugPrintCells(5);
         }
       } else {
@@ -1815,7 +1815,7 @@ async function checkCompletionStatus(taskGroup) {
     } catch (batchError) {
       console.error(`❌ [BATCH-READ] バッチ読み取りエラー:`, batchError);
       // エラー時は個別読み取りにフォールバック（レート制限対策付き）
-      console.log(`🔄 [BATCH-READ] 個別読み取りにフォールバック`);
+      log.info(`🔄 [BATCH-READ] 個別読み取りにフォールバック`);
 
       // APIレート制限対策：個別読み取りを小さいバッチに分割
       const BATCH_SIZE = 5; // 5行ずつ処理
@@ -1876,7 +1876,7 @@ async function checkCompletionStatus(taskGroup) {
               readError.message?.includes("429") ||
               readError.message?.includes("Quota exceeded")
             ) {
-              console.log(`⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`);
+              log.info(`⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`);
               await new Promise((resolve) => setTimeout(resolve, 5000)); // 5秒待機
             }
           }
@@ -1884,7 +1884,7 @@ async function checkCompletionStatus(taskGroup) {
       }
     }
 
-    console.log(`🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析`, {
+    log.debug(`🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析`, {
       completionCheckId,
       taskGroupNumber: taskGroup.groupNumber,
       totalTasks: promptCount,
@@ -1899,7 +1899,7 @@ async function checkCompletionStatus(taskGroup) {
     const isComplete = promptCount > 0 && promptCount === answerCount;
 
     // 🔍 【強化】完了判定結果の詳細ログ
-    console.log(`🔍 [COMPLETION-CHECK-RESULT] 完了判定結果`, {
+    log.debug(`🔍 [COMPLETION-CHECK-RESULT] 完了判定結果`, {
       completionCheckId,
       isComplete: isComplete,
       promptCount: promptCount,
@@ -2189,7 +2189,7 @@ async function processIncompleteTasks(taskGroup) {
 async function executeStep3AllGroups() {
   const executionFlowId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  console.log(`🚀 [EXECUTION-FLOW] 全グループ処理開始`, {
+  log.info(`🚀 [EXECUTION-FLOW] 全グループ処理開始`, {
     executionFlowId,
     timestamp: new Date().toISOString(),
     phase: "START_ALL_GROUPS",
@@ -2425,7 +2425,7 @@ async function executeStep3AllGroups() {
 async function executeStep3SingleGroup(taskGroup) {
   const groupExecutionId = `group_${taskGroup?.groupNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  console.log(`🔄 [EXECUTION-FLOW] 単一グループ処理開始`, {
+  log.info(`🔄 [EXECUTION-FLOW] 単一グループ処理開始`, {
     groupExecutionId,
     timestamp: new Date().toISOString(),
     phase: "START_SINGLE_GROUP",
@@ -2471,7 +2471,7 @@ async function executeStep3SingleGroup(taskGroup) {
     log.debug("🔍 [step5-loop.js] 最終完了確認中...");
     const finalComplete = await checkCompletionStatus(taskGroup);
 
-    console.log(`✅ [EXECUTION-FLOW] 単一グループ処理完了`, {
+    log.info(`✅ [EXECUTION-FLOW] 単一グループ処理完了`, {
       groupExecutionId,
       timestamp: new Date().toISOString(),
       phase: "COMPLETE_SINGLE_GROUP",
@@ -2890,7 +2890,7 @@ async function executeTasks(tasks, taskGroup) {
         } else {
           aiType = "Claude"; // デフォルト
         }
-        console.log(`[DEBUG] aiType推測: ${columnLetter}列 → ${aiType}`);
+        log.debug(`[DEBUG] aiType推測: ${columnLetter}列 → ${aiType}`);
       }
 
       // それでも取得できない場合はデフォルト値
@@ -2993,13 +2993,13 @@ async function executeTasks(tasks, taskGroup) {
 
     try {
       // DEBUG: executeStep4を呼び出し
-      console.log(
+      log.debug(
         "🔍 [STEP3-EXEC] executeStep4呼び出し前のSimpleSheetsClient状態:",
         !!window.simpleSheetsClient,
       );
       const results = await window.executeStep4(formattedTasks);
       // DEBUG: executeStep4完了
-      console.log(
+      log.debug(
         "✅ [STEP3-EXEC] executeStep4実行完了後のSimpleSheetsClient状態:",
         !!window.simpleSheetsClient,
       );
