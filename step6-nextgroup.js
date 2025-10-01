@@ -549,29 +549,15 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
       );
     }
 
-    // 🔧 Step 6-2: タスクグループを動的に再生成
+    // 🔧 Step 6-2: タスクグループを動的に再生成（step2全体を実行）
     log.info("[step6-nextgroup.js] 🔄 タスクグループ再生成中...");
 
-    let allTaskGroups = [];
-    if (window.identifyTaskGroups || window.analyzeTaskGroups) {
+    if (window.executeStep2TaskGroups || window.executeStep2) {
       try {
-        const identifyFunc =
-          window.identifyTaskGroups || window.analyzeTaskGroups;
-        allTaskGroups = await identifyFunc();
-
-        if (!allTaskGroups || !Array.isArray(allTaskGroups)) {
-          log.error("[step6-nextgroup.js] ❌ タスクグループが不正な形式");
-          const result = await performShutdown();
-          return {
-            hasNext: false,
-            error: "タスクグループ不正",
-            ...result,
-          };
-        }
-
-        log.info(
-          `[step6-nextgroup.js] ✅ 全タスクグループ取得: ${allTaskGroups.length}個`,
-        );
+        const executeFunc =
+          window.executeStep2TaskGroups || window.executeStep2;
+        await executeFunc();
+        log.info(`[step6-nextgroup.js] ✅ step2実行完了: タスクグループ再生成`);
       } catch (generateError) {
         log.error(
           "[step6-nextgroup.js] ❌ タスクグループ再生成エラー:",
@@ -586,15 +572,35 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
       }
     } else {
       log.error(
-        "[step6-nextgroup.js] ❌ window.identifyTaskGroupsが定義されていません",
+        "[step6-nextgroup.js] ❌ window.executeStep2が定義されていません",
       );
       const result = await performShutdown();
       return {
         hasNext: false,
-        error: "identifyTaskGroups未定義",
+        error: "executeStep2未定義",
         ...result,
       };
     }
+
+    // step2実行後、globalState.taskGroupsから全タスクグループを取得
+    const allTaskGroups = window.globalState?.allTaskGroups || [];
+
+    if (
+      !allTaskGroups ||
+      !Array.isArray(allTaskGroups) ||
+      allTaskGroups.length === 0
+    ) {
+      log.warn("[step6-nextgroup.js] ⚠️ タスクグループが空 → 全て完了");
+      const result = await performShutdown();
+      return {
+        hasNext: false,
+        ...result,
+      };
+    }
+
+    log.info(
+      `[step6-nextgroup.js] ✅ 全タスクグループ取得: ${allTaskGroups.length}個`,
+    );
 
     // 🔧 Step 6-3: 未処理グループを1つだけ検索
     log.info("[step6-nextgroup.js] 🔍 未処理グループを検索中...");
@@ -603,6 +609,14 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
 
     if (window.checkCompletionStatus) {
       for (const group of allTaskGroups) {
+        // スキップフラグが設定されているグループは除外
+        if (group.skip) {
+          log.debug(
+            `[step6-nextgroup.js] ⏭️ グループ${group.groupNumber}はスキップ設定済み`,
+          );
+          continue;
+        }
+
         try {
           const isCompleted = await window.checkCompletionStatus(group);
           if (!isCompleted) {
@@ -630,8 +644,8 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
       log.error(
         "[step6-nextgroup.js] ❌ window.checkCompletionStatusが定義されていません",
       );
-      // checkCompletionStatusがない場合は最初のグループを使用
-      unprocessedGroup = allTaskGroups[0] || null;
+      // checkCompletionStatusがない場合は最初の非スキップグループを使用
+      unprocessedGroup = allTaskGroups.find((g) => !g.skip) || null;
     }
 
     // 🔧 Step 6-4: 未処理グループが見つかったか判定
