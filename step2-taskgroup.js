@@ -2,7 +2,7 @@
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
 // Chrome Storageからログレベルを取得（非同期）
-let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO; // デフォルト値
+let CURRENT_LOG_LEVEL = LOG_LEVEL.WARN; // デフォルト値（簡潔な動作確認用）
 
 // Chrome拡張環境でのみStorageから設定を読み込む
 if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {

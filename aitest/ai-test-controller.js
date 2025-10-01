@@ -10,7 +10,7 @@
 
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
-let CURRENT_LOG_LEVEL = LOG_LEVEL.INFO;
+let CURRENT_LOG_LEVEL = LOG_LEVEL.WARN; // デフォルト値（簡潔な動作確認用）
 
 // ログユーティリティ
 const log = {
