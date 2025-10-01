@@ -495,86 +495,192 @@ async function performShutdown() {
 }
 
 /**
- * メイン処理（ステップ6）- 防御的プログラミング適用
- * @param {Array} taskGroups - 全タスクグループ
- * @param {number} currentIndex - 現在のグループインデックス
+ * メイン処理（ステップ6）- シンプルな動的タスクグループ再生成
+ *
+ * 動作フロー：
+ * 1. データ再取得
+ * 2. タスクグループ再生成
+ * 3. currentGroupIndexを0にリセット
+ * 4. step3のwhileループに戻る
+ *    → shouldSkipGroupProcessingで完了済みグループをスキップ
+ *    → 未処理グループだけ実行
+ *
+ * @param {Array} taskGroups - 全タスクグループ（参照用）
+ * @param {number} currentIndex - 現在のグループインデックス（参照用）
  * @returns {Promise<Object>} 処理結果
  */
 async function executeStep6(taskGroups = [], currentIndex = 0) {
   log.debug("========================================");
-  log.debug("[Step 6] 次のタスクグループへ移行");
+  log.debug("[Step 6] 次のタスクグループへ移行（シンプル再生成）");
   log.debug("========================================");
-  log.debug("[Step 6] 入力パラメータ:", {
-    タスクグループ数: Array.isArray(taskGroups) ? taskGroups.length : 0,
-    現在のインデックス: currentIndex || 0,
-    グループ詳細:
-      Array.isArray(taskGroups) && taskGroups.length > 0
-        ? taskGroups.slice(0, 3)
-        : [],
+  log.debug("[Step 6] 現在のグループ完了:", {
+    完了グループインデックス: currentIndex,
+    総グループ数: taskGroups.length,
   });
 
-  // 状態を安全に初期化
-  if (window.globalState) {
-    window.globalState.taskGroups = Array.isArray(taskGroups) ? taskGroups : [];
-    window.globalState.currentGroupIndex = currentIndex || 0;
-  }
-
   try {
-    // Step 6-1: 次グループの確認
-    const nextGroup = checkNextGroup();
+    // 🔧 Step 6-1: スプレッドシートデータを再取得
+    log.info("[step6-nextgroup.js] 🔄 スプレッドシートデータ再取得中...");
 
-    if (nextGroup) {
-      // Step 6-2-1: グループが存在する場合
-      log.debug(
-        "[step6-nextgroup.js] [Step 6-2-1] 次グループが存在 → 処理継続",
-      );
-      await processNextGroup(nextGroup);
-
-      return {
-        hasNext: true,
-        nextGroup,
-        nextIndex: window.globalState?.currentGroupIndex || 0,
-      };
+    if (window.refreshSpreadsheetData) {
+      try {
+        const refreshResult = await window.refreshSpreadsheetData();
+        if (refreshResult && refreshResult.success) {
+          log.info(
+            `[step6-nextgroup.js] ✅ データ再取得完了: ${refreshResult.rowCount}行`,
+          );
+        } else {
+          log.error(
+            "[step6-nextgroup.js] ❌ データ再取得失敗:",
+            refreshResult?.error || "不明なエラー",
+          );
+          // エラーでも継続（既存データで処理）
+        }
+      } catch (refreshError) {
+        log.error(
+          "[step6-nextgroup.js] ❌ データ再取得例外:",
+          refreshError.message,
+        );
+        // エラーでも継続
+      }
     } else {
-      // Step 6-2-2: すべて完了した場合
-      log.debug(
-        "[step6-nextgroup.js] [Step 6-2-2] すべて完了した場合 → 終了処理へ進む",
+      log.error(
+        "[step6-nextgroup.js] ❌ window.refreshSpreadsheetDataが定義されていません",
       );
+    }
 
-      // Step 6-3: 終了処理
+    // 🔧 Step 6-2: タスクグループを動的に再生成
+    log.info("[step6-nextgroup.js] 🔄 タスクグループ再生成中...");
+
+    let allTaskGroups = [];
+    if (window.identifyTaskGroups || window.analyzeTaskGroups) {
+      try {
+        const identifyFunc =
+          window.identifyTaskGroups || window.analyzeTaskGroups;
+        allTaskGroups = await identifyFunc();
+
+        if (!allTaskGroups || !Array.isArray(allTaskGroups)) {
+          log.error("[step6-nextgroup.js] ❌ タスクグループが不正な形式");
+          const result = await performShutdown();
+          return {
+            hasNext: false,
+            error: "タスクグループ不正",
+            ...result,
+          };
+        }
+
+        log.info(
+          `[step6-nextgroup.js] ✅ 全タスクグループ取得: ${allTaskGroups.length}個`,
+        );
+      } catch (generateError) {
+        log.error(
+          "[step6-nextgroup.js] ❌ タスクグループ再生成エラー:",
+          generateError.message,
+        );
+        const result = await performShutdown();
+        return {
+          hasNext: false,
+          error: generateError.message,
+          ...result,
+        };
+      }
+    } else {
+      log.error(
+        "[step6-nextgroup.js] ❌ window.identifyTaskGroupsが定義されていません",
+      );
       const result = await performShutdown();
+      return {
+        hasNext: false,
+        error: "identifyTaskGroups未定義",
+        ...result,
+      };
+    }
 
+    // 🔧 Step 6-3: 未処理グループを1つだけ検索
+    log.info("[step6-nextgroup.js] 🔍 未処理グループを検索中...");
+
+    let unprocessedGroup = null;
+
+    if (window.checkCompletionStatus) {
+      for (const group of allTaskGroups) {
+        try {
+          const isCompleted = await window.checkCompletionStatus(group);
+          if (!isCompleted) {
+            unprocessedGroup = group;
+            log.info(
+              `[step6-nextgroup.js] ✅ 未処理グループ発見: グループ${group.groupNumber}`,
+            );
+            break; // 最初の未処理グループを見つけたら終了
+          } else {
+            log.debug(
+              `[step6-nextgroup.js] ⏭️ グループ${group.groupNumber}は完了済み`,
+            );
+          }
+        } catch (checkError) {
+          log.warn(
+            `[step6-nextgroup.js] ⚠️ グループ${group.groupNumber}の完了チェックエラー:`,
+            checkError.message,
+          );
+          // エラーの場合は未処理として扱う
+          unprocessedGroup = group;
+          break;
+        }
+      }
+    } else {
+      log.error(
+        "[step6-nextgroup.js] ❌ window.checkCompletionStatusが定義されていません",
+      );
+      // checkCompletionStatusがない場合は最初のグループを使用
+      unprocessedGroup = allTaskGroups[0] || null;
+    }
+
+    // 🔧 Step 6-4: 未処理グループが見つかったか判定
+    if (!unprocessedGroup) {
+      log.info("[step6-nextgroup.js] 🎉 未処理グループなし → 全て完了");
+      const result = await performShutdown();
       return {
         hasNext: false,
         ...result,
       };
     }
+
+    // 🔧 Step 6-5: 未処理グループを1つだけ設定
+    window.globalState.taskGroups = [unprocessedGroup];
+    window.globalState.currentGroupIndex = 0;
+
+    log.info(
+      `[step6-nextgroup.js] ✅ 未処理グループ1つを設定: グループ${unprocessedGroup.groupNumber}`,
+    );
+    log.info(
+      `[step6-nextgroup.js] 💡 このグループの全タスクを完了まで処理します`,
+    );
+
+    // 🔧 Step 6-6: 処理継続
+    return {
+      hasNext: true,
+      message: `グループ${unprocessedGroup.groupNumber}を処理`,
+    };
   } catch (error) {
     log.error("[step6-nextgroup.js] [Step 6] エラー発生:", {
       エラーメッセージ: error.message,
       スタック: error.stack,
-      現在の状態: {
-        グループインデックス: window.globalState?.currentGroupIndex || 0,
-        処理済みグループ数: (window.globalState?.processedGroups || []).length,
-        統計: window.globalState?.stats || {},
-        // デバッグ用
-        globalStateExists: !!window.globalState,
-        taskGroupsType: typeof window.globalState?.taskGroups,
-        processedGroupsExists: Array.isArray(
-          window.globalState?.processedGroups,
-        ),
-      },
     });
 
-    // エラー時も終了処理を実行
-    log.debug("[Step 6] エラーリカバリー: 終了処理を実行");
+    // エラー時は終了処理を実行
     try {
-      await performShutdown();
+      const result = await performShutdown();
+      return {
+        hasNext: false,
+        error: error.message,
+        ...result,
+      };
     } catch (shutdownError) {
       log.error("[Step 6] エラーリカバリー失敗:", shutdownError);
+      return {
+        hasNext: false,
+        error: error.message,
+      };
     }
-
-    throw error;
   }
 }
 

@@ -1547,5 +1547,69 @@ if (typeof window !== "undefined") {
   window.fetchWithTokenRefresh = fetchWithTokenRefresh;
 }
 
+/**
+ * スプレッドシートデータ再取得関数
+ * step6から呼び出され、最新のスプレッドシートデータを取得してglobalStateを更新
+ * @returns {Promise<Object>} { success: boolean, rowCount: number }
+ */
+async function refreshSpreadsheetData() {
+  log.info("[step1-setup.js] 🔄 スプレッドシートデータ再取得開始");
+
+  try {
+    // globalStateの必要な情報を確認
+    if (!window.globalState?.spreadsheetId) {
+      throw new Error("spreadsheetIdがglobalStateに設定されていません");
+    }
+
+    if (!window.globalState?.apiHeaders) {
+      throw new Error("apiHeadersがglobalStateに設定されていません");
+    }
+
+    if (!window.globalState?.sheetsApiBase) {
+      throw new Error("sheetsApiBaseがglobalStateに設定されていません");
+    }
+
+    const { spreadsheetId, apiHeaders, sheetsApiBase } = window.globalState;
+
+    // 全データ再取得 (A1:CZ100)
+    const targetUrl = `${sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`;
+    log.debug("[step1-setup.js] データ再取得URL:", targetUrl);
+
+    const response = await fetchWithTokenRefresh(targetUrl, {
+      headers: apiHeaders,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`API エラー: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json();
+    const allSheetData = data.values || [];
+
+    // globalStateのキャッシュを更新
+    window.globalState.initialSheetData = allSheetData;
+
+    log.info(`[step1-setup.js] ✅ データ再取得完了: ${allSheetData.length}行`);
+
+    return {
+      success: true,
+      rowCount: allSheetData.length,
+    };
+  } catch (error) {
+    log.error("[step1-setup.js] ❌ データ再取得エラー:", error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+// グローバルエクスポート
+if (typeof window !== "undefined") {
+  window.refreshSpreadsheetData = refreshSpreadsheetData;
+}
+
 log.debug("[step1-setup.js] ✅ Step1関数定義完了（全体制御機能付き）");
 log.debug("[step1-setup.js] ✅ トークンリフレッシュ機能追加完了");
+log.debug("[step1-setup.js] ✅ refreshSpreadsheetData関数追加完了");

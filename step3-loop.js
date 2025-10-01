@@ -2211,14 +2211,52 @@ async function executeStep3AllGroups() {
     );
   }
 
-  const taskGroups = window.globalState?.taskGroups || [];
-  log.debug(`📊 処理対象: ${taskGroups.length}グループ`);
+  log.debug(
+    `📊 処理対象: ${window.globalState?.taskGroups?.length || 0}グループ`,
+  );
 
   let completedGroups = 0;
 
-  // 各グループを順番に処理
-  for (let i = 0; i < taskGroups.length; i++) {
-    window.globalState.currentGroupIndex = i;
+  // currentGroupIndexの初期化（未定義の場合は0から開始）
+  if (
+    window.globalState &&
+    typeof window.globalState.currentGroupIndex !== "number"
+  ) {
+    window.globalState.currentGroupIndex = 0;
+    log.debug(
+      "[step3-loop.js] currentGroupIndexを0で初期化（シンプル再生成対応）",
+    );
+  }
+
+  // 🔧 【初回のみ】step6で未処理グループ1つに絞り込み
+  if (window.executeStep6 && window.globalState?.taskGroups?.length > 1) {
+    log.info(
+      `[step3-loop.js] 🔄 初回起動: 全${window.globalState.taskGroups.length}グループから未処理グループ1つに絞り込み中...`,
+    );
+    const initialTaskGroups = window.globalState.taskGroups;
+    const step6Result = await window.executeStep6(initialTaskGroups, -1);
+
+    if (!step6Result.hasNext) {
+      log.info(`[step3-loop.js] 🎉 未処理グループなし、処理終了`);
+      return {
+        success: true,
+        completedGroups: 0,
+        totalGroups: 0,
+      };
+    }
+
+    log.info(
+      `[step3-loop.js] ✅ 初回絞り込み完了: ${window.globalState.taskGroups.length}グループを処理`,
+    );
+  }
+
+  // 各グループを順番に処理（動的タスクグループ再生成対応のためwhileループ使用）
+  while (
+    window.globalState?.currentGroupIndex <
+    (window.globalState?.taskGroups?.length || 0)
+  ) {
+    const i = window.globalState.currentGroupIndex;
+    const taskGroups = window.globalState?.taskGroups || [];
     const taskGroup = taskGroups[i];
 
     log.debug(
@@ -2286,6 +2324,22 @@ async function executeStep3AllGroups() {
           safetyCheckPassed: true,
         });
         completedGroups++;
+
+        // スキップ時もstep6を呼び出して次の未処理グループを取得
+        if (window.executeStep6) {
+          log.debug(`🔄 [step3-loop.js] スキップ後のStep 6呼び出し`);
+          const step6Result = await window.executeStep6(taskGroups, i);
+
+          if (!step6Result.hasNext) {
+            log.debug(`🏁 [step3-loop.js] 全グループ処理完了`);
+            break;
+          }
+          // step6が次の未処理グループ1つを設定し、currentGroupIndex=0にリセット
+        } else {
+          // step6が存在しない場合は手動でインクリメント（フォールバック）
+          window.globalState.currentGroupIndex = i + 1;
+        }
+
         continue;
       }
     }
@@ -2324,6 +2378,12 @@ async function executeStep3AllGroups() {
         log.debug(`🏁 [step3-loop.js] 全グループ処理完了`);
         break;
       }
+
+      // step6がcurrentGroupIndexを更新している可能性があるため、
+      // ここではインクリメントせず、次のループでglobalState.currentGroupIndexを参照
+    } else {
+      // step6が存在しない場合は手動でインクリメント
+      window.globalState.currentGroupIndex = i + 1;
     }
   }
 
@@ -2341,16 +2401,19 @@ async function executeStep3AllGroups() {
     );
   }
 
+  // 最終的なグループ数を取得
+  const finalTaskGroups = window.globalState?.taskGroups || [];
+
   log.debug(`\n========================================`);
   log.debug(
-    `📊 処理結果: ${completedGroups}/${taskGroups.length} グループ完了`,
+    `📊 処理結果: ${completedGroups}/${finalTaskGroups.length} グループ完了`,
   );
   log.debug(`========================================\n`);
 
   return {
     success: true,
     completedGroups,
-    totalGroups: taskGroups.length,
+    totalGroups: finalTaskGroups.length,
   };
 }
 
