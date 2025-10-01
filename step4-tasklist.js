@@ -3721,7 +3721,7 @@ async function generateTaskList(
             groupNumber: taskGroup.groupNumber,
             groupType: taskGroup.groupType,
             row: row,
-            column: promptColumns[0],
+            column: answerColumn, // プロンプト列ではなく回答列を設定
             prompt: `現在${answerColumn ? `${answerColumn}${row}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
             ai: aiType, // 🔧 [FIX] 変換後のaiTypeを使用
             aiType:
@@ -6365,9 +6365,15 @@ class TaskStatusManager {
         return "";
       }
 
+      // シート名を追加
+      const sheetName =
+        window.globalState?.sheetName ||
+        `シート${window.globalState?.gid || "0"}`;
+      const fullRange = `'${sheetName}'!${range}`;
+
       const values = await window.simpleSheetsClient.getValues(
         spreadsheetId,
-        range,
+        fullRange,
       );
       return values && values[0] && values[0][0] ? values[0][0] : "";
     } catch (error) {
@@ -6409,8 +6415,18 @@ class TaskStatusManager {
         return false;
       }
 
-      await window.simpleSheetsClient.updateValue(spreadsheetId, range, marker);
-      ExecuteLogger.info(`✍️ 作業中マーカー設定: ${range}`);
+      // シート名を追加
+      const sheetName =
+        window.globalState?.sheetName ||
+        `シート${window.globalState?.gid || "0"}`;
+      const fullRange = `'${sheetName}'!${range}`;
+
+      await window.simpleSheetsClient.updateValue(
+        spreadsheetId,
+        fullRange,
+        marker,
+      );
+      ExecuteLogger.info(`✍️ 作業中マーカー設定: ${fullRange}`);
       return true;
     } catch (error) {
       ExecuteLogger.error(
@@ -6444,10 +6460,16 @@ class TaskStatusManager {
         return false;
       }
 
-      // 作業中マーカーを削除（空文字に更新）
-      await window.simpleSheetsClient.updateValue(spreadsheetId, range, "");
+      // シート名を追加
+      const sheetName =
+        window.globalState?.sheetName ||
+        `シート${window.globalState?.gid || "0"}`;
+      const fullRange = `'${sheetName}'!${range}`;
 
-      ExecuteLogger.info(`🧹 初回実行: 作業中マーカー削除 ${range}`, {
+      // 作業中マーカーを削除（空文字に更新）
+      await window.simpleSheetsClient.updateValue(spreadsheetId, fullRange, "");
+
+      ExecuteLogger.info(`🧹 初回実行: 作業中マーカー削除 ${fullRange}`, {
         削除理由: "初回実行時の自動クリア",
         元のマーカー: currentValue.substring(0, 50) + "...",
         タスク: `${task.column}${task.row} (グループ${task.groupNumber})`,
@@ -6694,24 +6716,32 @@ class TaskStatusManager {
         return;
       }
 
+      // シート名を追加
+      const sheetName =
+        window.globalState?.sheetName ||
+        `シート${window.globalState?.gid || "0"}`;
+      const fullRange = `'${sheetName}'!${range}`;
+
       // 🔍 【安全チェック追加】値を確認してから削除
       const currentValue = await window.simpleSheetsClient.readValue(
         spreadsheetId,
-        range,
+        fullRange,
       );
 
       // 作業中マーカーのみ削除（それ以外は保護）
       if (!currentValue) {
-        ExecuteLogger.info(`🔍 [SAFE-CLEAR] ${range}: 空またはnull - スキップ`);
+        ExecuteLogger.info(
+          `🔍 [SAFE-CLEAR] ${fullRange}: 空またはnull - スキップ`,
+        );
         return;
       }
 
       if (typeof currentValue !== "string") {
         ExecuteLogger.warn(
-          `⚠️ [SAFE-CLEAR] ${range}: 文字列以外の値を検出 - タイプ: ${typeof currentValue}`,
+          `⚠️ [SAFE-CLEAR] ${fullRange}: 文字列以外の値を検出 - タイプ: ${typeof currentValue}`,
           {
             値: safeStringify(currentValue),
-            範囲: range,
+            範囲: fullRange,
           },
         );
         return;
@@ -6726,13 +6756,16 @@ class TaskStatusManager {
       }
 
       // 作業中マーカーのみクリア
-      await window.simpleSheetsClient.updateValue(spreadsheetId, range, "");
-      ExecuteLogger.info(`🧹 [SAFE-CLEAR] 作業中マーカーをクリア: ${range}`, {
-        削除された値:
-          typeof currentValue === "string"
-            ? currentValue.substring(0, 100)
-            : safeStringify(currentValue).substring(0, 100),
-      });
+      await window.simpleSheetsClient.updateValue(spreadsheetId, fullRange, "");
+      ExecuteLogger.info(
+        `🧹 [SAFE-CLEAR] 作業中マーカーをクリア: ${fullRange}`,
+        {
+          削除された値:
+            typeof currentValue === "string"
+              ? currentValue.substring(0, 100)
+              : safeStringify(currentValue).substring(0, 100),
+        },
+      );
     } catch (error) {
       ExecuteLogger.error(
         `❌ マーカークリアエラー: ${task.column}${task.row}`,
@@ -8936,16 +8969,25 @@ async function executeStep4(taskList) {
         const answerCellRef =
           task.answerCellRef || task.cellRef || task.answerCell;
 
+        // シート名を追加
+        const sheetName =
+          window.globalState?.sheetName ||
+          `シート${window.globalState?.gid || "0"}`;
+        const fullAnswerCellRef = answerCellRef.includes("!")
+          ? answerCellRef
+          : `'${sheetName}'!${answerCellRef}`;
+
         ExecuteLogger.info(`📝 [DEBUG-answerCell] 最終的なanswerCellRef:`, {
           taskId: taskId,
-          answerCellRef: answerCellRef,
-          isValid: !!answerCellRef && !answerCellRef.includes("undefined"),
+          answerCellRef: fullAnswerCellRef,
+          isValid:
+            !!fullAnswerCellRef && !fullAnswerCellRef.includes("undefined"),
         });
 
         if (window.detailedLogManager) {
           await window.detailedLogManager.writeAnswerToSpreadsheet(
             taskId,
-            answerCellRef,
+            fullAnswerCellRef,
           );
         }
 
@@ -8964,9 +9006,17 @@ async function executeStep4(taskList) {
       // ログをスプレッドシートに記載
       const logCellRef = task.logCellRef || calculateLogCellRef(task);
       if (logCellRef && window.detailedLogManager) {
+        // シート名を追加
+        const sheetName =
+          window.globalState?.sheetName ||
+          `シート${window.globalState?.gid || "0"}`;
+        const fullLogCellRef = logCellRef.includes("!")
+          ? logCellRef
+          : `'${sheetName}'!${logCellRef}`;
+
         await window.detailedLogManager.writeLogToSpreadsheet(
           taskId,
-          logCellRef,
+          fullLogCellRef,
         );
       }
 

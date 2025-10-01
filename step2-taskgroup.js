@@ -763,7 +763,7 @@ async function applySkipConditions() {
         // Step1で取得したシート名を使用
         const sheetName = window.globalState.sheetName || `シート${gid}`;
         const promptRange = `'${sheetName}'!${promptCol}${dataStartRow}:${promptCol}${endRow}`;
-        const promptUrl = `${sheetsApiBase}/${spreadsheetId}/values/${promptRange}`;
+        const promptUrl = `${sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(promptRange)}`;
 
         // プロンプト列取得
         log.debug(`[step2-taskgroup.js] API呼び出し: ${promptUrl}`);
@@ -785,7 +785,7 @@ async function applySkipConditions() {
 
         // 回答列の取得
         const answerRange = `'${sheetName}'!${answerCol}${dataStartRow}:${answerCol}${endRow}`;
-        const answerUrl = `${sheetsApiBase}/${spreadsheetId}/values/${answerRange}`;
+        const answerUrl = `${sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(answerRange)}`;
 
         // 回答列取得
         log.debug(`[step2-taskgroup.js] API呼び出し: ${answerUrl}`);

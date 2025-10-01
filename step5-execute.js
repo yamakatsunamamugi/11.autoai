@@ -660,7 +660,10 @@ class SpreadsheetDataManager {
         .filter(Boolean);
       const minRow = Math.min(...rows);
       const maxRow = Math.max(...rows);
-      const range = `A${minRow}:Z${maxRow}`;
+
+      // シート名を追加
+      const sheetName = window.globalState?.sheetName || `シート${gid || "0"}`;
+      const range = `'${sheetName}'!A${minRow}:Z${maxRow}`;
 
       // データ取得
       const sheetData = await this.fetchSpreadsheetData(
