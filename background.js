@@ -1610,9 +1610,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
 
-        const menuRowData = actualMenuRow
-          ? sheetData[actualMenuRow - 1] || []
-          : [];
+        // メニュー行を直接API呼び出しで取得（シート名付き、全列取得）
+        const token = await sheetsClient.getAuthToken();
+        const menuRowRange = `'${sheetName}'!A${actualMenuRow}:CZ${actualMenuRow}`;
+        const menuRowUrl = `${sheetsClient.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(menuRowRange)}`;
+        const menuRowResponse = await fetch(menuRowUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const menuRowResult = await menuRowResponse.json();
+        const menuRowData = menuRowResult.values?.[0] || [];
+
         console.log("📋 [ログクリア] メニュー行データ:", {
           menuRow: actualMenuRow,
           menuRowData: menuRowData,
@@ -1784,9 +1791,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
 
-        const menuRowData = actualMenuRow
-          ? sheetData[actualMenuRow - 1] || []
-          : [];
+        // メニュー行を直接API呼び出しで取得（シート名付き、全列取得）
+        const token = await sheetsClient.getAuthToken();
+        const menuRowRange = `'${sheetName}'!A${actualMenuRow}:CZ${actualMenuRow}`;
+        const menuRowUrl = `${sheetsClient.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(menuRowRange)}`;
+        const menuRowResponse = await fetch(menuRowUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const menuRowResult = await menuRowResponse.json();
+        const menuRowData = menuRowResult.values?.[0] || [];
+
         console.log("📋 [回答削除] メニュー行データ:", {
           menuRow: actualMenuRow,
           menuRowData: menuRowData,
