@@ -51,84 +51,155 @@ class SimpleSheetsClient {
   }
 
   /**
+   * リトライ付きでAPI呼び出しを実行
+   * @param {Function} requestFunc - 実行するAPIリクエスト関数
+   * @param {string} requestType - リクエストタイプ（ログ用）
+   * @returns {Promise} リクエスト結果
+   */
+  async executeWithRetry(requestFunc, requestType = "unknown") {
+    const maxRetries = 10;
+    // 待機時間（ミリ秒）: 10秒→30秒→1分→3分→5分→10分→15分→30分→45分→60分
+    const retryDelays = [
+      10000, 30000, 60000, 180000, 300000, 600000, 900000, 1800000, 2700000,
+      3600000,
+    ];
+
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // 各試行で新しいトークンを取得（認証リフレッシュ）
+        const token = await this.getAuthToken();
+
+        // リクエスト実行
+        const result = await requestFunc(token);
+
+        // 成功した場合
+        if (attempt > 1) {
+          console.log(
+            `✅ [SimpleSheetsClient] リトライ成功: ${requestType} (${attempt}回目)`,
+          );
+        }
+
+        return result;
+      } catch (error) {
+        lastError = error;
+        const errorStatus = error.status || error.message;
+
+        console.error(
+          `❌ [SimpleSheetsClient] API呼び出しエラー (${attempt}/${maxRetries}): ${requestType}`,
+          {
+            attempt,
+            error: errorStatus,
+            message: error.message,
+          },
+        );
+
+        // 最終試行の場合はエラーを投げる
+        if (attempt >= maxRetries) {
+          console.error(
+            `❌ [SimpleSheetsClient] 最大リトライ回数に達しました: ${requestType}`,
+          );
+          throw error;
+        }
+
+        // 次の試行までの待機時間
+        const delay = retryDelays[attempt - 1] || 3600000; // デフォルト60分
+        const delayMinutes = (delay / 60000).toFixed(1);
+
+        console.log(
+          `⏳ [SimpleSheetsClient] ${delayMinutes}分後に再試行します (${attempt + 1}/${maxRetries})`,
+        );
+
+        // 待機
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
    * スプレッドシートに値を書き込み（単一セル）
    */
   async updateValue(spreadsheetId, range, value) {
-    const token = await this.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+    return await this.executeWithRetry(async (token) => {
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
 
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        values: [[value]],
-      }),
-    });
+      const response = await fetch(url, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          values: [[value]],
+        }),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`書き込み失敗: HTTP ${response.status}, ${errorText}`);
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(
+          `書き込み失敗: HTTP ${response.status}, ${errorText}`,
+        );
+        error.status = response.status;
+        throw error;
+      }
 
-    return await response.json();
+      return await response.json();
+    }, `updateValue(${range})`);
   }
 
   /**
    * リッチテキストでURLリンクを含むセルを書き込み
    */
   async updateRichTextValue(spreadsheetId, range, text, linkUrl) {
-    const token = await this.getAuthToken();
+    return await this.executeWithRetry(async (token) => {
+      // リッチテキストフォーマットを適用
+      const batchUpdateUrl = `${this.baseUrl}/${spreadsheetId}:batchUpdate`;
 
-    // リッチテキストフォーマットを適用
-    const batchUpdateUrl = `${this.baseUrl}/${spreadsheetId}:batchUpdate`;
+      // A1形式をGridRangeに変換
+      const sheetMatch = range.match(/^'?([^'!]+)'?!/);
+      const cellMatch = range.match(/([A-Z]+)(\d+)/);
 
-    // A1形式をGridRangeに変換
-    const sheetMatch = range.match(/^'?([^'!]+)'?!/);
-    const cellMatch = range.match(/([A-Z]+)(\d+)/);
-
-    if (!cellMatch) {
-      console.warn("リッチテキスト設定失敗: 範囲の解析エラー", range);
-      return;
-    }
-
-    const col =
-      cellMatch[1]
-        .split("")
-        .reduce((sum, char) => sum * 26 + char.charCodeAt(0) - 64, 0) - 1;
-    const row = parseInt(cellMatch[2]) - 1;
-
-    // URL部分を見つける（"URL: "プレフィックスを考慮）
-    let urlStartIndex = text.indexOf(linkUrl);
-    if (urlStartIndex === -1) {
-      // "URL: "付きで検索
-      const urlWithPrefix = `URL: ${linkUrl}`;
-      const prefixIndex = text.indexOf(urlWithPrefix);
-      if (prefixIndex !== -1) {
-        urlStartIndex = prefixIndex + 5; // "URL: "の長さ分ずらす
-      } else {
-        console.warn(
-          "リッチテキスト設定失敗: URLがテキスト内に見つかりません",
-          {
-            searchedUrl: linkUrl,
-            textLength: text.length,
-            textPreview: text.substring(0, 200),
-          },
-        );
+      if (!cellMatch) {
+        console.warn("リッチテキスト設定失敗: 範囲の解析エラー", range);
         return;
       }
-    }
 
-    const urlEndIndex = urlStartIndex + linkUrl.length;
+      const col =
+        cellMatch[1]
+          .split("")
+          .reduce((sum, char) => sum * 26 + char.charCodeAt(0) - 64, 0) - 1;
+      const row = parseInt(cellMatch[2]) - 1;
 
-    // シートIDを取得
-    let sheetId = null; // デフォルト値を null に変更
+      // URL部分を見つける（"URL: "プレフィックスを考慮）
+      let urlStartIndex = text.indexOf(linkUrl);
+      if (urlStartIndex === -1) {
+        // "URL: "付きで検索
+        const urlWithPrefix = `URL: ${linkUrl}`;
+        const prefixIndex = text.indexOf(urlWithPrefix);
+        if (prefixIndex !== -1) {
+          urlStartIndex = prefixIndex + 5; // "URL: "の長さ分ずらす
+        } else {
+          console.warn(
+            "リッチテキスト設定失敗: URLがテキスト内に見つかりません",
+            {
+              searchedUrl: linkUrl,
+              textLength: text.length,
+              textPreview: text.substring(0, 200),
+            },
+          );
+          return;
+        }
+      }
 
-    try {
+      const urlEndIndex = urlStartIndex + linkUrl.length;
+
+      // シートIDを取得
+      let sheetId = null;
+
       // スプレッドシートメタデータを取得
-      const token = await this.getAuthToken();
       const metadataUrl = `${this.baseUrl}/${spreadsheetId}`;
       const metadataResponse = await fetch(metadataUrl, {
         headers: {
@@ -136,123 +207,124 @@ class SimpleSheetsClient {
         },
       });
 
-      if (metadataResponse.ok) {
-        const metadata = await metadataResponse.json();
+      if (!metadataResponse.ok) {
+        const errorText = await metadataResponse.text();
+        const error = new Error(
+          `メタデータ取得失敗: HTTP ${metadataResponse.status}, ${errorText}`,
+        );
+        error.status = metadataResponse.status;
+        throw error;
+      }
 
-        // シート名が指定されている場合は該当シートを検索
-        if (sheetMatch && sheetMatch[1]) {
-          const sheetName = sheetMatch[1];
-          const sheet = metadata.sheets?.find(
-            (s) => s.properties.title === sheetName,
-          );
-          if (sheet) {
-            sheetId = sheet.properties.sheetId;
-            console.log(`✅ シートID取得成功: "${sheetName}" → ID: ${sheetId}`);
-          } else {
-            // 指定されたシート名が見つからない場合は最初のシートを使用
-            if (metadata.sheets && metadata.sheets.length > 0) {
-              sheetId = metadata.sheets[0].properties.sheetId;
-              console.warn(
-                `⚠️ シート名 "${sheetName}" が見つからないため、最初のシート(ID: ${sheetId})を使用`,
-              );
-            }
-          }
+      const metadata = await metadataResponse.json();
+
+      // シート名が指定されている場合は該当シートを検索
+      if (sheetMatch && sheetMatch[1]) {
+        const sheetName = sheetMatch[1];
+        const sheet = metadata.sheets?.find(
+          (s) => s.properties.title === sheetName,
+        );
+        if (sheet) {
+          sheetId = sheet.properties.sheetId;
+          console.log(`✅ シートID取得成功: "${sheetName}" → ID: ${sheetId}`);
         } else {
-          // シート名が指定されていない場合は最初のシートを使用
+          // 指定されたシート名が見つからない場合は最初のシートを使用
           if (metadata.sheets && metadata.sheets.length > 0) {
             sheetId = metadata.sheets[0].properties.sheetId;
-            console.log(
-              `💡 シート名が指定されていないため、最初のシート(ID: ${sheetId})を使用`,
+            console.warn(
+              `⚠️ シート名 "${sheetName}" が見つからないため、最初のシート(ID: ${sheetId})を使用`,
             );
           }
         }
       } else {
-        console.warn("⚠️ シートメタデータ取得失敗");
+        // シート名が指定されていない場合は最初のシートを使用
+        if (metadata.sheets && metadata.sheets.length > 0) {
+          sheetId = metadata.sheets[0].properties.sheetId;
+          console.log(
+            `💡 シート名が指定されていないため、最初のシート(ID: ${sheetId})を使用`,
+          );
+        }
       }
-    } catch (error) {
-      console.warn("⚠️ シートID取得エラー:", error.message);
-    }
 
-    // シートIDが取得できない場合はリッチテキスト設定をスキップ
-    if (sheetId === null) {
-      console.warn(
-        "⚠️ シートIDが取得できないため、リッチテキスト設定をスキップします",
-      );
-      return;
-    }
+      // シートIDが取得できない場合はエラー
+      if (sheetId === null) {
+        throw new Error("シートIDが取得できません");
+      }
 
-    const requests = [
-      {
-        updateCells: {
-          rows: [
-            {
-              values: [
-                {
-                  userEnteredValue: {
-                    stringValue: text,
-                  },
-                  textFormatRuns: [
-                    {
-                      startIndex: urlStartIndex,
-                      format: {
-                        link: {
-                          uri: linkUrl,
+      const requests = [
+        {
+          updateCells: {
+            rows: [
+              {
+                values: [
+                  {
+                    userEnteredValue: {
+                      stringValue: text,
+                    },
+                    textFormatRuns: [
+                      {
+                        startIndex: urlStartIndex,
+                        format: {
+                          link: {
+                            uri: linkUrl,
+                          },
+                          foregroundColor: {
+                            blue: 1.0,
+                          },
+                          underline: true,
                         },
-                        foregroundColor: {
-                          blue: 1.0,
-                        },
-                        underline: true,
                       },
-                    },
-                    {
-                      startIndex: urlEndIndex,
-                      format: {},
-                    },
-                  ],
-                },
-              ],
+                      {
+                        startIndex: urlEndIndex,
+                        format: {},
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            fields: "userEnteredValue,textFormatRuns",
+            range: {
+              sheetId: sheetId,
+              startRowIndex: row,
+              endRowIndex: row + 1,
+              startColumnIndex: col,
+              endColumnIndex: col + 1,
             },
-          ],
-          fields: "userEnteredValue,textFormatRuns",
-          range: {
-            sheetId: sheetId, // 動的に取得したシートIDを使用
-            startRowIndex: row,
-            endRowIndex: row + 1,
-            startColumnIndex: col,
-            endColumnIndex: col + 1,
           },
         },
-      },
-    ];
+      ];
 
-    console.log("📝 リッチテキスト設定リクエスト:", {
-      spreadsheetId: spreadsheetId,
-      range: range,
-      urlStartIndex: urlStartIndex,
-      urlEndIndex: urlEndIndex,
-      linkUrl: linkUrl,
-      textPreview: text.substring(0, 100) + "...",
-    });
+      console.log("📝 リッチテキスト設定リクエスト:", {
+        spreadsheetId: spreadsheetId,
+        range: range,
+        urlStartIndex: urlStartIndex,
+        urlEndIndex: urlEndIndex,
+        linkUrl: linkUrl,
+        textPreview: text.substring(0, 100) + "...",
+      });
 
-    const response = await fetch(batchUpdateUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ requests }),
-    });
+      const response = await fetch(batchUpdateUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ requests }),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(
-        `リッチテキスト設定失敗: HTTP ${response.status}, ${errorText}`,
-      );
-      throw new Error(`リッチテキスト設定失敗: ${errorText}`);
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(
+          `リッチテキスト設定失敗: HTTP ${response.status}, ${errorText}`,
+        );
+        error.status = response.status;
+        throw error;
+      }
 
-    console.log("✅ リッチテキスト設定成功");
-    return await response.json();
+      console.log("✅ リッチテキスト設定成功");
+      return await response.json();
+    }, `updateRichTextValue(${range})`);
   }
 
   /**
@@ -397,6 +469,67 @@ class SimpleSheetsClient {
     }
 
     return null; // 見つからない場合
+  }
+
+  /**
+   * 空白セルも含めて行全体を取得（Spreadsheets API使用）
+   * Values APIと違い、空白セルも含めて指定範囲の全セルを返す
+   */
+  async getRowWithEmptyCells(
+    spreadsheetId,
+    sheetName,
+    rowNumber,
+    maxColumn = "CZ",
+  ) {
+    const token = await this.getAuthToken();
+    const range = `'${sheetName}'!A${rowNumber}:${maxColumn}${rowNumber}`;
+
+    // Spreadsheets APIを使用（空白セルも含めて取得）
+    const url = `${this.baseUrl}/${spreadsheetId}?ranges=${encodeURIComponent(range)}&fields=sheets.data.rowData.values.formattedValue`;
+
+    console.log(`🔍 [getRowWithEmptyCells] リクエスト: ${range}`);
+    console.log(`🔍 [getRowWithEmptyCells] URL: ${url}`);
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `行データ取得失敗: HTTP ${response.status}, ${errorText}`,
+      );
+    }
+
+    const data = await response.json();
+    console.log(`🔍 [getRowWithEmptyCells] API応答:`, data);
+
+    // レスポンスからセルデータを抽出
+    const sheets = data.sheets || [];
+    if (sheets.length === 0) {
+      return [];
+    }
+
+    const sheetData = sheets[0].data || [];
+    if (sheetData.length === 0) {
+      return [];
+    }
+
+    const rowData = sheetData[0].rowData || [];
+    if (rowData.length === 0) {
+      return [];
+    }
+
+    const values = rowData[0].values || [];
+
+    // formattedValueを配列に変換（空白セルも含む）
+    const result = values.map((cell) => cell.formattedValue || "");
+
+    console.log(`🔍 [getRowWithEmptyCells] 取得結果: ${result.length}列`);
+
+    return result;
   }
 }
 
@@ -1610,36 +1743,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
 
-        // メニュー行を直接API呼び出しで取得（シート名付き、全列取得）
-        const token = await sheetsClient.getAuthToken();
-        const menuRowRange = `'${sheetName}'!A${actualMenuRow}:CZ${actualMenuRow}`;
-        // 空白セルも含めて取得するためにvalueRenderOptionを指定
-        const menuRowUrl = `${sheetsClient.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(menuRowRange)}?valueRenderOption=FORMATTED_VALUE`;
-        console.log(
-          `🔍 [ログクリア] メニュー行取得リクエスト: ${menuRowRange}`,
+        // メニュー行を空白セルも含めて取得（Spreadsheets API使用）
+        console.log(`🔍 [ログクリア] メニュー行取得: 行${actualMenuRow}`);
+        const menuRowData = await sheetsClient.getRowWithEmptyCells(
+          spreadsheetId,
+          sheetName,
+          actualMenuRow,
+          "CZ",
         );
-        console.log(`🔍 [ログクリア] API URL: ${menuRowUrl}`);
-
-        const menuRowResponse = await fetch(menuRowUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        console.log(
-          `🔍 [ログクリア] API応答ステータス: ${menuRowResponse.status} ${menuRowResponse.statusText}`,
-        );
-
-        if (!menuRowResponse.ok) {
-          const errorText = await menuRowResponse.text();
-          console.error(`❌ [ログクリア] メニュー行取得失敗:`, errorText);
-          throw new Error(
-            `メニュー行取得失敗: ${menuRowResponse.status} - ${errorText}`,
-          );
-        }
-
-        const menuRowResult = await menuRowResponse.json();
-        console.log(`🔍 [ログクリア] API応答内容:`, menuRowResult);
-
-        const menuRowData = menuRowResult.values?.[0] || [];
 
         console.log("📋 [ログクリア] メニュー行データ:", {
           menuRow: actualMenuRow,
@@ -1812,34 +1923,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
 
-        // メニュー行を直接API呼び出しで取得（シート名付き、全列取得）
-        const token = await sheetsClient.getAuthToken();
-        const menuRowRange = `'${sheetName}'!A${actualMenuRow}:CZ${actualMenuRow}`;
-        // 空白セルも含めて取得するためにvalueRenderOptionを指定
-        const menuRowUrl = `${sheetsClient.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(menuRowRange)}?valueRenderOption=FORMATTED_VALUE`;
-        console.log(`🔍 [回答削除] メニュー行取得リクエスト: ${menuRowRange}`);
-        console.log(`🔍 [回答削除] API URL: ${menuRowUrl}`);
-
-        const menuRowResponse = await fetch(menuRowUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        console.log(
-          `🔍 [回答削除] API応答ステータス: ${menuRowResponse.status} ${menuRowResponse.statusText}`,
+        // メニュー行を空白セルも含めて取得（Spreadsheets API使用）
+        console.log(`🔍 [回答削除] メニュー行取得: 行${actualMenuRow}`);
+        const menuRowData = await sheetsClient.getRowWithEmptyCells(
+          spreadsheetId,
+          sheetName,
+          actualMenuRow,
+          "CZ",
         );
-
-        if (!menuRowResponse.ok) {
-          const errorText = await menuRowResponse.text();
-          console.error(`❌ [回答削除] メニュー行取得失敗:`, errorText);
-          throw new Error(
-            `メニュー行取得失敗: ${menuRowResponse.status} - ${errorText}`,
-          );
-        }
-
-        const menuRowResult = await menuRowResponse.json();
-        console.log(`🔍 [回答削除] API応答内容:`, menuRowResult);
-
-        const menuRowData = menuRowResult.values?.[0] || [];
 
         console.log("📋 [回答削除] メニュー行データ:", {
           menuRow: actualMenuRow,
