@@ -170,11 +170,13 @@ const log = {
       ".gds-mode-switch-button .mdc-button__label div",
     ],
 
-    // 機能ボタン
+    // 機能ボタン（修正版）
+    toolboxButton: 'button[aria-label="ツール"] mat-icon[fonticon="page_info"]',
+    toolboxButtonParent: 'button[aria-label="ツール"]',
+    featureMenuItems: "toolbox-drawer-item > button",
+    featureLabel: ".label, .gds-label-l",
     mainButtons: "toolbox-drawer-item > button",
     moreButton: 'button[aria-label="その他"]',
-    featureMenuItems: ".cdk-overlay-pane .toolbox-drawer-menu-item button",
-    featureLabel: ".label",
     selectedFeatures: [
       ".toolbox-drawer-item-button button.is-selected",
       ".toolbox-drawer-button.has-selected-item",
@@ -397,48 +399,44 @@ const log = {
       await wait(500);
     }
 
-    // 【Step 4-3-1-4】機能探索
+    // 【Step 4-3-1-4】機能探索（修正版）
     try {
       const featureNames = new Set();
 
-      const mainButtons = findElements(SELECTORS.mainButtons);
-      mainButtons.forEach((btn) => {
-        const labelEl = findElement(SELECTORS.featureLabel, btn);
-        if (labelEl) {
-          const text = getCleanText(labelEl);
+      // ツールボタンを見つける
+      const toolboxButton = findElement(SELECTORS.toolboxButtonParent);
+      if (toolboxButton) {
+        log.info("ツールボタン発見、クリック実行");
+        toolboxButton.click();
+        await wait(1500);
+
+        // メニューが開いたらアイテムを取得
+        const menuItems = findElements(SELECTORS.featureMenuItems);
+        log.info(`メニューアイテム数: ${menuItems.length}`);
+
+        menuItems.forEach((item) => {
+          const text = getCleanText(item);
+          log.info(`機能候補: ${text}`);
           if (text && text !== "その他") {
             featureNames.add(text);
           }
-        }
-      });
-
-      const moreButton = findElement(SELECTORS.moreButton);
-      if (moreButton) {
-        moreButton.click();
-        await wait(1500);
-
-        const menuItems = findElements(SELECTORS.featureMenuItems);
-        menuItems.forEach((item) => {
-          const labelEl = findElement(SELECTORS.featureLabel, item);
-          if (labelEl) {
-            const text = getCleanText(labelEl);
-            if (text) {
-              featureNames.add(text);
-            }
-          }
         });
+
+        // メニューを閉じる
+        const overlay = document.querySelector(SELECTORS.overlay);
+        if (overlay) overlay.click();
+        await wait(500);
+      } else {
+        log.warn("ツールボタンが見つかりませんでした");
       }
 
       window.availableFeatures = Array.from(featureNames).filter(Boolean);
       log.info(
         `機能探索完了: ${window.availableFeatures.length}個の機能を発見`,
       );
+      log.info(`発見した機能: ${window.availableFeatures.join(", ")}`);
     } catch (e) {
       log.error("機能探索エラー: " + e.message);
-    } finally {
-      const overlay = document.querySelector(SELECTORS.overlay);
-      if (overlay) overlay.click();
-      await wait(500);
     }
 
     // 【Step 4-3-1-5】UI更新

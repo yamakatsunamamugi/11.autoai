@@ -4085,6 +4085,14 @@ async function chatWithChatGPT() {
     const availableModels = [];
     const availableFunctions = [];
 
+    // テキストで要素を検索するヘルパー関数
+    const findElementByText = (selector, text, parentElement = document) => {
+      const elements = parentElement.querySelectorAll(selector);
+      return Array.from(elements).find(
+        (el) => el.textContent && el.textContent.trim().includes(text),
+      );
+    };
+
     // テスト済みコード - モデル検出（動作テストコードと同じ処理）
     logWithTimestamp("1-1. メニュークリックボタンを探しています...", "step");
     const modelButton = await findElement(DETECTION_SELECTORS.modelButton);
