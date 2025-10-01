@@ -3500,178 +3500,79 @@
     // findElementByMultipleSelectors関数を使用
 
     /**
-     * 統合AI応答取得メソッド
-     * 【動作説明】複数の手法を組み合わせて確実にAI応答を取得
+     * シンプルなAI応答取得メソッド
+     * 【動作説明】font-claude-responseから思考プロセスを除外して取得
      * 【戻り値】Object: {element, text, method}
      */
     const getReliableAIResponse = async () => {
-      log.debug("🚀 [getReliableAIResponse] AI応答取得開始");
-      log.debug("📋 使用可能なセレクタ:", {
-        canvas: aiResponseSelectors.response_types.canvas,
-        standard: aiResponseSelectors.response_types.standard,
-        code_block: aiResponseSelectors.response_types.code_block,
+      log.debug(
+        "🚀 [getReliableAIResponse] AI応答取得開始（font-claude-response方式）",
+      );
+
+      // 1. font-claude-responseを取得
+      const claudeResponses = document.querySelectorAll(
+        ".font-claude-response",
+      );
+
+      if (claudeResponses.length === 0) {
+        log.debug("❌ font-claude-responseが見つかりません");
+        return { element: null, text: "", method: "Not Found" };
+      }
+
+      // 最後のClaude応答を取得
+      const lastResponse = claudeResponses[claudeResponses.length - 1];
+      log.debug(
+        `✓ font-claude-response発見: ${claudeResponses.length}個中の最後`,
+      );
+
+      // 2. クローンを作成（元のDOMを変更しないため）
+      const clone = lastResponse.cloneNode(true);
+
+      // 3. 思考プロセスブロック全体を削除
+      const thinkingBlocks = clone.querySelectorAll(
+        ".ease-out.rounded-lg.border-0\\.5.flex.flex-col",
+      );
+      let thinkingCount = 0;
+
+      thinkingBlocks.forEach((block) => {
+        const btn = block.querySelector("button");
+        const btnText = btn?.textContent?.trim() || "";
+        if (
+          btnText.includes("思考プロセス") ||
+          btnText.includes("Thinking") ||
+          btnText.includes("Show thinking")
+        ) {
+          block.remove();
+          thinkingCount++;
+          log.debug(`  - 思考プロセスブロックを削除: "${btnText}"`);
+        }
       });
 
-      // Method 1: ユーザー/アシスタント境界検出
-      log.debug("📍 Method 1: ユーザー/アシスタント境界検出を試行");
-      let response = await getCleanAIResponse();
+      log.debug(`  - 思考プロセス除外: ${thinkingCount}個`);
 
-      if (response) {
-        log.debug("  - getCleanAIResponse成功、要素を取得");
-        response = excludeThinkingProcess(response);
-        if (response && validateResponseContent(response)) {
-          const text = response.textContent?.trim() || "";
-          log.debug(`  ✅ Method 1成功: テキスト長=${text.length}文字`);
-          log.debug(`  - 取得テキスト先頭100文字: ${text.substring(0, 100)}`);
-          return {
-            element: response,
-            text: text,
-            method: "User/Assistant Boundary",
-          };
-        } else {
-          log.debug("  ❌ Method 1失敗: validateResponseContentで無効と判定");
-        }
-      } else {
-        log.debug("  ❌ Method 1失敗: getCleanAIResponseで要素が見つからない");
+      // 4. standard-markdownを取得
+      const standardMd = clone.querySelector(".standard-markdown");
+
+      if (!standardMd) {
+        log.debug("❌ standard-markdownが見つかりません");
+        return { element: null, text: "", method: "No Standard Markdown" };
       }
 
-      // Method 2: 階層的セレクタ
-      log.debug("📍 Method 2: 階層的セレクタ戦略を試行");
+      // 5. テキスト取得
+      const text = standardMd.textContent?.trim() || "";
 
-      // Canvas要素を優先（構造化セレクタ用に変換）
-      let element = null;
-
-      // Canvas要素を検索
-      log.debug("  - Canvas要素を検索中...");
-      for (const selector of aiResponseSelectors.response_types.canvas) {
-        const testElement = document.querySelector(selector);
-        log.debug(
-          `    試行: ${selector} -> ${testElement ? "見つかった" : "見つからない"}`,
-        );
-        if (testElement) {
-          element = testElement;
-          log.debug(`  ✓ Canvasセレクタでマッチ: ${selector}`);
-          log.debug(
-            `  - 要素のテキスト長: ${testElement.textContent?.length || 0}文字`,
-          );
-          break;
-        }
+      if (text.length < 10) {
+        log.debug(`❌ テキストが短すぎます: ${text.length}文字`);
+        return { element: null, text: "", method: "Text Too Short" };
       }
 
-      // Standard要素を検索
-      if (!element) {
-        log.debug("  - Standard要素を検索中...");
-        for (const selector of aiResponseSelectors.response_types.standard) {
-          const testElement = document.querySelector(selector);
-          log.debug(
-            `    試行: ${selector} -> ${testElement ? "見つかった" : "見つからない"}`,
-          );
-          if (testElement) {
-            element = testElement;
-            log.debug(`  ✓ Standardセレクタでマッチ: ${selector}`);
-            log.debug(
-              `  - 要素のテキスト長: ${testElement.textContent?.length || 0}文字`,
-            );
-            break;
-          }
-        }
-      }
-
-      // Code block要素を検索
-      if (!element) {
-        log.debug("  - Code block要素を検索中...");
-        for (const selector of aiResponseSelectors.response_types.code_block) {
-          const testElement = document.querySelector(selector);
-          log.debug(
-            `    試行: ${selector} -> ${testElement ? "見つかった" : "見つからない"}`,
-          );
-          if (testElement) {
-            element = testElement;
-            log.debug(`  ✓ CodeBlockセレクタでマッチ: ${selector}`);
-            break;
-          }
-        }
-      }
-
-      if (element) {
-        element = excludeThinkingProcess(element);
-        if (element && validateResponseContent(element)) {
-          return {
-            element: element,
-            text: element.textContent?.trim() || "",
-            method: "Hierarchical Selectors",
-          };
-        }
-      }
-
-      // Method 3: フォールバック - standard-markdownクラスを持つgrid要素を優先
-      log.debug("📍 Method 3: フォールバック処理を試行");
-
-      // まず、standard-markdownクラスを持つ要素を探す
-      const standardMarkdowns = document.querySelectorAll(
-        ".grid-cols-1.grid.standard-markdown",
-      );
-      if (standardMarkdowns.length > 0) {
-        log.debug(
-          `  - standard-markdownクラスを持つ要素: ${standardMarkdowns.length}個発見`,
-        );
-
-        for (const elem of standardMarkdowns) {
-          // 統一除外関数でチェック
-          if (shouldExcludeElement(elem)) {
-            log.debug(`  ⚠️ 除外対象要素 - スキップ`);
-            continue;
-          }
-
-          // 通常の検証処理
-          const validated = excludeThinkingProcess(elem);
-          if (validated && validateResponseContent(validated)) {
-            const text = validated.textContent?.trim() || "";
-            log.debug(`  ✓ 有効なstandard-markdown発見: ${text.length}文字`);
-            return {
-              element: validated,
-              text: text,
-              method: "Fallback - Standard Markdown",
-            };
-          }
-        }
-      }
-
-      // standard-markdownが見つからない場合、通常のgrid要素を検索（ユーザーメッセージを除外）
-      const grids = document.querySelectorAll(".grid-cols-1.grid");
-      if (grids.length > 0) {
-        log.debug(
-          `  - grid要素: ${grids.length}個発見、ユーザーメッセージを除外して検索`,
-        );
-
-        // 最後から順に検索（最新の回答を優先）
-        for (let i = grids.length - 1; i >= 0; i--) {
-          const grid = grids[i];
-
-          // 統一除外関数でチェック
-          if (shouldExcludeElement(grid)) {
-            log.debug(`  ⚠️ grid[${i}]は除外対象 - スキップ`);
-            continue;
-          }
-
-          // 通常の検証処理
-          const validated = excludeThinkingProcess(grid);
-          if (validated && validateResponseContent(validated)) {
-            const text = validated.textContent?.trim() || "";
-            log.debug(`  ✓ grid[${i}]から有効な回答を取得: ${text.length}文字`);
-            return {
-              element: validated,
-              text: text,
-              method: "Fallback - Last Valid Grid",
-            };
-          }
-        }
-      }
+      log.debug(`✅ AI応答取得成功: ${text.length}文字`);
+      log.debug(`  - 先頭100文字: ${text.substring(0, 100)}`);
 
       return {
-        element: null,
-        text: "",
-        method: "Not Found",
+        element: lastResponse,
+        text: text,
+        method: "Font Claude Response",
       };
     };
 
