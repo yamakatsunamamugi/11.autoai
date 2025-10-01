@@ -3381,13 +3381,19 @@
         if (!parent || parent.tagName === "BODY") break;
       }
 
-      // 5. font-claude-response + text-text-300の組み合わせ（思考プロセス内部の特徴）
-      if (
-        className.includes("font-claude-response") &&
-        className.includes("text-text-300")
-      ) {
-        log.debug("  ⚠️ 思考プロセス内部テキスト検出");
-        return true;
+      // 5. font-claude-response + text-text-300の組み合わせ（自身と祖先要素もチェック）
+      let checkElement = element;
+      for (let i = 0; i < 3 && checkElement; i++) {
+        const checkClass = checkElement.className || "";
+        if (
+          checkClass.includes("font-claude-response") &&
+          checkClass.includes("text-text-300")
+        ) {
+          log.debug(`  ⚠️ 思考プロセス内部テキスト検出（${i}階層上）`);
+          return true;
+        }
+        checkElement = checkElement.parentElement;
+        if (!checkElement || checkElement.tagName === "BODY") break;
       }
 
       return false;
