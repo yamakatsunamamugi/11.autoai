@@ -1613,11 +1613,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // メニュー行を直接API呼び出しで取得（シート名付き、全列取得）
         const token = await sheetsClient.getAuthToken();
         const menuRowRange = `'${sheetName}'!A${actualMenuRow}:CZ${actualMenuRow}`;
-        const menuRowUrl = `${sheetsClient.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(menuRowRange)}`;
+        // 空白セルも含めて取得するためにvalueRenderOptionを指定
+        const menuRowUrl = `${sheetsClient.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(menuRowRange)}?valueRenderOption=FORMATTED_VALUE`;
+        console.log(
+          `🔍 [ログクリア] メニュー行取得リクエスト: ${menuRowRange}`,
+        );
+        console.log(`🔍 [ログクリア] API URL: ${menuRowUrl}`);
+
         const menuRowResponse = await fetch(menuRowUrl, {
           headers: { Authorization: `Bearer ${token}` },
         });
+
+        console.log(
+          `🔍 [ログクリア] API応答ステータス: ${menuRowResponse.status} ${menuRowResponse.statusText}`,
+        );
+
+        if (!menuRowResponse.ok) {
+          const errorText = await menuRowResponse.text();
+          console.error(`❌ [ログクリア] メニュー行取得失敗:`, errorText);
+          throw new Error(
+            `メニュー行取得失敗: ${menuRowResponse.status} - ${errorText}`,
+          );
+        }
+
         const menuRowResult = await menuRowResponse.json();
+        console.log(`🔍 [ログクリア] API応答内容:`, menuRowResult);
+
         const menuRowData = menuRowResult.values?.[0] || [];
 
         console.log("📋 [ログクリア] メニュー行データ:", {
@@ -1794,11 +1815,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // メニュー行を直接API呼び出しで取得（シート名付き、全列取得）
         const token = await sheetsClient.getAuthToken();
         const menuRowRange = `'${sheetName}'!A${actualMenuRow}:CZ${actualMenuRow}`;
-        const menuRowUrl = `${sheetsClient.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(menuRowRange)}`;
+        // 空白セルも含めて取得するためにvalueRenderOptionを指定
+        const menuRowUrl = `${sheetsClient.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(menuRowRange)}?valueRenderOption=FORMATTED_VALUE`;
+        console.log(`🔍 [回答削除] メニュー行取得リクエスト: ${menuRowRange}`);
+        console.log(`🔍 [回答削除] API URL: ${menuRowUrl}`);
+
         const menuRowResponse = await fetch(menuRowUrl, {
           headers: { Authorization: `Bearer ${token}` },
         });
+
+        console.log(
+          `🔍 [回答削除] API応答ステータス: ${menuRowResponse.status} ${menuRowResponse.statusText}`,
+        );
+
+        if (!menuRowResponse.ok) {
+          const errorText = await menuRowResponse.text();
+          console.error(`❌ [回答削除] メニュー行取得失敗:`, errorText);
+          throw new Error(
+            `メニュー行取得失敗: ${menuRowResponse.status} - ${errorText}`,
+          );
+        }
+
         const menuRowResult = await menuRowResponse.json();
+        console.log(`🔍 [回答削除] API応答内容:`, menuRowResult);
+
         const menuRowData = menuRowResult.values?.[0] || [];
 
         console.log("📋 [回答削除] メニュー行データ:", {
