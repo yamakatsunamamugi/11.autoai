@@ -6241,53 +6241,33 @@
         // Canvas以外の処理（通常テキストのフォールバック）
         if (!finalText) {
           log.debug("🔍 Canvas以外のテキストを確認中...");
-          const deepResearchSelectors = getDeepResearchSelectors();
           log.debug(
-            `  使用セレクタ:`,
-            deepResearchSelectors["5_通常処理テキスト位置"],
+            "🚫 【Claude-ステップ7-3】getReliableAIResponse()を使用してテキスト取得（通常応答）",
           );
 
-          // 通常のテキストを確認（Canvasが見つからない場合のフォールバック）
-          const normalResult = await findClaudeElement(
-            deepResearchSelectors["5_通常処理テキスト位置"],
-            3,
-            true,
-          );
+          // セレクタベースの要素検索は使わず、getReliableAIResponse()を直接使用
+          // 理由: セレクタ検索では.standard-markdownがユーザーメッセージもマッチしてしまう
+          const textInfo = await getTextPreview(); // 引数なしで呼び出し → getReliableAIResponse()を使用
 
-          log.debug(
-            `  通常要素検索結果: ${normalResult ? "見つかった" : "見つからない"}`,
-          );
-          if (normalResult) {
-            log.debug(`  - 通常要素タグ: ${normalResult.tagName}`);
-            log.debug(`  - 通常要素クラス: ${normalResult.className}`);
+          log.debug(`📊 getTextPreview結果 (通常):`, {
+            hasTextInfo: !!textInfo,
+            fullTextLength: textInfo?.full?.length || 0,
+            fullTextPreview: textInfo?.full?.substring(0, 100) || "(空)",
+            lengthProperty: textInfo?.length || 0,
+          });
+
+          if (textInfo && textInfo.full) {
+            finalText = textInfo.full;
+            log.debug(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
             log.debug(
-              `  - 通常要素テキスト長: ${normalResult.textContent?.length || 0}文字`,
+              "✅ 【Claude-ステップ7-4】プロンプト除外完了 - 純粋なAI応答を取得",
             );
-            log.debug("✓ 通常処理のテキストを検出");
             log.debug(
-              "🚫 【Claude-ステップ7-3】プロンプト除外機能を適用してテキスト取得（通常応答）",
+              "プレビュー:\n",
+              textInfo.preview.substring(0, 200) + "...",
             );
-            const textInfo = await getTextPreview(normalResult);
-            log.debug(`📊 getTextPreview結果 (通常):`, {
-              hasTextInfo: !!textInfo,
-              fullTextLength: textInfo?.full?.length || 0,
-              fullTextPreview: textInfo?.full?.substring(0, 100) || "(空)",
-              lengthProperty: textInfo?.length || 0,
-            });
-
-            if (textInfo && textInfo.full) {
-              finalText = textInfo.full;
-              log.debug(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
-              log.debug(
-                "✅ 【Claude-ステップ7-4】プロンプト除外完了 - 純粋なAI応答を取得",
-              );
-              log.debug(
-                "プレビュー:\n",
-                textInfo.preview.substring(0, 200) + "...",
-              );
-            } else {
-              log.debug("⚠️ 通常要素は見つかったが、テキストが取得できない");
-            }
+          } else {
+            log.debug("⚠️ AI応答が取得できませんでした");
           }
         }
 
