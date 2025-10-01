@@ -144,6 +144,385 @@ const log = {
   window.AI_WAIT_CONFIG = AI_WAIT_CONFIG;
 
   // ========================================
+  // 統一GeminiRetryManager クラス定義
+  // ChatGPT/Claudeと同様のエラー分類とリトライ戦略を統合
+  // ========================================
+
+  class GeminiRetryManager {
+    constructor() {
+      // 3段階エスカレーション設定
+      this.escalationLevels = {
+        LIGHTWEIGHT: {
+          range: [1, 5],
+          delays: [1000, 2000, 5000, 10000, 15000], // 1秒→2秒→5秒→10秒→15秒
+          method: "SAME_WINDOW",
+          description: "軽量リトライ - 同一ウィンドウ内での再試行",
+        },
+        MODERATE: {
+          range: [6, 8],
+          delays: [30000, 60000, 120000], // 30秒→1分→2分
+          method: "PAGE_REFRESH",
+          description: "中程度リトライ - ページリフレッシュ",
+        },
+        HEAVY_RESET: {
+          range: [9, 20],
+          delays: [300000, 900000, 1800000, 3600000, 7200000], // 5分→15分→30分→1時間→2時間
+          method: "NEW_WINDOW",
+          description: "重いリトライ - 新規ウィンドウ作成",
+        },
+      };
+
+      // Gemini特有のエラー分類
+      this.errorStrategies = {
+        OVERLOADED_ERROR: {
+          immediate_escalation: "HEAVY_RESET",
+          maxRetries: 5,
+        },
+        RATE_LIMIT_ERROR: {
+          immediate_escalation: "HEAVY_RESET",
+          maxRetries: 10,
+        },
+        NETWORK_ERROR: { maxRetries: 8, escalation: "MODERATE" },
+        DOM_ERROR: { maxRetries: 5, escalation: "LIGHTWEIGHT" },
+        UI_TIMING_ERROR: { maxRetries: 10, escalation: "LIGHTWEIGHT" },
+        CANVAS_ERROR: { maxRetries: 8, escalation: "MODERATE" },
+        DEEP_RESEARCH_ERROR: { maxRetries: 12, escalation: "MODERATE" },
+        GENERAL_ERROR: { maxRetries: 8, escalation: "MODERATE" },
+      };
+
+      // エラー履歴管理（段階的エスカレーション用）
+      this.errorHistory = [];
+      this.consecutiveErrorCount = 0;
+      this.lastErrorType = null;
+      this.maxHistorySize = 50;
+
+      // 実行時統計
+      this.metrics = {
+        totalAttempts: 0,
+        successfulAttempts: 0,
+        errorCounts: {},
+        escalationCounts: { LIGHTWEIGHT: 0, MODERATE: 0, HEAVY_RESET: 0 },
+        averageRetryCount: 0,
+      };
+
+      // リソース管理
+      this.activeTimeouts = new Set();
+      this.abortController = null;
+    }
+
+    // Gemini特有のエラー分類器
+    classifyError(error, context = {}) {
+      const errorMessage = error?.message || error?.toString() || "";
+      const errorName = error?.name || "";
+
+      let errorType = "GENERAL_ERROR";
+
+      // Gemini Overloadedエラー（最優先）
+      if (
+        errorMessage.includes("Overloaded") ||
+        errorMessage.includes("overloaded") ||
+        errorMessage.includes("quota exceeded") ||
+        errorMessage.includes("too many requests")
+      ) {
+        errorType = "OVERLOADED_ERROR";
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("rate limit") ||
+        errorMessage.includes("Rate limited") ||
+        errorMessage.includes("Too many requests")
+      ) {
+        errorType = "RATE_LIMIT_ERROR";
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("Canvas") ||
+        errorMessage.includes("canvas") ||
+        context.feature === "Canvas"
+      ) {
+        errorType = "CANVAS_ERROR";
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("Deep Research") ||
+        errorMessage.includes("deep research") ||
+        context.feature === "Deep Research"
+      ) {
+        errorType = "DEEP_RESEARCH_ERROR";
+        return errorType;
+      }
+
+      // 共通エラー分類
+      if (
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch") ||
+        errorName.includes("NetworkError")
+      ) {
+        errorType = "NETWORK_ERROR";
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("要素が見つかりません") ||
+        errorMessage.includes("element not found") ||
+        errorMessage.includes("selector") ||
+        errorMessage.includes("querySelector")
+      ) {
+        errorType = "DOM_ERROR";
+        return errorType;
+      }
+
+      if (
+        errorMessage.includes("timing") ||
+        errorMessage.includes("タイミング") ||
+        errorMessage.includes("wait")
+      ) {
+        errorType = "UI_TIMING_ERROR";
+        return errorType;
+      }
+
+      return errorType;
+    }
+
+    // エラー履歴に追加
+    addErrorToHistory(errorType, errorMessage) {
+      const timestamp = new Date().toISOString();
+      this.errorHistory.push({ errorType, errorMessage, timestamp });
+
+      if (this.errorHistory.length > this.maxHistorySize) {
+        this.errorHistory.shift();
+      }
+
+      // 統計更新
+      this.metrics.errorCounts[errorType] =
+        (this.metrics.errorCounts[errorType] || 0) + 1;
+
+      if (this.lastErrorType === errorType) {
+        this.consecutiveErrorCount++;
+      } else {
+        this.consecutiveErrorCount = 1;
+        this.lastErrorType = errorType;
+      }
+    }
+
+    // 統合リトライ実行関数
+    async executeWithRetry(actionFunction, actionName, context = {}) {
+      const startTime = Date.now();
+      let retryCount = 0;
+      let lastError = null;
+      let lastResult = null;
+
+      log.debug(
+        `🔄 [Gemini RetryManager] ${actionName} 開始 (最大20回リトライ)`,
+      );
+
+      for (retryCount = 1; retryCount <= 20; retryCount++) {
+        try {
+          this.metrics.totalAttempts++;
+
+          log.debug(
+            `🔄 [Gemini RetryManager] ${actionName} 試行 ${retryCount}/20`,
+          );
+
+          const result = await actionFunction();
+
+          this.metrics.successfulAttempts++;
+          const totalTime = Date.now() - startTime;
+
+          log.debug(`✅ [Gemini RetryManager] ${actionName} 成功:`, {
+            retryCount,
+            totalTime,
+            result:
+              typeof result === "string"
+                ? result.substring(0, 100) + "..."
+                : result,
+          });
+
+          return {
+            success: true,
+            result,
+            retryCount,
+            totalTime,
+          };
+        } catch (error) {
+          lastError = error;
+          const errorType = this.classifyError(error, context);
+
+          // エラー履歴管理
+          this.addErrorToHistory(errorType, error.message);
+
+          const elapsedTime = Date.now() - startTime;
+
+          log.error(
+            `❌ [Gemini RetryManager] ${actionName} エラー (試行 ${retryCount}/20):`,
+            {
+              errorType,
+              errorMessage: error.message,
+              retryCount,
+              elapsedTime,
+              consecutiveErrors: this.consecutiveErrorCount,
+            },
+          );
+
+          // 最終試行の場合は終了
+          if (retryCount >= 20) {
+            break;
+          }
+
+          // エスカレーションレベル決定
+          const escalationLevel = this.determineEscalationLevel(
+            retryCount,
+            errorType,
+          );
+          const delay = this.calculateDelay(retryCount, escalationLevel);
+
+          log.debug(
+            `⏳ [Gemini RetryManager] ${delay}ms待機後リトライ (レベル: ${escalationLevel})`,
+          );
+
+          // エスカレーション実行
+          await this.executeEscalation(escalationLevel, delay);
+        }
+      }
+
+      // 全リトライ失敗
+      const totalTime = Date.now() - startTime;
+      const finalErrorType = lastError
+        ? this.classifyError(lastError, context)
+        : "UNKNOWN";
+
+      log.error(`❌ [Gemini RetryManager] ${actionName} 全リトライ失敗:`, {
+        totalAttempts: retryCount,
+        totalTime,
+        finalErrorType,
+        lastErrorMessage: lastError?.message || "Unknown error",
+        errorHistory: this.errorHistory.slice(-5), // 最新5件のエラー
+      });
+
+      return {
+        success: false,
+        result: lastResult,
+        error: lastError,
+        retryCount,
+        errorType: finalErrorType,
+      };
+    }
+
+    // エスカレーションレベル決定
+    determineEscalationLevel(retryCount, errorType) {
+      // 即座にエスカレーションが必要なエラー
+      const strategy = this.errorStrategies[errorType];
+      if (strategy?.immediate_escalation) {
+        this.metrics.escalationCounts[strategy.immediate_escalation]++;
+        return strategy.immediate_escalation;
+      }
+
+      // 試行回数によるエスカレーション
+      if (retryCount <= 5) {
+        this.metrics.escalationCounts.LIGHTWEIGHT++;
+        return "LIGHTWEIGHT";
+      } else if (retryCount <= 8) {
+        this.metrics.escalationCounts.MODERATE++;
+        return "MODERATE";
+      } else {
+        this.metrics.escalationCounts.HEAVY_RESET++;
+        return "HEAVY_RESET";
+      }
+    }
+
+    // 待機時間計算
+    calculateDelay(retryCount, escalationLevel) {
+      const level = this.escalationLevels[escalationLevel];
+      const index = Math.min(
+        retryCount - level.range[0],
+        level.delays.length - 1,
+      );
+      return level.delays[Math.max(0, index)];
+    }
+
+    // エスカレーション実行
+    async executeEscalation(escalationLevel, delay) {
+      const level = this.escalationLevels[escalationLevel];
+
+      log.debug(
+        `🔧 [Gemini RetryManager] エスカレーション実行: ${level.description}`,
+      );
+
+      // 待機実行
+      await new Promise((resolve) => {
+        const timeoutId = setTimeout(resolve, delay);
+        this.activeTimeouts.add(timeoutId);
+        setTimeout(() => this.activeTimeouts.delete(timeoutId), delay);
+      });
+
+      // エスカレーション処理
+      switch (escalationLevel) {
+        case "MODERATE":
+          log.debug(`🔄 [Gemini RetryManager] ページリフレッシュ実行`);
+          try {
+            window.location.reload();
+          } catch (e) {
+            log.error(`❌ [Gemini RetryManager] ページリフレッシュ失敗:`, e);
+          }
+          break;
+        case "HEAVY_RESET":
+          log.debug(
+            `🆕 [Gemini RetryManager] 重いリセット: 新規ウィンドウが推奨されますが、現在のウィンドウで継続`,
+          );
+          try {
+            // sessionStorageクリア
+            sessionStorage.clear();
+            // ページリフレッシュ
+            window.location.reload();
+          } catch (e) {
+            log.error(`❌ [Gemini RetryManager] 重いリセット失敗:`, e);
+          }
+          break;
+      }
+    }
+
+    // リソースクリーンアップ
+    cleanup() {
+      this.activeTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+      this.activeTimeouts.clear();
+
+      if (this.abortController) {
+        this.abortController.abort();
+        this.abortController = null;
+      }
+    }
+
+    // 統計情報取得
+    getMetrics() {
+      const successRate =
+        this.metrics.totalAttempts > 0
+          ? (
+              (this.metrics.successfulAttempts / this.metrics.totalAttempts) *
+              100
+            ).toFixed(2)
+          : 0;
+
+      return {
+        ...this.metrics,
+        successRate: `${successRate}%`,
+        currentConsecutiveErrors: this.consecutiveErrorCount,
+        lastErrorType: this.lastErrorType,
+        recentErrors: this.errorHistory.slice(-10),
+      };
+    }
+  }
+
+  // GeminiRetryManagerのインスタンス作成
+  const geminiRetryManager = new GeminiRetryManager();
+
+  // windowオブジェクトに登録（デバッグ用）
+  window.geminiRetryManager = geminiRetryManager;
+
+  // ========================================
   // セレクタ定義（冒頭に集約）
   // ========================================
   const SELECTORS = {
@@ -982,27 +1361,18 @@ const log = {
   }
 
   // ========================================
-  // タスク実行（拡張版）
+  // タスク実行（拡張版） - RetryManager統合
   // ========================================
   async function executeTask(taskData) {
     log.info("🚀 【Step 4-3】Gemini タスク実行開始", taskData);
 
     // taskIdを最初に定義（スコープ全体で利用可能にする）
     const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
-    const MAX_RETRIES = 3; // 最大リトライ回数
-    let lastError = null;
-    let partialResult = null;
 
-    // リトライループ
-    for (let retryCount = 0; retryCount < MAX_RETRIES; retryCount++) {
-      if (retryCount > 0) {
-        log.info(
-          `🔄 [Gemini] リトライ ${retryCount}/${MAX_RETRIES - 1} を実行中`,
-        );
-        await wait(5000); // リトライ前に5秒待機
-      }
-
-      try {
+    // RetryManagerを使用してタスク実行（20回リトライ、3段階エスカレーション）
+    return await geminiRetryManager.executeWithRetry(
+      async () => {
+        // タスク実行ロジック
         // プロンプトの適切な処理 - オブジェクトの場合は文字列化
         let promptText;
         if (typeof taskData.prompt === "object" && taskData.prompt !== null) {
@@ -1098,6 +1468,15 @@ const log = {
 
           // background.jsに送信時刻を記録
           if (chrome.runtime && chrome.runtime.sendMessage) {
+            // シート名を追加（taskDataから取得）
+            const sheetName = taskData.sheetName;
+            if (!sheetName) {
+              throw new Error("シート名が指定されていません");
+            }
+            const fullLogCell = taskData.logCell?.includes("!")
+              ? taskData.logCell
+              : `'${sheetName}'!${taskData.logCell}`;
+
             const messageToSend = {
               type: "recordSendTime",
               taskId: taskId,
@@ -1109,7 +1488,7 @@ const log = {
                 // URLは応答完了時に取得するため、ここでは記録しない（Claudeと同じ）
                 cellInfo: taskData.cellInfo,
               },
-              logCell: taskData.logCell,
+              logCell: fullLogCell, // シート名付きログセル
             };
 
             // Promise化してタイムアウト処理を追加
@@ -1270,6 +1649,15 @@ const log = {
                 resolve(null);
               }, 5000);
 
+              // シート名付きlogCellを準備（taskDataから取得）
+              const sheetName = taskData.sheetName;
+              if (!sheetName) {
+                throw new Error("シート名が指定されていません");
+              }
+              const fullLogCell = taskData.logCell?.includes("!")
+                ? taskData.logCell
+                : `'${sheetName}'!${taskData.logCell}`;
+
               chrome.runtime.sendMessage(
                 {
                   type: "recordCompletionTime",
@@ -1281,6 +1669,7 @@ const log = {
                     function: featureName,
                     url: conversationUrl, // 取得した会話URLを使用
                   },
+                  logCell: fullLogCell, // シート名付きログセル
                 },
                 (response) => {
                   clearTimeout(timeout);
@@ -1337,64 +1726,14 @@ const log = {
         }
 
         return result;
-      } catch (error) {
-        lastError = error;
-        log.error(
-          `❌ タスク実行エラー (リトライ ${retryCount}/${MAX_RETRIES - 1}):`,
-          error,
-        );
-
-        // 部分的な結果を保存
-        try {
-          const tempContent = await getResponseTextGemini();
-          if (tempContent && tempContent.trim()) {
-            partialResult = tempContent;
-            log.info("💾 [Gemini] 部分的な結果を保存しました");
-          }
-        } catch (e) {
-          // 部分的な結果の取得に失敗
-        }
-
-        // リトライ可能なエラーか判定
-        if (retryCount === MAX_RETRIES - 1 || !isRetryableError(error)) {
-          // 部分的な結果がある場合はそれを返す
-          if (partialResult) {
-            log.warn(
-              "⚠️ [Gemini] エラーが発生しましたが、部分的な結果を返します",
-            );
-            return {
-              success: true,
-              content: partialResult,
-              partial: true,
-              error: error.message,
-            };
-          }
-
-          return {
-            success: false,
-            error: error.message,
-          };
-        }
-      }
-    }
-
-    // すべてのリトライが失敗した場合
-    if (partialResult) {
-      log.warn(
-        "⚠️ [Gemini] すべてのリトライが失敗しましたが、部分的な結果を返します",
-      );
-      return {
-        success: true,
-        content: partialResult,
-        partial: true,
-        error: lastError ? lastError.message : "リトライ失敗",
-      };
-    }
-
-    return {
-      success: false,
-      error: lastError ? lastError.message : "すべてのリトライが失敗しました",
-    };
+      },
+      "Geminiタスク実行",
+      {
+        feature: taskData.function,
+        model: taskData.model,
+        taskId: taskId,
+      },
+    );
   }
 
   // リトライ可能なエラーか判定

@@ -285,9 +285,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
   // エラー分類とリトライ戦略を統合した統一システム
   // ========================================
-  // ChatGPTRetryManager class removed - unused
 
-  /*
+  class ChatGPTRetryManager {
     constructor() {
       // 3段階エスカレーション設定
       this.escalationLevels = {
@@ -528,6 +527,160 @@ async function reportSelectorError(selectorKey, error, selectors) {
         reason: "すべての範囲を超えたためデフォルトHEAVY_RESETを適用",
       });
       return "HEAVY_RESET"; // デフォルト
+    }
+
+    // 統合リトライ実行関数（Claude互換）
+    async executeWithRetry(actionFunction, actionName, context = {}) {
+      const startTime = Date.now();
+      let retryCount = 0;
+      let lastError = null;
+      let lastResult = null;
+
+      log.debug(
+        `🔄 [ChatGPT RetryManager] ${actionName} 開始 (最大20回リトライ)`,
+      );
+
+      for (retryCount = 1; retryCount <= 20; retryCount++) {
+        try {
+          this.metrics.totalAttempts++;
+
+          log.debug(
+            `🔄 [ChatGPT RetryManager] ${actionName} 試行 ${retryCount}/20`,
+          );
+
+          const result = await actionFunction();
+
+          this.metrics.successfulAttempts++;
+          const totalTime = Date.now() - startTime;
+
+          log.debug(`✅ [ChatGPT RetryManager] ${actionName} 成功:`, {
+            retryCount,
+            totalTime,
+            result:
+              typeof result === "string"
+                ? result.substring(0, 100) + "..."
+                : result,
+          });
+
+          return {
+            success: true,
+            result,
+            retryCount,
+            totalTime,
+          };
+        } catch (error) {
+          lastError = error;
+          const errorType = this.classifyError(error, context);
+
+          // エラー履歴管理
+          this.addErrorToHistory(errorType, error.message);
+
+          const elapsedTime = Date.now() - startTime;
+
+          log.error(
+            `❌ [ChatGPT RetryManager] ${actionName} エラー (試行 ${retryCount}/20):`,
+            {
+              errorType,
+              errorMessage: error.message,
+              retryCount,
+              elapsedTime,
+              consecutiveErrors: this.consecutiveErrorCount,
+            },
+          );
+
+          // 最終試行の場合は終了
+          if (retryCount >= 20) {
+            break;
+          }
+
+          // エスカレーションレベル決定
+          const escalationLevel = this.determineEscalationLevel(
+            retryCount,
+            errorType,
+          );
+          const delay = this.calculateDelay(retryCount, escalationLevel);
+
+          log.debug(
+            `⏳ [ChatGPT RetryManager] ${delay}ms待機後リトライ (レベル: ${escalationLevel})`,
+          );
+
+          // エスカレーション実行
+          await this.executeEscalationAction(escalationLevel, delay);
+        }
+      }
+
+      // 全リトライ失敗
+      const totalTime = Date.now() - startTime;
+      const finalErrorType = lastError
+        ? this.classifyError(lastError, context)
+        : "UNKNOWN";
+
+      log.error(`❌ [ChatGPT RetryManager] ${actionName} 全リトライ失敗:`, {
+        totalAttempts: retryCount,
+        totalTime,
+        finalErrorType,
+        lastErrorMessage: lastError?.message || "Unknown error",
+        errorHistory: this.errorHistory.slice(-5), // 最新5件のエラー
+      });
+
+      return {
+        success: false,
+        result: lastResult,
+        error: lastError,
+        retryCount,
+        errorType: finalErrorType,
+      };
+    }
+
+    // 待機時間計算
+    calculateDelay(retryCount, escalationLevel) {
+      const level = this.escalationLevels[escalationLevel];
+      const index = Math.min(
+        retryCount - level.range[0],
+        level.delays.length - 1,
+      );
+      return level.delays[Math.max(0, index)];
+    }
+
+    // エスカレーション実行
+    async executeEscalationAction(escalationLevel, delay) {
+      const level = this.escalationLevels[escalationLevel];
+
+      log.debug(
+        `🔧 [ChatGPT RetryManager] エスカレーション実行: ${level.description}`,
+      );
+
+      // 待機実行
+      await new Promise((resolve) => {
+        const timeoutId = setTimeout(resolve, delay);
+        this.activeTimeouts.add(timeoutId);
+        setTimeout(() => this.activeTimeouts.delete(timeoutId), delay);
+      });
+
+      // エスカレーション処理
+      switch (escalationLevel) {
+        case "MODERATE":
+          log.debug(`🔄 [ChatGPT RetryManager] ページリフレッシュ実行`);
+          try {
+            window.location.reload();
+          } catch (e) {
+            log.error(`❌ [ChatGPT RetryManager] ページリフレッシュ失敗:`, e);
+          }
+          break;
+        case "HEAVY_RESET":
+          log.debug(
+            `🆕 [ChatGPT RetryManager] 重いリセット: 新規ウィンドウが推奨されますが、現在のウィンドウで継続`,
+          );
+          try {
+            // sessionStorageクリア
+            sessionStorage.clear();
+            // ページリフレッシュ
+            window.location.reload();
+          } catch (e) {
+            log.error(`❌ [ChatGPT RetryManager] 重いリセット失敗:`, e);
+          }
+          break;
+      }
     }
 
     // Step 4-1-0-3: 段階的エスカレーションリトライの実行（詳細ログ付き）
@@ -866,7 +1019,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
     }
   }
-  */
+
+  // ChatGPTRetryManagerのインスタンス作成
+  const chatgptRetryManager = new ChatGPTRetryManager();
+
+  // windowオブジェクトに登録（デバッグ用）
+  window.chatgptRetryManager = chatgptRetryManager;
 
   // 統一された待機時間設定（デフォルト値）
   let AI_WAIT_CONFIG = {
@@ -2986,10 +3144,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
             // background.jsに送信時刻を記録
             if (chrome.runtime && chrome.runtime.sendMessage) {
-              // シート名を追加
-              const sheetName =
-                window.globalState?.sheetName ||
-                `シート${window.globalState?.gid || "0"}`;
+              // シート名を追加（taskDataから取得）
+              const sheetName = taskData.sheetName;
+              if (!sheetName) {
+                throw new Error("シート名が指定されていません");
+              }
               const fullLogCell = taskData.logCell?.includes("!")
                 ? taskData.logCell
                 : `'${sheetName}'!${taskData.logCell}`;
@@ -3268,10 +3427,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
           const taskIdForRecord =
             taskData.taskId || taskData.id || taskData.cellInfo || "UNKNOWN";
 
-          // シート名付きlogCellを準備
-          const sheetName =
-            window.globalState?.sheetName ||
-            `シート${window.globalState?.gid || "0"}`;
+          // シート名付きlogCellを準備（taskDataから取得）
+          const sheetName = taskData.sheetName;
+          if (!sheetName) {
+            throw new Error("シート名が指定されていません");
+          }
           const fullLogCell = taskData.logCell?.includes("!")
             ? taskData.logCell
             : `'${sheetName}'!${taskData.logCell}`;

@@ -5438,10 +5438,11 @@
                   taskId: taskId,
                 });
 
-                // シート名を追加
-                const sheetName =
-                  window.globalState?.sheetName ||
-                  `シート${window.globalState?.gid || "0"}`;
+                // シート名を追加（taskDataから取得）
+                const sheetName = taskData.sheetName;
+                if (!sheetName) {
+                  throw new Error("シート名が指定されていません");
+                }
                 const fullLogCell = taskData.logCell?.includes("!")
                   ? taskData.logCell
                   : `'${sheetName}'!${taskData.logCell}`;
@@ -6669,10 +6670,11 @@
 
         // タスク完了時刻をBackground Scriptに記録（URL情報を含む）
         try {
-          // シート名付きlogCellを準備
-          const sheetName =
-            window.globalState?.sheetName ||
-            `シート${window.globalState?.gid || "0"}`;
+          // シート名付きlogCellを準備（taskDataから取得）
+          const sheetName = taskData.sheetName;
+          if (!sheetName) {
+            throw new Error("シート名が指定されていません");
+          }
           const fullLogCell = taskData.logCell?.includes("!")
             ? taskData.logCell
             : `'${sheetName}'!${taskData.logCell}`;
