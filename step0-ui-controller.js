@@ -979,6 +979,10 @@ document.addEventListener("DOMContentLoaded", () => {
           // ドロップダウンを更新
           updateTestConfigDropdowns();
 
+          // UI表の更新を待機（AI情報がUI表に反映されるまで待つ）
+          log.info("⏳ UI表の更新を待機中...");
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+
           // スプレッドシートへ自動保存
           await saveAIDataToSpreadsheet();
         } else {
