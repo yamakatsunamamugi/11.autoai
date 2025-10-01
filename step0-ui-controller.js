@@ -1789,6 +1789,12 @@ async function saveAIDataToSpreadsheet() {
     if (response && response.success) {
       log.info("✅ スプレッドシートへ保存完了");
       showFeedback("スプレッドシートへ保存しました", "success");
+
+      // スプレッドシート保存完了メッセージを表示
+      const messageDiv = document.getElementById("spreadsheetSavedMessage");
+      if (messageDiv) {
+        messageDiv.style.display = "block";
+      }
     } else {
       throw new Error(response?.error || "保存に失敗しました");
     }
