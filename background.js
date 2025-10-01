@@ -1566,6 +1566,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         const sheetsClient = new SimpleSheetsClient();
 
+        // Chrome storageからシート名を取得
+        const storageResult = await chrome.storage.local.get([
+          "gid",
+          "sheetName",
+        ]);
+        const gid = storageResult.gid || "0";
+        let sheetName = storageResult.sheetName;
+
+        // シート名がない場合、getSheetNameFromGidで取得
+        if (!sheetName) {
+          sheetName = await sheetsClient.getSheetNameFromGid(
+            spreadsheetId,
+            gid,
+          );
+        }
+        if (!sheetName) {
+          sheetName = gid === "0" ? "シート1" : `シート${gid}`;
+        }
+
+        console.log(`📊 [ログクリア] 対象シート名: ${sheetName}`);
+
         // 1. スプレッドシート全体を取得
         const sheetData = await sheetsClient.getAllValues(spreadsheetId);
         console.log("📊 [ログクリア] シートデータ取得:", {
@@ -1631,7 +1652,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // 各ログ列に対してclear APIを実行
         for (const colIndex of logColumns) {
           const columnLetter = sheetsClient.getColumnLetter(colIndex); // AA列以降も対応
-          const range = `${columnLetter}${targetStartRow}:${columnLetter}1000`; // 明示的に範囲を指定
+          const range = `'${sheetName}'!${columnLetter}${targetStartRow}:${columnLetter}1000`; // シート名を含む範囲指定
 
           console.log(`🖮️ [ログクリア] ${range} をクリア中...`);
           await sheetsClient.clearRange(spreadsheetId, range);
@@ -1719,6 +1740,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         const sheetsClient = new SimpleSheetsClient();
 
+        // Chrome storageからシート名を取得
+        const storageResult = await chrome.storage.local.get([
+          "gid",
+          "sheetName",
+        ]);
+        const gid = storageResult.gid || "0";
+        let sheetName = storageResult.sheetName;
+
+        // シート名がない場合、getSheetNameFromGidで取得
+        if (!sheetName) {
+          sheetName = await sheetsClient.getSheetNameFromGid(
+            spreadsheetId,
+            gid,
+          );
+        }
+        if (!sheetName) {
+          sheetName = gid === "0" ? "シート1" : `シート${gid}`;
+        }
+
+        console.log(`📊 [回答削除] 対象シート名: ${sheetName}`);
+
         // 1. スプレッドシート全体を取得
         const sheetData = await sheetsClient.getAllValues(spreadsheetId);
         console.log("📊 [回答削除] シートデータ取得:", {
@@ -1784,7 +1826,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // 各回答列に対してclear APIを実行
         for (const colIndex of answerColumns) {
           const columnLetter = sheetsClient.getColumnLetter(colIndex); // AA列以降も対応
-          const range = `${columnLetter}${targetStartRow}:${columnLetter}1000`; // 明示的に範囲を指定
+          const range = `'${sheetName}'!${columnLetter}${targetStartRow}:${columnLetter}1000`; // シート名を含む範囲指定
 
           console.log(`🖮️ [回答削除] ${range} をクリア中...`);
           await sheetsClient.clearRange(spreadsheetId, range);
