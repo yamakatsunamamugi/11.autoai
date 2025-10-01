@@ -1849,7 +1849,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         data.forEach((row, rowIndex) => {
           row.forEach((cellValue, colIndex) => {
             const columnLetter = sheetsClient.getColumnLetter(colIndex);
-            const range = `${sheetName}!${columnLetter}${rowIndex + 1}`;
+            const range = `'${sheetName}'!${columnLetter}${rowIndex + 1}`;
 
             updateRequests.push({
               range: range,
