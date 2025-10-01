@@ -331,107 +331,121 @@ class SimpleSheetsClient {
    * スプレッドシートから全データを取得
    */
   async getAllValues(spreadsheetId) {
-    const token = await this.getAuthToken();
+    return await this.executeWithRetry(async (token) => {
+      // Chrome storageからシート名を取得
+      const result = await chrome.storage.local.get(["gid", "sheetName"]);
+      const gid = result.gid || "0";
+      let sheetName = result.sheetName;
 
-    // Chrome storageからシート名を取得
-    const result = await chrome.storage.local.get(["gid", "sheetName"]);
-    const gid = result.gid || "0";
-    let sheetName = result.sheetName;
+      // シート名がない場合、API経由で取得
+      if (!sheetName) {
+        try {
+          const metadataUrl = `${this.baseUrl}/${spreadsheetId}`;
+          const metadataResponse = await fetch(metadataUrl, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
-    // シート名がない場合、API経由で取得
-    if (!sheetName) {
-      try {
-        const metadataUrl = `${this.baseUrl}/${spreadsheetId}`;
-        const metadataResponse = await fetch(metadataUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (metadataResponse.ok) {
-          const metadata = await metadataResponse.json();
-          const sheet = metadata.sheets.find(
-            (s) => s.properties.sheetId == gid,
+          if (metadataResponse.ok) {
+            const metadata = await metadataResponse.json();
+            const sheet = metadata.sheets.find(
+              (s) => s.properties.sheetId == gid,
+            );
+            sheetName = sheet ? sheet.properties.title : `シート${gid}`;
+          } else {
+            sheetName = gid === "0" ? "シート1" : `シート${gid}`;
+          }
+        } catch (error) {
+          console.warn(
+            "[getAllValues] シート名取得エラー、デフォルト使用:",
+            error,
           );
-          sheetName = sheet ? sheet.properties.title : `シート${gid}`;
-        } else {
           sheetName = gid === "0" ? "シート1" : `シート${gid}`;
         }
-      } catch (error) {
-        console.warn(
-          "[getAllValues] シート名取得エラー、デフォルト使用:",
-          error,
-        );
-        sheetName = gid === "0" ? "シート1" : `シート${gid}`;
       }
-    }
 
-    // シート名を含む範囲でデータ取得
-    const range = `'${sheetName}'!A1:CZ1000`;
-    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+      // シート名を含む範囲でデータ取得
+      const range = `'${sheetName}'!A1:CZ1000`;
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`データ取得失敗: HTTP ${response.status}, ${errorText}`);
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(
+          `データ取得失敗: HTTP ${response.status}, ${errorText}`,
+        );
+        error.status = response.status;
+        throw error;
+      }
 
-    const data = await response.json();
-    return data.values || [];
+      const data = await response.json();
+      return data.values || [];
+    }, `getAllValues(${spreadsheetId})`);
   }
 
   /**
    * バッチ更新（複数範囲の一括更新）
    */
   async batchUpdate(spreadsheetId, updateRequests) {
-    const token = await this.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}/values:batchUpdate`;
+    return await this.executeWithRetry(async (token) => {
+      const url = `${this.baseUrl}/${spreadsheetId}/values:batchUpdate`;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        valueInputOption: "USER_ENTERED",
-        data: updateRequests,
-      }),
-    });
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          valueInputOption: "USER_ENTERED",
+          data: updateRequests,
+        }),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`バッチ更新失敗: HTTP ${response.status}, ${errorText}`);
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(
+          `バッチ更新失敗: HTTP ${response.status}, ${errorText}`,
+        );
+        error.status = response.status;
+        throw error;
+      }
 
-    return await response.json();
+      return await response.json();
+    }, `batchUpdate(${spreadsheetId})`);
   }
 
   /**
    * 指定範囲のデータをクリア（Google Sheets API clear メソッド）
    */
   async clearRange(spreadsheetId, range) {
-    const token = await this.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}/values/${range}:clear`;
+    return await this.executeWithRetry(async (token) => {
+      const url = `${this.baseUrl}/${spreadsheetId}/values/${range}:clear`;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({}),
-    });
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`クリア失敗: HTTP ${response.status}, ${errorText}`);
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(
+          `クリア失敗: HTTP ${response.status}, ${errorText}`,
+        );
+        error.status = response.status;
+        throw error;
+      }
 
-    return await response.json();
+      return await response.json();
+    }, `clearRange(${range})`);
   }
 
   /**
@@ -444,31 +458,36 @@ class SimpleSheetsClient {
       return this.sheetNameCache.get(cacheKey);
     }
 
-    const token = await this.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}`;
+    return await this.executeWithRetry(async (token) => {
+      const url = `${this.baseUrl}/${spreadsheetId}`;
 
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`スプレッドシート情報取得失敗: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const sheets = data.sheets || [];
-
-    for (const sheet of sheets) {
-      if (sheet.properties && sheet.properties.sheetId == gid) {
-        const sheetName = sheet.properties.title;
-        this.sheetNameCache.set(cacheKey, sheetName);
-        return sheetName;
+      if (!response.ok) {
+        const error = new Error(
+          `スプレッドシート情報取得失敗: ${response.statusText}`,
+        );
+        error.status = response.status;
+        throw error;
       }
-    }
 
-    return null; // 見つからない場合
+      const data = await response.json();
+      const sheets = data.sheets || [];
+
+      for (const sheet of sheets) {
+        if (sheet.properties && sheet.properties.sheetId == gid) {
+          const sheetName = sheet.properties.title;
+          this.sheetNameCache.set(cacheKey, sheetName);
+          return sheetName;
+        }
+      }
+
+      return null; // 見つからない場合
+    }, `getSheetNameFromGid(${spreadsheetId}, ${gid})`);
   }
 
   /**
@@ -484,8 +503,8 @@ class SimpleSheetsClient {
     const token = await this.getAuthToken();
     const range = `'${sheetName}'!A${rowNumber}:${maxColumn}${rowNumber}`;
 
-    // Spreadsheets APIを使用（空白セルも含めて取得）
-    const url = `${this.baseUrl}/${spreadsheetId}?ranges=${encodeURIComponent(range)}&fields=sheets.data.rowData.values.formattedValue`;
+    // Spreadsheets APIを使用（includeGridData=trueで空白セルも含めて取得）
+    const url = `${this.baseUrl}/${spreadsheetId}?ranges=${encodeURIComponent(range)}&includeGridData=true`;
 
     console.log(`🔍 [getRowWithEmptyCells] リクエスト: ${range}`);
     console.log(`🔍 [getRowWithEmptyCells] URL: ${url}`);
@@ -528,6 +547,8 @@ class SimpleSheetsClient {
     const result = values.map((cell) => cell.formattedValue || "");
 
     console.log(`🔍 [getRowWithEmptyCells] 取得結果: ${result.length}列`);
+    console.log(`🔍 [getRowWithEmptyCells] 最初の20列:`, result.slice(0, 20));
+    console.log(`🔍 [getRowWithEmptyCells] 最後の20列:`, result.slice(-20));
 
     return result;
   }
