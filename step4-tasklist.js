@@ -3754,6 +3754,7 @@ async function generateTaskList(
               columnIndex: columnToIndex(answerColumn || promptColumns[0]),
             },
             ...parseSpreadsheetUrl(options.spreadsheetUrl || ""),
+            sheetName: options.sheetName || "", // シート名を追加
           };
 
           // デバッグログを収集（後でまとめて表示）
@@ -3833,6 +3834,7 @@ async function generateTaskList(
               : 0,
           },
           ...parseSpreadsheetUrl(options.spreadsheetUrl || ""),
+          sheetName: options.sheetName || "", // シート名を追加
         };
 
         // Step 4-5-4: 統一プロンプト生成の動作確認ログ
@@ -6952,6 +6954,7 @@ async function createTaskListFromGroup(groupData) {
         spreadsheetUrl: window.globalState?.spreadsheetUrl || "",
         spreadsheetId: window.globalState?.spreadsheetId || "",
         gid: window.globalState?.gid || "",
+        sheetName: window.globalState?.sheetName || "",
       };
 
       ExecuteLogger.info(

@@ -498,7 +498,7 @@ class SimpleSheetsClient {
     spreadsheetId,
     sheetName,
     rowNumber,
-    maxColumn = "CZ",
+    maxColumn = "ZZ",
   ) {
     const token = await this.getAuthToken();
     const range = `'${sheetName}'!A${rowNumber}:${maxColumn}${rowNumber}`;
@@ -1764,14 +1764,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
 
-        // メニュー行を空白セルも含めて取得（Spreadsheets API使用）
+        // メニュー行を既に取得済みのsheetDataから直接取得
         console.log(`🔍 [ログクリア] メニュー行取得: 行${actualMenuRow}`);
-        const menuRowData = await sheetsClient.getRowWithEmptyCells(
-          spreadsheetId,
-          sheetName,
-          actualMenuRow,
-          "CZ",
-        );
+        const menuRowData = sheetData[actualMenuRow - 1] || [];
 
         console.log("📋 [ログクリア] メニュー行データ:", {
           menuRow: actualMenuRow,
@@ -1944,14 +1939,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
         }
 
-        // メニュー行を空白セルも含めて取得（Spreadsheets API使用）
+        // メニュー行を既に取得済みのsheetDataから直接取得
         console.log(`🔍 [回答削除] メニュー行取得: 行${actualMenuRow}`);
-        const menuRowData = await sheetsClient.getRowWithEmptyCells(
-          spreadsheetId,
-          sheetName,
-          actualMenuRow,
-          "CZ",
-        );
+        const menuRowData = sheetData[actualMenuRow - 1] || [];
 
         console.log("📋 [回答削除] メニュー行データ:", {
           menuRow: actualMenuRow,
