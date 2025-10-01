@@ -8,7 +8,8 @@
     "clean": "rm -rf dist/",
     "build": "node scripts/build.js",
     "package": "cd dist && zip -r extension.zip build/*",
-    "test": "echo '✅ Tests passed (no tests configured)' && exit 0"
+    "lint:syntax": "node --check step*.js background.js src/**/*.js automations/*.js 2>&1 || exit 1",
+    "test": "npm run lint:syntax && echo '✅ Tests passed'"
   },
   "keywords": [
     "chrome-extension",
