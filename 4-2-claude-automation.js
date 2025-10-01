@@ -3272,9 +3272,11 @@
             const standardContent = nextElement.querySelector(
               ".grid-cols-1.grid.standard-markdown",
             );
-            if (standardContent) {
+            if (standardContent && !shouldExcludeElement(standardContent)) {
               log.debug("  ✓ 標準マークダウン要素を発見（最優先）");
               return standardContent;
+            } else if (standardContent) {
+              log.debug("  ⚠️ 標準マークダウン要素は除外対象");
             }
 
             // 次にCanvas要素を探す
@@ -3282,17 +3284,26 @@
               "#markdown-artifact, .grid-cols-1.grid.gap-2\\.5, .code-block__code",
             );
 
-            if (canvasContent) {
+            if (canvasContent && !shouldExcludeElement(canvasContent)) {
               log.debug("  ✓ Canvas要素を発見");
               return canvasContent;
+            } else if (canvasContent) {
+              log.debug("  ⚠️ Canvas要素は除外対象");
             }
 
             // フォールバック：単純な.standard-markdownクラス
             const simpleStandardContent =
               nextElement.querySelector(".standard-markdown");
-            if (simpleStandardContent) {
+            if (
+              simpleStandardContent &&
+              !shouldExcludeElement(simpleStandardContent)
+            ) {
               log.debug("  ✓ 標準マークダウン要素を発見（フォールバック）");
               return simpleStandardContent;
+            } else if (simpleStandardContent) {
+              log.debug(
+                "  ⚠️ 標準マークダウン要素は除外対象（フォールバック）",
+              );
             }
           }
           nextElement = nextElement.nextElementSibling;
