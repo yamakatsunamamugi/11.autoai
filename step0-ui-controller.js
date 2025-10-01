@@ -591,6 +591,17 @@ function showOpenUrlDialog(targetInput) {
       const buttonContainer = document.createElement("div");
       buttonContainer.style.cssText = "display: flex; gap: 5px;";
 
+      // 開くボタン
+      const openUrlBtn = document.createElement("button");
+      openUrlBtn.style.cssText =
+        "padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+      openUrlBtn.textContent = "開く";
+      openUrlBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.open(url, "_blank");
+        showFeedback(`"${title}" を開きました`, "success");
+      });
+
       // 編集ボタン
       const editBtn = document.createElement("button");
       editBtn.style.cssText =
@@ -617,6 +628,7 @@ function showOpenUrlDialog(targetInput) {
         }
       });
 
+      buttonContainer.appendChild(openUrlBtn);
       buttonContainer.appendChild(editBtn);
       buttonContainer.appendChild(deleteBtn);
 
