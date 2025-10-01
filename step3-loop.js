@@ -2307,8 +2307,8 @@ async function executeStep3AllGroups() {
       });
 
       if (!completionCheck) {
-        log.error(
-          "🚨 [SAFETY-CHECK] スキップ阻止 - グループに未処理タスクあり",
+        log.info(
+          "🛡️ [SAFETY-CHECK] スキップ阻止 - グループに未処理タスクあり",
           {
             groupNumber: taskGroup.groupNumber,
             reason:
