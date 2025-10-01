@@ -6179,17 +6179,17 @@
         // Canvas機能のテキストを優先的に最終取得
         let canvasResult = null;
         try {
-          log.debug("🔍 Canvas要素検索開始");
-          log.debug(
-            `  使用セレクタ:`,
-            deepResearchSelectors["4_Canvas機能テキスト位置"],
-          );
+          log.debug("🔍 Canvas要素検索開始（Canvas専用セレクタ使用）");
 
-          canvasResult = await findClaudeElement(
-            deepResearchSelectors["4_Canvas機能テキスト位置"],
-            5,
-            true,
-          );
+          // Canvas専用IDセレクタを使用してCanvas要素のみを確実に取得
+          const canvasSelectors = {
+            selectors: ["#markdown-artifact", 'div[id="markdown-artifact"]'],
+            description: "Canvas機能専用要素（markdown-artifact）",
+          };
+
+          log.debug(`  使用セレクタ:`, canvasSelectors);
+
+          canvasResult = await findClaudeElement(canvasSelectors, 5, true);
 
           log.debug(
             `  Canvas要素検索結果: ${canvasResult ? "見つかった" : "見つからない"}`,
