@@ -1779,6 +1779,75 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 非同期レスポンス許可
   }
 
+  // 📊 AI統合情報をスプレッドシートへ書き込み
+  if (
+    request.action === "WRITE_AI_DATA_TO_SPREADSHEET" ||
+    request.type === "WRITE_AI_DATA_TO_SPREADSHEET"
+  ) {
+    console.log("📊 [AI統合情報保存] 要求受信");
+
+    (async () => {
+      try {
+        const { spreadsheetId, gid, data } = request;
+
+        if (!spreadsheetId || !data) {
+          throw new Error("スプレッドシートIDまたはデータが指定されていません");
+        }
+
+        // シート名をGIDから取得
+        let sheetName = null;
+        if (gid) {
+          sheetName = await sheetsClient.getSheetNameFromGid(
+            spreadsheetId,
+            gid,
+          );
+        }
+
+        if (!sheetName) {
+          sheetName = "シート1"; // デフォルト
+        }
+
+        console.log(`📊 [AI統合情報保存] シート名: ${sheetName}`);
+
+        // データを書き込み（バッチ更新）
+        const updateRequests = [];
+
+        data.forEach((row, rowIndex) => {
+          row.forEach((cellValue, colIndex) => {
+            const columnLetter = sheetsClient.getColumnLetter(colIndex);
+            const range = `${sheetName}!${columnLetter}${rowIndex + 1}`;
+
+            updateRequests.push({
+              range: range,
+              values: [[cellValue]],
+            });
+          });
+        });
+
+        console.log(
+          `📊 [AI統合情報保存] ${updateRequests.length}個のセルを更新中...`,
+        );
+
+        await sheetsClient.batchUpdate(spreadsheetId, updateRequests);
+
+        console.log("✅ [AI統合情報保存] 完了");
+
+        sendResponse({
+          success: true,
+          message: "AI統合情報を保存しました",
+        });
+      } catch (error) {
+        console.error("❌ [AI統合情報保存] エラー:", error);
+        sendResponse({
+          success: false,
+          error: error.message,
+        });
+      }
+    })();
+
+    return true; // 非同期レスポンス許可
+  }
+
   // 注意: Content Script注入はmanifest.json自動注入に移行済み
   // Content Script注入要求は廃止
 

@@ -978,6 +978,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
           // ドロップダウンを更新
           updateTestConfigDropdowns();
+
+          // スプレッドシートへ自動保存
+          await saveAIDataToSpreadsheet();
         } else {
           throw new Error(response?.error || "探索に失敗しました");
         }
@@ -1649,6 +1652,151 @@ function initializeAITable() {
 // ========================================
 // 表コピー機能
 // ========================================
+
+// AI統合表データをスプレッドシートへ自動保存
+async function saveAIDataToSpreadsheet() {
+  try {
+    log.info("📊 スプレッドシートへ保存開始...");
+
+    const table = document.getElementById("ai-integrated-table");
+    if (!table) {
+      throw new Error("AI統合表が見つかりません");
+    }
+
+    const tbody = table.querySelector("tbody");
+    const dataRows = tbody.querySelectorAll("tr");
+
+    if (dataRows.length === 0) {
+      throw new Error("表にデータがありません");
+    }
+
+    // データ抽出（copyAITableToClipboardと同じロジック）
+    const row = dataRows[0];
+    const cells = row.querySelectorAll("td");
+
+    if (cells.length !== 6) {
+      throw new Error("表の列数が正しくありません");
+    }
+
+    const columnData = [];
+
+    cells.forEach((cell) => {
+      let cellContent =
+        cell.innerHTML || cell.textContent || cell.innerText || "";
+
+      cellContent = cellContent
+        .replace(/<small[^>]*>/g, "")
+        .replace(/<\/small>/g, "")
+        .replace(/<span[^>]*>/g, "")
+        .replace(/<\/span>/g, "")
+        .replace(/(?:更新|検出日):.*$/m, "")
+        .trim();
+
+      if (
+        cellContent.includes("検出待機中") ||
+        cellContent.includes("未検出") ||
+        cellContent.trim() === ""
+      ) {
+        columnData.push(["-"]);
+        return;
+      }
+
+      let items = [];
+
+      if (cellContent.includes("<br>")) {
+        items = cellContent.split(/<br\s*\/?>/gi);
+      } else if (cellContent.includes("\n")) {
+        items = cellContent.split(/\n/);
+      } else if (cellContent.includes("•")) {
+        items = cellContent.split(/•/);
+      } else if (
+        /[a-zA-Z]/.test(cellContent) &&
+        cellContent.split(/\s+/).length > 1
+      ) {
+        items = cellContent.split(/\s+/);
+      } else {
+        items = [cellContent];
+      }
+
+      items = items
+        .map((item) => {
+          return item
+            .replace(/^[•✅❌]\s*/, "")
+            .replace(/\s*🟢|\s*🔴/g, "")
+            .replace(/🍌\s*/g, "")
+            .replace(/[\u{1F000}-\u{1F9FF}]/gu, "")
+            .replace(/[\u{2600}-\u{26FF}]/gu, "")
+            .replace(/\([^)]*\)/g, "")
+            .replace(/\[[^\]]*\]/g, "")
+            .replace(/\s*\(無効\)/g, "")
+            .trim();
+        })
+        .filter(
+          (item) =>
+            item !== "" && !item.includes("検出日") && !item.includes("更新"),
+        );
+
+      if (items.length === 0) {
+        columnData.push(["-"]);
+      } else {
+        columnData.push(items);
+      }
+    });
+
+    // 最大アイテム数を取得
+    const maxItems = Math.max(
+      ...columnData.map((col) => (Array.isArray(col) ? col.length : 1)),
+    );
+
+    // データを2次元配列に整形
+    const sheetData = [];
+
+    // ヘッダー行
+    sheetData.push([
+      "ChatGPTモデル",
+      "Claudeモデル",
+      "Geminiモデル",
+      "ChatGPT機能",
+      "Claude機能",
+      "Gemini機能",
+    ]);
+
+    // データ行
+    for (let rowIndex = 0; rowIndex < maxItems; rowIndex++) {
+      const dataRow = [];
+      for (let colIndex = 0; colIndex < columnData.length; colIndex++) {
+        const columnItems = Array.isArray(columnData[colIndex])
+          ? columnData[colIndex]
+          : [columnData[colIndex]];
+        const item = columnItems[rowIndex] || "-";
+        dataRow.push(item);
+      }
+      sheetData.push(dataRow);
+    }
+
+    // スプレッドシートID抽出
+    const spreadsheetId = "1Yk43YLLo-xQTL6Wqz0FjuvBGP3izW1JhRolHow3fs1c";
+    const gid = "910709667";
+
+    // background.jsにメッセージを送信してスプレッドシートに書き込み
+    const response = await chrome.runtime.sendMessage({
+      action: "WRITE_AI_DATA_TO_SPREADSHEET",
+      spreadsheetId: spreadsheetId,
+      gid: gid,
+      data: sheetData,
+    });
+
+    if (response && response.success) {
+      log.info("✅ スプレッドシートへ保存完了");
+      showFeedback("スプレッドシートへ保存しました", "success");
+    } else {
+      throw new Error(response?.error || "保存に失敗しました");
+    }
+  } catch (error) {
+    log.error("❌ スプレッドシート保存エラー:", error);
+    showFeedback(`保存エラー: ${error.message}`, "error");
+  }
+}
 
 // AI統合表を指定フォーマットでコピー
 function copyAITableToClipboard() {
