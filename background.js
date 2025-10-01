@@ -260,7 +260,41 @@ class SimpleSheetsClient {
    */
   async getAllValues(spreadsheetId) {
     const token = await this.getAuthToken();
-    const url = `${this.baseUrl}/${spreadsheetId}/values/A1:CZ1000`; // AA列以降も含むように範囲拡張
+
+    // Chrome storageからシート名を取得
+    const result = await chrome.storage.local.get(["gid", "sheetName"]);
+    const gid = result.gid || "0";
+    let sheetName = result.sheetName;
+
+    // シート名がない場合、API経由で取得
+    if (!sheetName) {
+      try {
+        const metadataUrl = `${this.baseUrl}/${spreadsheetId}`;
+        const metadataResponse = await fetch(metadataUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (metadataResponse.ok) {
+          const metadata = await metadataResponse.json();
+          const sheet = metadata.sheets.find(
+            (s) => s.properties.sheetId == gid,
+          );
+          sheetName = sheet ? sheet.properties.title : `シート${gid}`;
+        } else {
+          sheetName = gid === "0" ? "シート1" : `シート${gid}`;
+        }
+      } catch (error) {
+        console.warn(
+          "[getAllValues] シート名取得エラー、デフォルト使用:",
+          error,
+        );
+        sheetName = gid === "0" ? "シート1" : `シート${gid}`;
+      }
+    }
+
+    // シート名を含む範囲でデータ取得
+    const range = `'${sheetName}'!A1:CZ1000`;
+    const url = `${this.baseUrl}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
 
     const response = await fetch(url, {
       headers: {

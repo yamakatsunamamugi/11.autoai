@@ -5438,6 +5438,14 @@
                   taskId: taskId,
                 });
 
+                // シート名を追加
+                const sheetName =
+                  window.globalState?.sheetName ||
+                  `シート${window.globalState?.gid || "0"}`;
+                const fullLogCell = taskData.logCell?.includes("!")
+                  ? taskData.logCell
+                  : `'${sheetName}'!${taskData.logCell}`;
+
                 const messageToSend = {
                   type: "recordSendTime",
                   taskId: taskId,
@@ -5449,7 +5457,7 @@
                     // URLは応答完了時に取得するため、ここでは記録しない
                     cellInfo: taskData.cellInfo, // cellInfo を追加
                   },
-                  logCell: taskData.logCell, // ログセルを直接追加
+                  logCell: fullLogCell, // シート名付きログセル
                 };
 
                 try {
@@ -6661,6 +6669,14 @@
 
         // タスク完了時刻をBackground Scriptに記録（URL情報を含む）
         try {
+          // シート名付きlogCellを準備
+          const sheetName =
+            window.globalState?.sheetName ||
+            `シート${window.globalState?.gid || "0"}`;
+          const fullLogCell = taskData.logCell?.includes("!")
+            ? taskData.logCell
+            : `'${sheetName}'!${taskData.logCell}`;
+
           chrome.runtime.sendMessage({
             type: "recordCompletionTime",
             taskId: taskId,
@@ -6671,6 +6687,7 @@
               function: displayedFunction || result.function || featureName,
               url: currentUrl, // 会話URLを含める
             },
+            logCell: fullLogCell, // シート名付きログセル
           });
           log.debug("✅ recordCompletionTime送信完了:", taskId);
         } catch (error) {

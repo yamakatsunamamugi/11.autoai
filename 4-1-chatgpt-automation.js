@@ -2986,6 +2986,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
             // background.jsに送信時刻を記録
             if (chrome.runtime && chrome.runtime.sendMessage) {
+              // シート名を追加
+              const sheetName =
+                window.globalState?.sheetName ||
+                `シート${window.globalState?.gid || "0"}`;
+              const fullLogCell = taskData.logCell?.includes("!")
+                ? taskData.logCell
+                : `'${sheetName}'!${taskData.logCell}`;
+
               const messageToSend = {
                 type: "recordSendTime",
                 taskId: taskId,
@@ -2997,7 +3005,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
                   url: window.location.href,
                   cellInfo: taskData.cellInfo,
                 },
-                logCell: taskData.logCell,
+                logCell: fullLogCell, // シート名付きログセル
               };
 
               try {
@@ -3259,6 +3267,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
         try {
           const taskIdForRecord =
             taskData.taskId || taskData.id || taskData.cellInfo || "UNKNOWN";
+
+          // シート名付きlogCellを準備
+          const sheetName =
+            window.globalState?.sheetName ||
+            `シート${window.globalState?.gid || "0"}`;
+          const fullLogCell = taskData.logCell?.includes("!")
+            ? taskData.logCell
+            : `'${sheetName}'!${taskData.logCell}`;
+
           chrome.runtime.sendMessage({
             type: "recordCompletionTime",
             taskId: taskIdForRecord,
@@ -3269,6 +3286,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
               function: featureName || taskData?.function || "",
               url: window.location.href,
             },
+            logCell: fullLogCell, // シート名付きログセル
           });
           log.debug("recordCompletionTime送信完了:", taskIdForRecord);
         } catch (error) {
