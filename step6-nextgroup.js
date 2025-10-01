@@ -444,6 +444,113 @@ function showCompletionMessage(statistics) {
 }
 
 /**
+ * 次のスプレッドシートがあるかチェック
+ * @returns {Object|null} 次のスプレッドシート情報、なければnull
+ */
+function checkNextSpreadsheet() {
+  const urls = window.globalState?.spreadsheetUrls || [];
+  const currentIndex = window.globalState?.currentUrlIndex ?? -1;
+
+  if (currentIndex < 0 || currentIndex >= urls.length - 1) {
+    log.debug(
+      "[step6-nextgroup.js] 次のスプレッドシートなし（全スプレッドシート処理完了）",
+    );
+    return null;
+  }
+
+  const nextIndex = currentIndex + 1;
+  const nextUrl = urls[nextIndex];
+
+  log.info(
+    `[step6-nextgroup.js] 📋 次のスプレッドシート発見: ${nextIndex + 1}/${urls.length}`,
+  );
+  log.debug(`[step6-nextgroup.js] 次のURL: ${nextUrl}`);
+
+  return {
+    url: nextUrl,
+    index: nextIndex,
+    total: urls.length,
+  };
+}
+
+/**
+ * 次のスプレッドシートへ移行
+ * @param {Object} nextSpreadsheet - 次のスプレッドシート情報
+ * @returns {Promise<void>}
+ */
+async function moveToNextSpreadsheet(nextSpreadsheet) {
+  log.info(
+    `[step6-nextgroup.js] 🔄 次のスプレッドシート(${nextSpreadsheet.index + 1}/${nextSpreadsheet.total})へ移行開始`,
+  );
+
+  try {
+    // currentUrlIndexを更新
+    window.globalState.currentUrlIndex = nextSpreadsheet.index;
+
+    // globalStateの一部をリセット（URL関連情報は保持）
+    const urlInfo = {
+      spreadsheetUrls: window.globalState.spreadsheetUrls,
+      currentUrlIndex: nextSpreadsheet.index,
+      totalUrlCount: window.globalState.totalUrlCount,
+    };
+
+    // グローバル状態を部分的にリセット
+    window.globalState.spreadsheetId = null;
+    window.globalState.gid = null;
+    window.globalState.specialRows = null;
+    window.globalState.taskGroups = [];
+    window.globalState.allTaskGroups = [];
+    window.globalState.currentGroupIndex = 0;
+    window.globalState.processedGroups = [];
+    window.globalState.stats = {
+      totalGroups: 0,
+      completedGroups: 0,
+      totalTasks: 0,
+      successTasks: 0,
+      failedTasks: 0,
+      retryCount: 0,
+    };
+
+    // URL情報を復元
+    Object.assign(window.globalState, urlInfo);
+
+    log.debug("[step6-nextgroup.js] globalStateリセット完了（URL情報は保持）");
+
+    // Step1を実行
+    if (typeof window.executeStep1 !== "function") {
+      throw new Error("executeStep1関数が見つかりません");
+    }
+
+    log.info(
+      `[step6-nextgroup.js] 📝 Step1実行: ${nextSpreadsheet.url.substring(0, 50)}...`,
+    );
+    await window.executeStep1(nextSpreadsheet.url);
+    log.debug("[step6-nextgroup.js] ✅ Step1完了");
+
+    // Step2を実行
+    if (typeof window.executeStep2 !== "function") {
+      throw new Error("executeStep2関数が見つかりません");
+    }
+
+    log.info("[step6-nextgroup.js] 📝 Step2実行");
+    await window.executeStep2();
+    log.debug("[step6-nextgroup.js] ✅ Step2完了");
+
+    // Step3は呼び出さない - Step3のループに制御を戻す
+    log.debug(
+      "[step6-nextgroup.js] ✅ 次スプレッドシート準備完了（Step3ループに制御を戻す）",
+    );
+  } catch (error) {
+    log.error("[step6-nextgroup.js] 次のスプレッドシート移行エラー:", {
+      エラーメッセージ: error.message,
+      スタック: error.stack,
+      次のURL: nextSpreadsheet.url,
+    });
+    throw error;
+  }
+}
+
+/**
  * 終了処理（防御的プログラミング適用）
  * @returns {Promise<Object>}
  */
@@ -650,12 +757,37 @@ async function executeStep6(taskGroups = [], currentIndex = 0) {
 
     // 🔧 Step 6-4: 未処理グループが見つかったか判定
     if (!unprocessedGroup) {
-      log.info("[step6-nextgroup.js] 🎉 未処理グループなし → 全て完了");
-      const result = await performShutdown();
-      return {
-        hasNext: false,
-        ...result,
-      };
+      log.info(
+        "[step6-nextgroup.js] 🎉 現在のスプレッドシートの全グループ完了",
+      );
+
+      // 次のスプレッドシートがあるかチェック
+      const nextSpreadsheet = checkNextSpreadsheet();
+
+      if (nextSpreadsheet) {
+        log.info(
+          `[step6-nextgroup.js] 📋 次のスプレッドシートへ移行: ${nextSpreadsheet.index + 1}/${nextSpreadsheet.total}`,
+        );
+
+        // 次のスプレッドシートへ移行（Step1-2のみ実行）
+        await moveToNextSpreadsheet(nextSpreadsheet);
+
+        // 終了処理はスキップ - Step3のループに制御を戻す
+        log.debug(
+          "[step6-nextgroup.js] ✅ 次スプレッドシート準備完了 - Step3ループ継続",
+        );
+        return {
+          hasNext: true, // ループ継続
+        };
+      } else {
+        // 次のスプレッドシートなし → 全て完了
+        log.info("[step6-nextgroup.js] 🎉 全スプレッドシート処理完了");
+        const result = await performShutdown();
+        return {
+          hasNext: false,
+          ...result,
+        };
+      }
     }
 
     // 🔧 Step 6-5: 未処理グループを1つだけ設定

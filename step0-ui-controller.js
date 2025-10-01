@@ -696,69 +696,48 @@ if (stepOnlyBtn) {
     showFeedback("STEP処理を開始します...", "info");
 
     try {
-      // 各URLに対してStep処理を実行
-      for (let urlIndex = 0; urlIndex < urls.length; urlIndex++) {
-        const url = urls[urlIndex];
-        log.debug(
-          `📋 [STEP-ONLY] URL ${urlIndex + 1}/${urls.length} 処理開始: ${url}`,
-        );
+      // globalStateにURL情報を保存
+      if (!window.globalState) {
+        window.globalState = {};
+      }
 
-        // Step関数を順番に実行（URLを渡す）
-        const steps = [
-          { name: "Step1", func: window.executeStep1, needsUrl: true },
-          { name: "Step2", func: window.executeStep2, needsUrl: false },
-          { name: "Step3", func: window.executeStep3, needsUrl: false },
-          { name: "Step4", func: window.executeStep4, needsUrl: false },
-          { name: "Step5", func: window.executeStep5, needsUrl: false },
-          { name: "Step6", func: window.executeStep6, needsUrl: false },
-        ];
+      window.globalState.spreadsheetUrls = urls;
+      window.globalState.currentUrlIndex = 0;
+      window.globalState.totalUrlCount = urls.length;
 
-        for (const step of steps) {
-          if (typeof step.func === "function") {
-            log.debug(`🔄 ${step.name}実行中...`);
+      log.info(
+        `📋 [STEP-ONLY] ${urls.length}個のスプレッドシートを順次処理します`,
+      );
 
-            // Step1にはURLを渡す、他のStepは引数なし
-            if (step.needsUrl) {
-              await step.func(url);
-            } else {
-              await step.func();
-            }
+      // 最初のURLでStep1を実行
+      const firstUrl = urls[0];
+      log.debug(`📋 [STEP-ONLY] URL 1/${urls.length} 処理開始: ${firstUrl}`);
 
-            log.debug(`✅ ${step.name}完了`);
-          } else {
-            // デバッグ: Step4が見つからない理由を詳細に調査
-            log.debug("🔍 [DEBUG] Step関数チェック詳細:", {
-              stepName: step.name,
-              functionExists: !!step.func,
-              functionType: typeof step.func,
-              allStepFunctions: {
-                step1: typeof window.executeStep1,
-                step2: typeof window.executeStep2,
-                step3: typeof window.executeStep3AllGroups,
-                step4: typeof window.executeStep4,
-                step5: typeof window.executeStep5,
-                step6: typeof window.executeStep6,
-              },
-              windowKeys: Object.keys(window)
-                .filter(
-                  (key) => key.includes("Step") || key.includes("execute"),
-                )
-                .slice(0, 10),
-              // Step4特別チェック
-              step4Details: {
-                windowExecuteStep4: typeof window.executeStep4,
-                windowExecuteStep4Name: window.executeStep4?.name,
-                step4TasklistLoaded: !!window.Step3TaskList,
-                scriptLoadTracker:
-                  window.scriptLoadTracker?.getLoadedScripts?.() || "未定義",
-                step4FileError: window.step4FileError || "なし",
-              },
-            });
-            log.warn(`⚠️ ${step.name}関数が見つかりません`);
-          }
-        }
+      if (typeof window.executeStep1 === "function") {
+        await window.executeStep1(firstUrl);
+        log.debug("✅ Step1完了");
+      } else {
+        throw new Error("executeStep1関数が見つかりません");
+      }
 
-        log.debug(`✅ URL ${urlIndex + 1}/${urls.length} 処理完了`);
+      // Step2を実行
+      if (typeof window.executeStep2 === "function") {
+        await window.executeStep2();
+        log.debug("✅ Step2完了");
+      } else {
+        throw new Error("executeStep2関数が見つかりません");
+      }
+
+      // Step3を実行（Step3が内部でStep6まで自動実行）
+      // Step6が次のスプレッドシートを自動処理
+      if (typeof window.executeStep3AllGroups === "function") {
+        await window.executeStep3AllGroups();
+        log.debug("✅ Step3-6完了");
+      } else if (typeof window.executeStep3 === "function") {
+        await window.executeStep3();
+        log.debug("✅ Step3-6完了");
+      } else {
+        throw new Error("executeStep3関数が見つかりません");
       }
 
       showFeedback("全てのSTEP処理が完了しました", "success");
