@@ -926,8 +926,9 @@ async function findSpecialRows() {
     }
 
     // 1-4-1: 全データ一括取得（初期設定用キャッシュ作成）
-    const targetUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/A1:CZ100`;
-    log.debug("[step1-setup.js] [Step 1-4-1] 全データ取得開始 (A1:CZ100)");
+    const range = `'${sheetName}'!A1:CZ100`;
+    const targetUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+    log.debug(`[step1-setup.js] [Step 1-4-1] 全データ取得開始 (${range})`);
 
     const startTime = Date.now();
     // API呼び出し開始

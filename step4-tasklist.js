@@ -5692,9 +5692,14 @@ class WindowLifecycleManager {
         const writeTimestamp = Date.now();
         await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms待機
 
+        // cellRefから範囲形式を生成: 'シート名'!A1 -> 'シート名'!A1:A1
+        const rangeForVerification = cellRef.includes("!")
+          ? cellRef.replace(/!([A-Z]+\d+)$/, "!$1:$1")
+          : cellRef;
+
         const verificationResult = await this.sheetsClient.readRange(
           spreadsheetId,
-          cellRef + ":" + cellRef,
+          rangeForVerification,
         );
 
         const verifiedValue = verificationResult?.values?.[0]?.[0] || "";
