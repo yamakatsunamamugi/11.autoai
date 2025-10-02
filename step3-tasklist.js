@@ -81,6 +81,9 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       // Chrome Storageの設定でBATCH_PROCESSING_CONFIGを上書き
       Object.assign(BATCH_PROCESSING_CONFIG, result.batchProcessingConfig);
 
+      // WAIT_FOR_BATCH_COMPLETIONを強制的にtrueに固定（安全な動作を保証）
+      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
+
       console.log(
         "📋 [step3-tasklist] Chrome Storageから設定を読み込みました:",
         {
