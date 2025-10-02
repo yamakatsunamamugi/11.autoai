@@ -10706,7 +10706,7 @@ async function sleep(ms) {
 }
 
 async function readSpreadsheet(range, retryCount = 0) {
-  LoopLogger.info(`[Helper] スプレッドシート読み込み: ${range}`);
+  log.info(`[Helper] スプレッドシート読み込み: ${range}`);
 
   try {
     // グローバル状態から認証情報とスプレッドシートIDを取得
@@ -10744,7 +10744,7 @@ async function readSpreadsheet(range, retryCount = 0) {
           ? parseInt(retryAfter) * 1000
           : backoffTimes[Math.min(retryCount, backoffTimes.length - 1)];
 
-        LoopLogger.warn(
+        log.warn(
           `[Helper] APIレート制限エラー (429) 検出。${waitTime}ms後にリトライ...`,
           {
             リトライ回数: retryCount + 1,
@@ -10764,13 +10764,13 @@ async function readSpreadsheet(range, retryCount = 0) {
     }
 
     const data = await response.json();
-    LoopLogger.info(
+    log.info(
       `[Helper] 読み込み成功: ${data.values ? data.values.length : 0}行取得`,
     );
 
     return data;
   } catch (error) {
-    LoopLogger.error("[Helper] スプレッドシート読み込みエラー:", error);
+    log.error("[Helper] スプレッドシート読み込みエラー:", error);
     throw error;
   }
 }
@@ -10782,7 +10782,7 @@ async function readSpreadsheet(range, retryCount = 0) {
 async function readFullSpreadsheet() {
   // DEBUG: readFullSpreadsheet関数実行開始
 
-  LoopLogger.info("[Helper] スプレッドシート全体データ取得開始");
+  log.info("[Helper] スプレッドシート全体データ取得開始");
 
   try {
     if (!window.globalState || !window.globalState.spreadsheetId) {
@@ -10798,7 +10798,7 @@ async function readFullSpreadsheet() {
     const data = await readSpreadsheet(fullRange);
 
     if (!data || !data.values) {
-      LoopLogger.warn("[Helper] スプレッドシートデータが空です");
+      log.warn("[Helper] スプレッドシートデータが空です");
       return [];
     }
 
@@ -10807,7 +10807,7 @@ async function readFullSpreadsheet() {
       取得行数: data.values.length,
       "データサンプル（最初の3行）": data.values.slice(0, 3),
     };
-    LoopLogger.info(`[Helper] スプレッドシート全体データ取得完了:`, logData);
+    log.info(`[Helper] スプレッドシート全体データ取得完了:`, logData);
 
     // 🔍 デバッグログ：データの形状
     try {
@@ -10839,9 +10839,9 @@ async function readFullSpreadsheet() {
         };
       }
 
-      // LoopLogger.debug("🔍 [DEBUG] データ形状詳細（統合）:", debugLog);
+      // log.debug("🔍 [DEBUG] データ形状詳細（統合）:", debugLog);
     } catch (debugError) {
-      LoopLogger.error("❌ [DEBUG] デバッグ情報の出力エラー:", {
+      log.error("❌ [DEBUG] デバッグ情報の出力エラー:", {
         message: debugError.message,
         stack: debugError.stack,
         lineNumber: debugError.lineNumber,
@@ -10850,13 +10850,13 @@ async function readFullSpreadsheet() {
 
     return data.values;
   } catch (error) {
-    LoopLogger.error("[Helper] スプレッドシート全体データ取得エラー:", error);
+    log.error("[Helper] スプレッドシート全体データ取得エラー:", error);
     throw error;
   }
 }
 
 async function createTaskList(taskGroup, isFirstRun = false) {
-  LoopLogger.info("[Helper] タスクリスト作成開始:", {
+  log.info("[Helper] タスクリスト作成開始:", {
     グループ番号: taskGroup?.groupNumber,
     グループタイプ: taskGroup?.groupType,
     列情報: taskGroup?.columns,
@@ -10885,11 +10885,11 @@ async function createTaskList(taskGroup, isFirstRun = false) {
     }
 
     // 重要：Step3が期待する実際のスプレッドシートデータ（2次元配列）を取得
-    LoopLogger.info("[Helper] スプレッドシート全体データを取得中...");
+    log.info("[Helper] スプレッドシート全体データを取得中...");
     const spreadsheetData = await readFullSpreadsheet();
 
     if (!spreadsheetData || spreadsheetData.length === 0) {
-      LoopLogger.warn(
+      log.warn(
         "[Helper] スプレッドシートデータが空のため、タスク生成をスキップ",
       );
       return [];
@@ -10915,7 +10915,7 @@ async function createTaskList(taskGroup, isFirstRun = false) {
     };
 
     // Step 5-3-前処理: 制御情報の取得と適用
-    LoopLogger.info(
+    log.info(
       "[createTaskList] [Step 5-3-前処理] 行制御・列制御情報を取得中...",
     );
 
@@ -10930,7 +10930,7 @@ async function createTaskList(taskGroup, isFirstRun = false) {
       // 注意：spreadsheetDataは全体データなので、dataStartRowオフセットは不要
       // rowControlsは既に正しい行番号を持っている
 
-      LoopLogger.info("[createTaskList] [Step 5-3-1] 行制御情報取得完了:", {
+      log.info("[createTaskList] [Step 5-3-1] 行制御情報取得完了:", {
         制御数: rowControls.length,
         詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
         備考: "全体データからの行制御取得（オフセット不要）",
@@ -10943,30 +10943,27 @@ async function createTaskList(taskGroup, isFirstRun = false) {
         spreadsheetData,
         columnControlRow,
       );
-      LoopLogger.info("[createTaskList] [Step 5-3-2] 列制御情報取得完了:", {
+      log.info("[createTaskList] [Step 5-3-2] 列制御情報取得完了:", {
         制御数: columnControls.length,
         制御行: columnControlRow,
         詳細: columnControls.map((c) => `${c.type}制御: ${c.column}列`),
       });
     } catch (error) {
-      LoopLogger.error(
-        "[createTaskList] [Step 5-3-前処理] 制御情報取得エラー:",
-        {
-          エラーメッセージ: error.message,
-          スタック: error.stack,
-        },
-      );
+      log.error("[createTaskList] [Step 5-3-前処理] 制御情報取得エラー:", {
+        エラーメッセージ: error.message,
+        スタック: error.stack,
+      });
       // エラーが発生しても処理を継続
     }
 
     // Step 5-3-3: 列制御チェック（タスクグループレベルでの追加フィルタリング）
     if (columnControls.length > 0) {
-      LoopLogger.info("[createTaskList] [Step 5-3-3] 列制御チェック実行中...");
+      log.info("[createTaskList] [Step 5-3-3] 列制御チェック実行中...");
 
       if (
         !window.Step3TaskList.shouldProcessColumn(taskGroup, columnControls)
       ) {
-        LoopLogger.info("[createTaskList] [Step 5-3-3] タスクグループ除外:", {
+        log.info("[createTaskList] [Step 5-3-3] タスクグループ除外:", {
           グループ番号: taskGroup.groupNumber,
           理由: "列制御により除外（この列から処理/この列の処理後に停止/この列のみ処理）",
           グループ列: taskGroup?.columns?.prompts,
@@ -10974,13 +10971,13 @@ async function createTaskList(taskGroup, isFirstRun = false) {
         });
         return []; // このタスクグループは処理しない
       } else {
-        LoopLogger.info("[createTaskList] [Step 5-3-3] タスクグループ通過:", {
+        log.info("[createTaskList] [Step 5-3-3] タスクグループ通過:", {
           グループ番号: taskGroup.groupNumber,
           理由: "列制御を通過",
         });
       }
     } else {
-      LoopLogger.info(
+      log.info(
         "[createTaskList] [Step 5-3-前処理] 列制御なし - 全てのタスクグループを処理",
       );
     }
@@ -10998,15 +10995,15 @@ async function createTaskList(taskGroup, isFirstRun = false) {
     // DEBUG: Step3に渡すパラメータ
 
     // ログバッファを一つのログとして出力
-    // LoopLogger.info(`[Step5-Loop] [統合ログ]\n${logBuffer.join("\n")}`);
+    // log.info(`[Step5-Loop] [統合ログ]\n${logBuffer.join("\n")}`);
 
     // generateTaskList内でaddLogが使われているため、グローバルに定義
     if (typeof window.addLog === "undefined") {
       window.addLog = (message, data) => {
         if (data) {
-          LoopLogger.info(`[Step3-TaskList] ${message}:`, data);
+          log.info(`[Step3-TaskList] ${message}:`, data);
         } else {
-          LoopLogger.info(`[Step3-TaskList] ${message}`);
+          log.info(`[Step3-TaskList] ${message}`);
         }
       };
     }
@@ -11020,23 +11017,20 @@ async function createTaskList(taskGroup, isFirstRun = false) {
       extendedOptions, // 制御情報を含む拡張オプション
     );
 
-    LoopLogger.info(`[Helper] タスクリスト作成完了: ${tasks.length}件のタスク`);
+    log.info(`[Helper] タスクリスト作成完了: ${tasks.length}件のタスク`);
     if (tasks.length > 0) {
-      LoopLogger.info("[Helper] 生成されたタスクサンプル:", tasks.slice(0, 2));
+      log.info("[Helper] 生成されたタスクサンプル:", tasks.slice(0, 2));
     } else {
-      LoopLogger.warn(
+      log.warn(
         "[Helper] ⚠️ 0件のタスクが生成されました。以下を確認してください:",
       );
-      LoopLogger.warn(
-        "  - taskGroup.columns.prompts:",
-        taskGroup?.columns?.prompts,
-      );
-      LoopLogger.warn("  - プロンプトデータの存在確認が必要");
+      log.warn("  - taskGroup.columns.prompts:", taskGroup?.columns?.prompts);
+      log.warn("  - プロンプトデータの存在確認が必要");
     }
 
     return tasks;
   } catch (error) {
-    LoopLogger.error("[Helper] タスクリスト作成エラー:", {
+    log.error("[Helper] タスクリスト作成エラー:", {
       エラーメッセージ: error.message,
       スタック: error.stack,
       taskGroup: taskGroup,
@@ -11047,7 +11041,7 @@ async function createTaskList(taskGroup, isFirstRun = false) {
 }
 
 async function executeTasks(tasks, taskGroup) {
-  LoopLogger.info(`[Helper] タスク実行開始: ${tasks.length}件`, {
+  log.info(`[Helper] タスク実行開始: ${tasks.length}件`, {
     グループ番号: taskGroup?.groupNumber,
     タスクタイプ: taskGroup?.taskType,
     パターン: taskGroup?.pattern,
@@ -11069,7 +11063,7 @@ async function executeTasks(tasks, taskGroup) {
     // DEBUG: executeStep3が見つかりました
 
     if (!tasks || tasks.length === 0) {
-      LoopLogger.warn("[Helper] 実行するタスクがありません");
+      log.warn("[Helper] 実行するタスクがありません");
       return [];
     }
 
@@ -11130,7 +11124,7 @@ async function executeTasks(tasks, taskGroup) {
 
       // DEBUG: 最終フォーマットタスクの確認
 
-      LoopLogger.info(`[Helper] タスク${index + 1}フォーマット完了:`, {
+      log.info(`[Helper] タスク${index + 1}フォーマット完了:`, {
         taskId: formattedTask.id,
         row: formattedTask.row,
         aiType: formattedTask.aiType,
@@ -11142,10 +11136,8 @@ async function executeTasks(tasks, taskGroup) {
       return formattedTask;
     });
 
-    LoopLogger.info(
-      `[Helper] フォーマット済みタスク: ${formattedTasks.length}件`,
-    );
-    LoopLogger.info("[Helper] 最初のタスク詳細:", formattedTasks[0]);
+    log.info(`[Helper] フォーマット済みタスク: ${formattedTasks.length}件`);
+    log.info("[Helper] 最初のタスク詳細:", formattedTasks[0]);
 
     // Step4バリデーション
     for (const task of formattedTasks) {
@@ -11167,18 +11159,18 @@ async function executeTasks(tasks, taskGroup) {
         // DEBUG: answerCell検証
 
         if (!isSpecialTask) {
-          LoopLogger.warn(`タスク${task.id}: answerCellが未定義（通常タスク）`);
+          log.warn(`タスク${task.id}: answerCellが未定義（通常タスク）`);
         } else {
-          LoopLogger.info(`タスク${task.id}: answerCell不要（特殊タスク）`);
+          log.info(`タスク${task.id}: answerCell不要（特殊タスク）`);
         }
       }
     }
 
     // Step4を実行
-    LoopLogger.info("[Helper] Step4実行中...");
+    log.info("[Helper] Step4実行中...");
 
     // 🔧 [UNIFICATION] タスク配列生成確認ログ
-    LoopLogger.info("📋 [UNIFICATION] processIncompleteTasks → executeStep3:", {
+    log.info("📋 [UNIFICATION] processIncompleteTasks → executeStep3:", {
       データ形式: "タスク配列",
       タスク数: formattedTasks.length,
       グループ番号: formattedTasks[0]?.groupNumber || "不明",
@@ -11213,14 +11205,14 @@ async function executeTasks(tasks, taskGroup) {
       throw step4Error;
     }
   } catch (error) {
-    LoopLogger.error("⚠️ [DEBUG] エラー詳細:", {
+    log.error("⚠️ [DEBUG] エラー詳細:", {
       message: error.message,
       stack: error.stack,
       name: error.name,
       cause: error.cause,
     });
 
-    LoopLogger.error("[Helper] タスク実行エラー:", {
+    log.error("[Helper] タスク実行エラー:", {
       エラーメッセージ: error.message,
       スタック: error.stack,
       タスク数: tasks?.length,
