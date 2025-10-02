@@ -1463,9 +1463,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
         paragraphs.length === 0 ||
         (paragraphs.length === 1 && paragraphs[0] === "---")
       ) {
-        console.warn(
-          "[ChatGPT] getCanvasText: 段落が見つからないため、フォールバック処理を実行",
-        );
+        // console.warn(
+        //   "[ChatGPT] getCanvasText: 段落が見つからないため、フォールバック処理を実行",
+        // );
 
         // 最後の手段：より寛容な方法でテキスト取得を試行
         const fallbackMethods = [
@@ -1516,9 +1516,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
           }
         }
 
-        console.error(
-          "[ChatGPT] getCanvasText: すべてのフォールバック方法が失敗",
-        );
+        // console.error(
+        //   "[ChatGPT] getCanvasText: すべてのフォールバック方法が失敗",
+        // );
         return "";
       }
 
@@ -1883,12 +1883,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
     }
 
-    if (description) {
-      logWithTimestamp(
-        `${description}の検索に失敗しました (${maxRetries}回試行)`,
-        "error",
-      );
-    }
+    // if (description) {
+    //   logWithTimestamp(
+    //     `${description}の検索に失敗しました (${maxRetries}回試行)`,
+    //     "error",
+    //   );
+    // }
 
     // すべてのセレクタが失敗した場合、エラーを報告
     if (selectorKey) {
@@ -2471,9 +2471,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
             `[Step 4-8] Canvasテキスト取得成功: ${canvasText.length}文字`,
           );
           return canvasText;
-        } else {
-          console.warn(`[Step 4-8] Canvasテキスト取得失敗: 空またはnull`);
         }
+        // else {
+        //   console.warn(`[Step 4-8] Canvasテキスト取得失敗: 空またはnull`);
+        // }
       } else {
         console.log(`[Step 4-8] セレクターにマッチする要素なし: ${selector}`);
       }

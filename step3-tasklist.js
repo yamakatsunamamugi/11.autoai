@@ -356,16 +356,17 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
             log.info(
               `[3-0] ✅ [個別完了] handleIndividualTaskCompletion呼び出し完了: タスク[${index}]`,
             );
-          } else {
-            log.warn(
-              `[3-0] ⚠️ [個別完了] handleIndividualTaskCompletion呼び出しスキップ: タスク[${index}]`,
-              {
-                success: enhancedResult.success,
-                ENABLE_INDIVIDUAL_COMPLETION:
-                  BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION,
-              },
-            );
           }
+          // else {
+          //   log.warn(
+          //     `[3-0] ⚠️ [個別完了] handleIndividualTaskCompletion呼び出しスキップ: タスク[${index}]`,
+          //     {
+          //       success: enhancedResult.success,
+          //       ENABLE_INDIVIDUAL_COMPLETION:
+          //         BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION,
+          //     },
+          //   );
+          // }
 
           completedTasks.set(index, enhancedResult);
           return { status: "fulfilled", value: enhancedResult };
