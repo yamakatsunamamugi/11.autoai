@@ -737,7 +737,7 @@ if (stepOnlyBtn) {
 
       // 最初のURLでStep1を実行
       const firstUrl = urls[0];
-      log.debug(`📋 [STEP-ONLY] URL 1/${urls.length} 処理開始: ${firstUrl}`);
+      log.info(`📋 [STEP-ONLY] 📄 処理対象スプレッドシートURL: ${firstUrl}`);
 
       if (typeof window.executeStep1 === "function") {
         await window.executeStep1(firstUrl);

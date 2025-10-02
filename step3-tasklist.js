@@ -8651,6 +8651,15 @@ window.specialTaskProcessor = new SpecialTaskProcessor();
 async function executeStep3(taskList) {
   // executeStep3関数定義開始
 
+  ExecuteLogger.info("========================================");
+  ExecuteLogger.info(
+    `📋 [Step3] 処理対象スプレッドシート: ${window.globalState?.spreadsheetUrl || "未設定"}`,
+  );
+  ExecuteLogger.info(
+    `📋 [Step3] 処理対象シート: ${window.globalState?.sheetName || "未設定"}`,
+  );
+  ExecuteLogger.info("========================================");
+
   // 🔧 [FIX] 引数なしで呼ばれた場合、window.globalState.taskGroupsを使用
   if (taskList === undefined || taskList === null) {
     ExecuteLogger.info(

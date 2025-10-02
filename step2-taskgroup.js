@@ -88,6 +88,14 @@ if (!window.globalState) {
 // [2-1] メイン実行関数
 // ========================================
 async function executeStep2TaskGroups() {
+  log.info("========================================");
+  log.info(
+    `📋 [Step2] 処理対象スプレッドシート: ${window.globalState?.spreadsheetUrl || "未設定"}`,
+  );
+  log.info(
+    `📋 [Step2] 処理対象シート: ${window.globalState?.sheetName || "未設定"}`,
+  );
+  log.info("========================================");
   log.debug("[2-1][step2-taskgroup.js] ステップ2: タスクグループ作成 開始");
 
   try {
