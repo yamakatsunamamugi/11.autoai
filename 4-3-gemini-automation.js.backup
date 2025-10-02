@@ -728,12 +728,12 @@ const log = {
   // モデルと機能の探索
   // ========================================
   async function discoverModelsAndFeatures() {
-    log.info("【Step 4-0-1】モデルと機能の探索");
+    log.info("【Step 4-3-1-1】モデルと機能の探索");
 
-    // 【Step 4-0-2】選択済み機能の解除
+    // 【Step 4-3-1-2】選択済み機能の解除
     await deselectAllFeatures();
 
-    // 【Step 4-0-3】モデル探索
+    // 【Step 4-3-1-3】モデル探索
     try {
       const menuButton = findElement(SELECTORS.menuButton);
 
@@ -778,7 +778,7 @@ const log = {
       await wait(500);
     }
 
-    // 【Step 4-0-4】機能探索（修正版）
+    // 【Step 4-3-1-4】機能探索（修正版）
     try {
       const featureNames = new Set();
 
@@ -818,7 +818,7 @@ const log = {
       log.error("機能探索エラー: " + e.message);
     }
 
-    // 【Step 4-0-5】UI更新
+    // 【Step 4-3-1-5】UI更新
     await sendToUI(window.availableModels, window.availableFeatures);
 
     return {
@@ -1127,7 +1127,7 @@ const log = {
   // 選択済み機能の解除
   // ========================================
   async function deselectAllFeatures() {
-    log.debug("【Step 4-0-2】選択されている機能をすべて解除");
+    log.debug("【Step 4-3-2-0】選択されている機能をすべて解除");
     try {
       const selectedButtons = findElements(SELECTORS.selectedFeatures);
       let count = 0;
@@ -1150,7 +1150,7 @@ const log = {
   // モデル選択機能 - RetryManager統合
   // ========================================
   async function selectModel(modelName) {
-    log.debug("【Step 4-3】モデル選択", modelName);
+    log.debug("【Step 4-3-3】モデル選択", modelName);
 
     if (!modelName || modelName === "" || modelName === "設定なし") {
       log.debug("モデル選択をスキップ");
@@ -1160,7 +1160,7 @@ const log = {
     const retryManager = new GeminiRetryManager();
     const result = await retryManager.executeWithRetry(
       async () => {
-        // 【Step 4-3-1】メニューボタンをクリック
+        // 【Step 4-3-3-1】メニューボタンをクリック
         const menuButton = findElement(SELECTORS.menuButton);
         if (!menuButton) {
           throw new Error("モデル選択メニューボタンが見つかりません");
@@ -1168,7 +1168,7 @@ const log = {
         menuButton.click();
         await wait(1500);
 
-        // 【Step 4-3-2】メニュー内でモデルを探して選択
+        // 【Step 4-3-3-2】メニュー内でモデルを探して選択
         const menuContainer = findElement(SELECTORS.menuContainer);
         if (!menuContainer) {
           throw new Error("モデル選択メニューが見つかりません");
@@ -1190,7 +1190,7 @@ const log = {
         targetButton.click();
         await wait(2000);
 
-        // 【Step 4-3-3】選択確認
+        // 【Step 4-3-3-3】選択確認
         const displayElement = findElement(SELECTORS.modelDisplay);
         const displayText = getCleanText(displayElement);
 
@@ -1208,7 +1208,7 @@ const log = {
   // 機能選択機能 - RetryManager統合
   // ========================================
   async function selectFeature(featureName) {
-    log.debug("【Step 4-4】機能選択", featureName);
+    log.debug("【Step 4-3-4】機能選択", featureName);
 
     if (!featureName || featureName === "" || featureName === "設定なし") {
       log.debug("機能選択をスキップ");
@@ -1218,7 +1218,7 @@ const log = {
     const retryManager = new GeminiRetryManager();
     const result = await retryManager.executeWithRetry(
       async () => {
-        // 【Step 4-4-1】まずメインボタンから探す
+        // 【Step 4-3-4-1】まずメインボタンから探す
         let featureButton = null;
         const allButtons = findElements(SELECTORS.mainButtons);
         featureButton = Array.from(allButtons).find(
@@ -1227,7 +1227,7 @@ const log = {
             featureName,
         );
 
-        // 【Step 4-4-2】見つからなければ「その他」メニューを開く
+        // 【Step 4-3-4-2】見つからなければ「その他」メニューを開く
         if (!featureButton) {
           const moreButton = findElement(SELECTORS.moreButton);
           if (!moreButton) {
@@ -1248,11 +1248,11 @@ const log = {
           throw new Error(`機能「${featureName}」が見つかりません`);
         }
 
-        // 【Step 4-4-3】機能をクリック
+        // 【Step 4-3-4-3】機能をクリック
         featureButton.click();
         await wait(2000);
 
-        // 【Step 4-4-4】選択確認
+        // 【Step 4-3-4-4】選択確認
 
         // Canvasモードの特別処理
         if (featureName === "Canvas") {
@@ -1292,7 +1292,7 @@ const log = {
   // Deep Research待機処理
   // ========================================
   async function waitForDeepResearch(startTime) {
-    log.debug("【Step 4-7-DR】Deep Research専用待機処理");
+    log.debug("【Step 4-3-6-DR】Deep Research専用待機処理");
 
     const MAX_WAIT = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT; // 設定から取得
     const logDr = (message) => {
@@ -1392,7 +1392,7 @@ const log = {
   // タスク実行（拡張版） - Claude型RetryManager統合
   // ========================================
   async function executeTask(taskData) {
-    log.info("🚀 【Step 4-0】Gemini タスク実行開始", taskData);
+    log.info("🚀 【Step 4-3】Gemini タスク実行開始", taskData);
 
     // taskIdを最初に定義（スコープ全体で利用可能にする）
     const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
@@ -1443,10 +1443,10 @@ const log = {
         });
       }
 
-      // 【Step 4-2】テキスト入力（RetryManager内蔵）
+      // 【Step 4-3-2】テキスト入力（RetryManager内蔵）
       await inputTextGemini(promptText);
 
-      // 【Step 4-3】モデル選択（必要な場合、RetryManager内蔵）
+      // 【Step 4-3-3】モデル選択（必要な場合、RetryManager内蔵）
       if (modelName && modelName !== "設定なし") {
         const modelResult = await selectModel(modelName);
         if (!modelResult.success && !modelResult.skipped) {
@@ -1454,7 +1454,7 @@ const log = {
         }
       }
 
-      // 【Step 4-4】機能選択（必要な場合、RetryManager内蔵）
+      // 【Step 4-3-4】機能選択（必要な場合、RetryManager内蔵）
       if (featureName && featureName !== "設定なし") {
         const featureResult = await selectFeature(featureName);
         if (!featureResult.success && !featureResult.skipped) {
@@ -1462,7 +1462,7 @@ const log = {
         }
       }
 
-      // 【Step 4-5】メッセージ送信（RetryManager内蔵）
+      // 【Step 4-3-5】メッセージ送信（RetryManager内蔵）
       await sendMessageGemini();
 
       // 送信時刻を記録
@@ -1554,7 +1554,7 @@ const log = {
       }
       const startTime = Date.now();
 
-      // 【Step 4-7】応答待機（Deep Research判定）
+      // 【Step 4-3-6】応答待機（Deep Research判定）
       let responseResult;
       let isPartialResult = false;
 
@@ -1579,7 +1579,7 @@ const log = {
         throw waitError;
       }
 
-      // 【Step 4-8】テキスト取得
+      // 【Step 4-3-7】テキスト取得
       let content;
       try {
         content = await getResponseTextGemini();
@@ -1597,7 +1597,7 @@ const log = {
         }
       }
 
-      // 【Step 4-9】結果オブジェクト作成
+      // 【Step 4-3-8】結果オブジェクト作成
 
       const result = {
         success: true,

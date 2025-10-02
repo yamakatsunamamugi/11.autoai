@@ -77,153 +77,6 @@ if (!window.globalState) {
 }
 
 // ========================================
-// ========================================
-// [2-1] メイン実行関数
-// ========================================
-async function executeStep2TaskGroups() {
-  log.debug("[step2-taskgroup.js] ステップ2: タスクグループ作成 開始");
-
-  try {
-    // 2-0: スプレッドシート情報取得
-    extractSpreadsheetInfo();
-
-    // 2-1: タスクグループ識別
-    await identifyTaskGroups();
-
-    // 2-2: 列制御適用
-    await applyColumnControls();
-
-    // 2-3: スキップ判定
-    await applySkipConditions();
-
-    // 2-4: 順番整理
-    reorganizeTaskGroups();
-
-    // 2-5: ログ出力
-    await logTaskGroups();
-
-    // 2-6: 定義保存
-    saveDefinitions();
-
-    log.debug("[step2-taskgroup.js] ✅ ステップ2: タスクグループ作成 完了");
-
-    // ========================================
-    // スキップ対象を除外してtaskGroupsを更新
-    // ========================================
-    // identifyTaskGroups()で既にenrichment済みなので、skipフィルタリングのみ実行
-    const allTaskGroups = window.globalState.allTaskGroups || [];
-    window.globalState.taskGroups = allTaskGroups.filter(
-      (group) => !group.skip,
-    );
-
-    log.debug(
-      `[step2-taskgroup.js] ✅ タスクグループフィルタリング完了: 有効${window.globalState.taskGroups.length}個`,
-    );
-
-    // 統合ログ出力 - タスクグループ最終結果のみ
-    const totalGroups = window.globalState.allTaskGroups?.length || 0;
-    const activeGroups = window.globalState.taskGroups.length;
-    const skippedGroups = (
-      window.globalState.allTaskGroups?.filter((g) => g.skip) || []
-    ).length;
-
-    log.debug("========");
-    log.debug(
-      `[step2-taskgroup.js] 🗂️ タスクグループ最終結果: 全${totalGroups}個 | 有効${activeGroups}個 | スキップ${skippedGroups}個`,
-    );
-    log.debug("========");
-
-    // ========================================
-    // 【統合】最も左の未完了グループを選択（旧step3の機能）
-    // ========================================
-    log.info("[step2-taskgroup.js] 🔍 最も左の未完了グループを検索中...");
-    const allGroups = window.globalState?.allTaskGroups || [];
-    let leftmostIncompleteGroup = null;
-
-    for (const group of allGroups) {
-      // スキップ設定されているグループは除外
-      if (group.skip) {
-        log.debug(
-          `[step2-taskgroup.js] ⏭️ グループ${group.groupNumber}はスキップ設定済み`,
-        );
-        continue;
-      }
-
-      // 完了状況を確認（checkCompletionStatus関数を使用）
-      try {
-        if (window.checkCompletionStatus) {
-          const isComplete = await window.checkCompletionStatus(group);
-          if (!isComplete) {
-            leftmostIncompleteGroup = group;
-            log.info(
-              `[step2-taskgroup.js] ✅ 未完了グループ発見: グループ${group.groupNumber}`,
-            );
-            break; // 最初の未完了グループ（最も左）を見つけたら終了
-          } else {
-            log.debug(
-              `[step2-taskgroup.js] ⏭️ グループ${group.groupNumber}は完了済み`,
-            );
-          }
-        } else {
-          // checkCompletionStatusがない場合は未完了として扱う
-          leftmostIncompleteGroup = group;
-          log.warn(
-            `[step2-taskgroup.js] ⚠️ checkCompletionStatus未定義 - グループ${group.groupNumber}を未完了として扱う`,
-          );
-          break;
-        }
-      } catch (error) {
-        log.warn(
-          `[step2-taskgroup.js] ⚠️ グループ${group.groupNumber}の完了チェックエラー:`,
-          error.message,
-        );
-        // エラーの場合は未完了として扱う
-        leftmostIncompleteGroup = group;
-        break;
-      }
-    }
-
-    // 未完了グループがなければ終了
-    if (!leftmostIncompleteGroup) {
-      log.info("🎉 [step2-taskgroup.js] 全グループ完了 - 処理終了");
-      return {
-        success: true,
-        hasNextGroup: false,
-        message: "全グループ完了",
-        globalState: window.globalState,
-      };
-    }
-
-    // グループをglobalStateに設定
-    log.info(
-      `📋 [step2-taskgroup.js] グループ${leftmostIncompleteGroup.groupNumber}を設定`,
-    );
-    log.debug(`📋 グループ詳細:`, {
-      番号: leftmostIncompleteGroup.groupNumber,
-      タイプ: leftmostIncompleteGroup.taskType || leftmostIncompleteGroup.type,
-      列範囲: `${leftmostIncompleteGroup.columns?.prompts?.[0]} 〜 ${leftmostIncompleteGroup.columns?.answer?.primary || leftmostIncompleteGroup.columns?.answer?.claude}`,
-    });
-
-    if (window.setCurrentGroup) {
-      await window.setCurrentGroup(leftmostIncompleteGroup, "step2-taskgroup");
-    } else {
-      // フォールバック
-      window.globalState.currentGroup = leftmostIncompleteGroup;
-    }
-
-    return {
-      success: true,
-      hasNextGroup: true,
-      group: leftmostIncompleteGroup,
-      groupNumber: leftmostIncompleteGroup.groupNumber,
-      globalState: window.globalState,
-    };
-  } catch (error) {
-    log.error("[step2-taskgroup.js] ❌ ステップ2 エラー:", error);
-    throw error;
-  }
-}
-
 // [2-1-1] スプレッドシート情報の取得
 // ========================================
 function extractSpreadsheetInfo() {
@@ -1347,6 +1200,153 @@ function letterToColumn(letter) {
     column = column * 26 + (letter.charCodeAt(i) - 64);
   }
   return column - 1; // 0-based index
+}
+
+// ========================================
+// [2-1] メイン実行関数
+// ========================================
+async function executeStep2TaskGroups() {
+  log.debug("[step2-taskgroup.js] ステップ2: タスクグループ作成 開始");
+
+  try {
+    // 2-0: スプレッドシート情報取得
+    extractSpreadsheetInfo();
+
+    // 2-1: タスクグループ識別
+    await identifyTaskGroups();
+
+    // 2-2: 列制御適用
+    await applyColumnControls();
+
+    // 2-3: スキップ判定
+    await applySkipConditions();
+
+    // 2-4: 順番整理
+    reorganizeTaskGroups();
+
+    // 2-5: ログ出力
+    await logTaskGroups();
+
+    // 2-6: 定義保存
+    saveDefinitions();
+
+    log.debug("[step2-taskgroup.js] ✅ ステップ2: タスクグループ作成 完了");
+
+    // ========================================
+    // スキップ対象を除外してtaskGroupsを更新
+    // ========================================
+    // identifyTaskGroups()で既にenrichment済みなので、skipフィルタリングのみ実行
+    const allTaskGroups = window.globalState.allTaskGroups || [];
+    window.globalState.taskGroups = allTaskGroups.filter(
+      (group) => !group.skip,
+    );
+
+    log.debug(
+      `[step2-taskgroup.js] ✅ タスクグループフィルタリング完了: 有効${window.globalState.taskGroups.length}個`,
+    );
+
+    // 統合ログ出力 - タスクグループ最終結果のみ
+    const totalGroups = window.globalState.allTaskGroups?.length || 0;
+    const activeGroups = window.globalState.taskGroups.length;
+    const skippedGroups = (
+      window.globalState.allTaskGroups?.filter((g) => g.skip) || []
+    ).length;
+
+    log.debug("========");
+    log.debug(
+      `[step2-taskgroup.js] 🗂️ タスクグループ最終結果: 全${totalGroups}個 | 有効${activeGroups}個 | スキップ${skippedGroups}個`,
+    );
+    log.debug("========");
+
+    // ========================================
+    // 【統合】最も左の未完了グループを選択（旧step3の機能）
+    // ========================================
+    log.info("[step2-taskgroup.js] 🔍 最も左の未完了グループを検索中...");
+    const allGroups = window.globalState?.allTaskGroups || [];
+    let leftmostIncompleteGroup = null;
+
+    for (const group of allGroups) {
+      // スキップ設定されているグループは除外
+      if (group.skip) {
+        log.debug(
+          `[step2-taskgroup.js] ⏭️ グループ${group.groupNumber}はスキップ設定済み`,
+        );
+        continue;
+      }
+
+      // 完了状況を確認（checkCompletionStatus関数を使用）
+      try {
+        if (window.checkCompletionStatus) {
+          const isComplete = await window.checkCompletionStatus(group);
+          if (!isComplete) {
+            leftmostIncompleteGroup = group;
+            log.info(
+              `[step2-taskgroup.js] ✅ 未完了グループ発見: グループ${group.groupNumber}`,
+            );
+            break; // 最初の未完了グループ（最も左）を見つけたら終了
+          } else {
+            log.debug(
+              `[step2-taskgroup.js] ⏭️ グループ${group.groupNumber}は完了済み`,
+            );
+          }
+        } else {
+          // checkCompletionStatusがない場合は未完了として扱う
+          leftmostIncompleteGroup = group;
+          log.warn(
+            `[step2-taskgroup.js] ⚠️ checkCompletionStatus未定義 - グループ${group.groupNumber}を未完了として扱う`,
+          );
+          break;
+        }
+      } catch (error) {
+        log.warn(
+          `[step2-taskgroup.js] ⚠️ グループ${group.groupNumber}の完了チェックエラー:`,
+          error.message,
+        );
+        // エラーの場合は未完了として扱う
+        leftmostIncompleteGroup = group;
+        break;
+      }
+    }
+
+    // 未完了グループがなければ終了
+    if (!leftmostIncompleteGroup) {
+      log.info("🎉 [step2-taskgroup.js] 全グループ完了 - 処理終了");
+      return {
+        success: true,
+        hasNextGroup: false,
+        message: "全グループ完了",
+        globalState: window.globalState,
+      };
+    }
+
+    // グループをglobalStateに設定
+    log.info(
+      `📋 [step2-taskgroup.js] グループ${leftmostIncompleteGroup.groupNumber}を設定`,
+    );
+    log.debug(`📋 グループ詳細:`, {
+      番号: leftmostIncompleteGroup.groupNumber,
+      タイプ: leftmostIncompleteGroup.taskType || leftmostIncompleteGroup.type,
+      列範囲: `${leftmostIncompleteGroup.columns?.prompts?.[0]} 〜 ${leftmostIncompleteGroup.columns?.answer?.primary || leftmostIncompleteGroup.columns?.answer?.claude}`,
+    });
+
+    if (window.setCurrentGroup) {
+      await window.setCurrentGroup(leftmostIncompleteGroup, "step2-taskgroup");
+    } else {
+      // フォールバック
+      window.globalState.currentGroup = leftmostIncompleteGroup;
+    }
+
+    return {
+      success: true,
+      hasNextGroup: true,
+      group: leftmostIncompleteGroup,
+      groupNumber: leftmostIncompleteGroup.groupNumber,
+      globalState: window.globalState,
+    };
+  } catch (error) {
+    log.error("[step2-taskgroup.js] ❌ ステップ2 エラー:", error);
+    throw error;
+  }
 }
 
 // ========================================

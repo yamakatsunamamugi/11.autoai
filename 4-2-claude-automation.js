@@ -1983,10 +1983,10 @@
     }
 
     // ========================================
-    // Claude-ステップ0-4: セレクタ定義
+    // Step 4-0-4: セレクタ定義
     // ========================================
 
-    // Claude-ステップ0-4-1: Deep Research用セレクタ（最適化）
+    // Step 4-0-4-1: Deep Research用セレクタ（最適化）
     const deepResearchSelectors = {
       "3_回答停止ボタン": {
         selectors: CLAUDE_SELECTORS.STOP_BUTTON || [],
@@ -2031,7 +2031,7 @@
       },
     };
 
-    // Claude-ステップ0-4-2: モデル選択用セレクタ
+    // Step 4-0-4-2: モデル選択用セレクタ
     const modelSelectors = {
       menuButton: (CLAUDE_SELECTORS.MODEL.BUTTON || []).map((selector) => ({
         selector,
@@ -2052,7 +2052,7 @@
         .map((selector) => ({ selector, description: "モデル表示要素" })),
     };
 
-    // Claude-ステップ0-4-3: 機能選択用セレクタ
+    // Step 4-0-4-3: 機能選択用セレクタ
     const featureSelectors = {
       menuButton: CLAUDE_SELECTORS.FEATURE.MENU_BUTTON || [],
       menuContainer: CLAUDE_SELECTORS.FEATURE.MENU_CONTAINER,
@@ -2060,10 +2060,10 @@
       researchButton: CLAUDE_SELECTORS.FEATURE.RESEARCH_BUTTON || [],
     };
 
-    // Claude-ステップ0-4-4: デフォルトセレクタ（CLAUDE_SELECTORS.DEFAULTを参照）
+    // Step 4-0-4-4: デフォルトセレクタ（CLAUDE_SELECTORS.DEFAULTを参照）
     const DEFAULT_SELECTORS = CLAUDE_SELECTORS.DEFAULT;
 
-    // Claude-ステップ0-4-5: Claude動作用セレクタ
+    // Step 4-0-4-5: Claude動作用セレクタ
     const claudeSelectors = {
       "1_テキスト入力欄": {
         selectors:
@@ -2121,7 +2121,7 @@
       },
     };
 
-    // Claude-ステップ0-5: セレクタの最終状態をログ出力
+    // Step 4-0-5: セレクタの最終状態をログ出力
     log.debug("📋 Claude selectors configured:", {
       inputs: claudeSelectors["1_テキスト入力欄"].selectors.length,
       send: claudeSelectors["2_送信ボタン"].selectors.length,
@@ -2130,7 +2130,7 @@
 
     if (claudeSelectors["1_テキスト入力欄"].selectors.length === 0) {
       log.error(
-        "❌ 【Claude-ステップ0-4】致命的エラー: 入力欄セレクタが空です！",
+        "❌ 【Step 4-0-4】致命的エラー: 入力欄セレクタが空です！",
       );
     }
 
@@ -2495,7 +2495,7 @@
      * 【使用頻度】頻繁（タスク実行時の重要な情報取得）
      */
     const getCurrentModelInfo = () => {
-      log.debug("\n📊 【Claude-ステップ1-1】現在のモデル情報を取得");
+      log.debug("\n📊 【Step 4-0-1】現在のモデル情報を取得");
 
       // 新しいセレクタ: モデル選択ボタン内の正確なモデル名を取得
       const newModelSelectors = [
@@ -2559,7 +2559,7 @@
       return null;
     };
 
-    // Claude-ステップ1-2-2: 機能確認関数
+    // Step 4-0-2-2: 機能確認関数
     /**
      * 現在選択機能確認関数
      * 【動作説明】画面上の機能ボタンの状態を詳細に確認し、どの機能が有効かを判定する
@@ -2734,7 +2734,7 @@
       }
     };
 
-    // Claude-ステップ1-4-1: トグル状態取得関数（テストコードから追加）
+    // Step 4-0-4-1: トグル状態取得関数（テストコードから追加）
     /**
      * トグル状態取得関数
      * 【動作説明】トグルボタンの現在の状態を取得する
@@ -3222,7 +3222,7 @@
       }
     };
 
-    // Claude-ステップ1-8: 新しいAI応答取得ロジック
+    // Step 4-0-8: 新しいAI応答取得ロジック
     /**
      * 階層的セレクタ定義
      * 【動作説明】AI応答を確実に取得するための階層的セレクタ戦略
@@ -3484,7 +3484,7 @@
       };
     };
 
-    // Claude-ステップ1-9: テキストプレビュー取得関数（統一版）
+    // Step 4-0-9: テキストプレビュー取得関数（統一版）
     /**
      * テキスト抽出関数（完全一本化）
      * 【動作説明】getReliableAIResponse()のみを使用してテキストを取得
@@ -3538,7 +3538,7 @@
       }
     };
 
-    // Claude-ステップ1-10: 要素の可視性チェック
+    // Step 4-0-10: 要素の可視性チェック
     /**
      * 要素可視性判定関数
      * 【動作説明】DOM要素が実際に画面上で見える状態かを厳密にチェックする
@@ -3561,7 +3561,7 @@
       );
     };
 
-    // Claude-ステップ1-11: 機能要素の取得（特別処理対応）
+    // Step 4-0-11: 機能要素の取得（特別処理対応）
     /**
      * 機能ボタン特別検索関数
      * 【動作説明】通常のセレクタ検索に加え、テキスト内容での検索も行う高度な要素取得
@@ -3610,7 +3610,7 @@
       return null;
     };
 
-    // Claude-ステップ1-12: すべての機能トグルをオフにする関数
+    // Step 4-0-12: すべての機能トグルをオフにする関数
     /**
      * 一括機能リセット関数
      * 【動作説明】画面上の全てのトグルスイッチを検索し、ONになっているものを自動的にOFFにする
@@ -3681,7 +3681,7 @@
     };
 
     // ========================================
-    // Claude-ステップ1-13: Deep Research専用処理関数
+    // Step 4-0-13: Deep Research専用処理関数
     // ========================================
 
     /**
@@ -3699,9 +3699,9 @@
       log.debug("─".repeat(40));
 
       try {
-        // Claude-ステップ6-1-1: 送信後、回答停止ボタンが出てくるまで待機
+        // Step 4-7-1-1: 送信後、回答停止ボタンが出てくるまで待機
         log.debug(
-          "\n【Claude-ステップ6-1】送信後、回答停止ボタンが出てくるまで待機",
+          "\n【Step 4-7-1】送信後、回答停止ボタンが出てくるまで待機",
         );
 
         let stopButtonFound = false;
@@ -3730,10 +3730,10 @@
           }
         }
 
-        // Claude-ステップ6-1-2: 回答停止ボタンが消滅するまで待機（初回）
+        // Step 4-7-1-2: 回答停止ボタンが消滅するまで待機（初回）
         if (stopButtonFound) {
           log.debug(
-            "\n【Claude-ステップ6-2】回答停止ボタンが消滅するまで待機（初回）",
+            "\n【Step 4-7-2】回答停止ボタンが消滅するまで待機（初回）",
           );
           let stopButtonGone = false;
           waitCount = 0;
@@ -3768,7 +3768,7 @@
           }
         }
 
-        // Claude-ステップ6-1-3: 一時待機（Deep Researchの追加処理のため）
+        // Step 4-7-1-3: 一時待機（Deep Researchの追加処理のため）
         // Deep Research additional wait
         await wait(5000);
 
@@ -3781,7 +3781,7 @@
           }
         }
 
-        // Claude-ステップ6-1-4: 回答停止ボタンが出現するまで待機
+        // Step 4-7-1-4: 回答停止ボタンが出現するまで待機
         // Waiting for stop button
         stopButtonFound = false;
         waitCount = 0;
@@ -3813,10 +3813,10 @@
           }
         }
 
-        // Claude-ステップ6-1-5: 回答停止ボタンが指定秒間消滅するまで待機
+        // Step 4-7-1-5: 回答停止ボタンが指定秒間消滅するまで待機
         if (stopButtonFound) {
           log.debug(
-            `\n【Claude-ステップ6-5】回答停止ボタンが${AI_WAIT_CONFIG.CHECK_INTERVAL / 1000}秒間消滅するまで待機`,
+            `\n【Step 4-7-5】回答停止ボタンが${AI_WAIT_CONFIG.CHECK_INTERVAL / 1000}秒間消滅するまで待機`,
           );
           let stopButtonGone = false;
           let disappearWaitCount = 0;
@@ -4113,7 +4113,7 @@
     const integratedErrorHandler = new IntegratedErrorHandler();
 
     // ========================================
-    // メイン実行関数（Claude-ステップ2-7を含む）
+    // メイン実行関数（Step 4-2-7を含む）
     // ========================================
 
     async function executeTask(taskData) {
@@ -4268,7 +4268,7 @@
         log.debug("  - プロンプト長:", prompt.length, "文字");
 
         // ========================================
-        // 📝 ステップ2: テキスト入力
+        // 📝 Step 4-2: テキスト入力
         // ========================================
 
         log.debug(`📝 Text input (${prompt.length} chars)...`);
@@ -4355,14 +4355,14 @@
         });
 
         log.debug(
-          "%c✅【Claude-ステップ2-2】テキスト入力処理完了",
+          "%c✅【Step 4-2-2】テキスト入力処理完了",
           "color: #4CAF50; font-weight: bold;",
         );
         log.debug("─".repeat(50));
         await wait(1000);
 
         // ========================================
-        // 🤖 ステップ3: モデル選択
+        // 🤖 Step 4-3: モデル選択
         // ========================================
         // 統合ログ: モデル選択開始
         const cellInfo =
@@ -4372,7 +4372,7 @@
           "不明";
         if (modelName && modelName !== "" && modelName !== "設定なし") {
           log.debug(
-            "%c【Claude-ステップ3-1】モデル選択開始",
+            "%c【Step 4-3-1】モデル選択開始",
             "color: #FF9800; font-weight: bold;",
           );
           log.debug("─".repeat(40));
@@ -4380,7 +4380,7 @@
           log.debug(`📍 現在のページURL: ${window.location.href}`);
 
           // モデルメニューボタンを探してクリック
-          log.debug("\n【Claude-ステップ3-2】モデルメニューボタンを探す");
+          log.debug("\n【Step 4-3-2】モデルメニューボタンを探す");
           let menuButton = await findElementByMultipleSelectors(
             modelSelectors.menuButton,
             "モデル選択ボタン",
@@ -4545,7 +4545,7 @@
 
           if (!foundInMain) {
             // サブメニューが存在する場合のみチェック
-            log.debug("【Claude-ステップ3-3】その他のモデルメニューをチェック");
+            log.debug("【Step 4-3-3】その他のモデルメニューをチェック");
 
             // デバッグ: modelSelectors.otherModelsMenuの詳細を出力
             log.debug("📊 [DEBUG] modelSelectors.otherModelsMenu:");
@@ -4695,7 +4695,7 @@
           // Model match: ${modelMatched ? "success" : "mismatch"}
 
           log.debug(
-            "%c✅【Claude-ステップ3-4】モデル選択処理完了",
+            "%c✅【Step 4-3-4】モデル選択処理完了",
             "color: #4CAF50; font-weight: bold;",
           );
           // 統合ログ: モデル選択完了
@@ -4714,26 +4714,26 @@
           log.debug("─".repeat(50));
         } else {
           log.debug(
-            "%c⏭️【Claude-ステップ3-1】モデル選択をスキップ（設定なし）",
+            "%c⏭️【Step 4-3-1】モデル選択をスキップ（設定なし）",
             "color: #9E9E9E; font-style: italic;",
           );
         }
 
         // ========================================
-        // ⚙️ ステップ4: 機能選択
+        // ⚙️ Step 4-4: 機能選択
         // ========================================
         // 🔧 [FEATURE-DEBUG] 機能選択パラメータ詳細
 
         if (featureName && featureName !== "" && featureName !== "設定なし") {
           log.debug(
-            "%c【Claude-ステップ4-1】機能選択開始",
+            "%c【Step 4-4-1】機能選択開始",
             "color: #9C27B0; font-weight: bold;",
           );
           log.debug("─".repeat(40));
           log.debug(`🎯 目標機能: ${featureName}`);
           log.debug(`🔍 Deep Research判定: ${isDeepResearch ? "Yes" : "No"}`);
 
-          log.debug("\n🔧【Claude-ステップ4-2】機能メニューアクセス開始");
+          log.debug("\n🔧【Step 4-4-2】機能メニューアクセス開始");
 
           const featureMenuBtn = getFeatureElement(
             featureSelectors.menuButton,
@@ -4744,7 +4744,7 @@
             await wait(1500);
 
             // 機能選択前にすべてのトグルをオフにする
-            log.debug("\n【Claude-ステップ4-3】全トグルをオフに設定");
+            log.debug("\n【Step 4-4-3】全トグルをオフに設定");
             await turnOffAllFeatureToggles();
             await wait(500);
 
@@ -4761,7 +4761,7 @@
 
               // メニューを閉じる（Deep Research用）
               log.debug(
-                "\n【Claude-ステップ4-4】Deep Research用: メニューを閉じる",
+                "\n【Step 4-4-4】Deep Research用: メニューを閉じる",
               );
               featureMenuBtn.click();
               await wait(1000);
@@ -4783,7 +4783,7 @@
               }
 
               // ========================================
-              // Claude-ステップ4-2-2: Deep Research機能確認
+              // Step 4-4-2-2: Deep Research機能確認
               // ========================================
               // Deep Research function check
               const deepResearchConfirm =
@@ -4859,14 +4859,14 @@
               }
 
               // メニューを閉じる
-              log.debug("\n【Claude-ステップ4-6】メニューを閉じる");
+              log.debug("\n【Step 4-4-6】メニューを閉じる");
               featureMenuBtn.click();
               await wait(1000);
             }
           }
 
           // ========================================
-          // Claude-ステップ4-4: 機能選択確認（新機能）
+          // Step 4-4-4: 機能選択確認（新機能）
           // ========================================
           // Function selection check
           const confirmationResult = confirmFeatureSelection(featureName);
@@ -4902,7 +4902,7 @@
           }
 
           log.debug(
-            "%c✅【Claude-ステップ4-8】機能選択処理完了",
+            "%c✅【Step 4-4-8】機能選択処理完了",
             "color: #4CAF50; font-weight: bold;",
           );
           // 統合ログ: 機能選択完了
@@ -4921,17 +4921,17 @@
           log.debug("─".repeat(50));
         } else {
           log.debug(
-            "%c⏭️【Claude-ステップ4-1】機能選択をスキップ（設定なし）",
+            "%c⏭️【Step 4-4-1】機能選択をスキップ（設定なし）",
             "color: #9E9E9E; font-style: italic;",
           );
         }
 
         // ========================================
-        // 📤 ステップ5: メッセージ送信
+        // 📤 Step 4-5: メッセージ送信
         // ========================================
 
         log.debug(
-          "%c【Claude-ステップ5-1】メッセージ送信開始",
+          "%c【Step 4-5-1】メッセージ送信開始",
           "color: #E91E63; font-weight: bold;",
         );
         log.debug("─".repeat(40));
@@ -5354,7 +5354,7 @@
         });
 
         log.debug(
-          "%c✅【Claude-ステップ5-2】メッセージ送信処理完了",
+          "%c✅【Step 4-5-2】メッセージ送信処理完了",
           "color: #4CAF50; font-weight: bold;",
         );
         log.debug("─".repeat(50));
@@ -5364,10 +5364,10 @@
         let finalText = "";
 
         // ========================================
-        // ステップ6-0: Canvas V2検出チェック（リトライ機能統合）
+        // Step 4-6: Canvas V2検出チェック（リトライ機能統合）
         // ========================================
         log.debug(
-          "%c【Claude-ステップ6-0】Canvas V2検出チェック",
+          "%c【Step 4-7-0】Canvas V2検出チェック",
           "color: #FF5722; font-weight: bold;",
         );
         log.debug("─".repeat(40));
@@ -5417,17 +5417,17 @@
         }
 
         log.debug(
-          "%c✅【Claude-ステップ6-0】Canvas V2検出チェック完了",
+          "%c✅【Step 4-7-0】Canvas V2検出チェック完了",
           "color: #4CAF50; font-weight: bold;",
         );
         log.debug("─".repeat(50));
 
         // ========================================
-        // ⏳ ステップ6: 応答待機
+        // ⏳ Step 4-7: 応答待機
         // ========================================
 
         log.debug(
-          "%c【Claude-ステップ6-1】応答待機開始",
+          "%c【Step 4-7-1】応答待機開始",
           "color: #607D8B; font-weight: bold;",
         );
         const waitStartTime = Date.now();
@@ -5440,9 +5440,9 @@
           await handleDeepResearchWait();
         } else {
           // ========================================
-          // ステップ6-2: 通常応答待機
+          // Step 4-7-2: 通常応答待機
           // ========================================
-          log.debug("📝【Claude-ステップ6-3】通常応答待機（停止ボタン監視）");
+          log.debug("📝【Step 4-7-3】通常応答待機（停止ボタン監視）");
           log.debug("─".repeat(40));
           log.debug(
             `⏱️ 最大待機時間: ${Math.round(AI_WAIT_CONFIG.STOP_BUTTON_INITIAL_WAIT / 60000)}分`,
@@ -5820,7 +5820,7 @@
         const totalWaitTime = Math.round((waitEndTime - waitStartTime) / 1000);
         log.debug(`⏱️ 応答待機総時間: ${totalWaitTime}秒`);
         log.debug(
-          "%c✅【Claude-ステップ6-4】応答待機処理完了",
+          "%c✅【Step 4-7-4】応答待機処理完了",
           "color: #4CAF50; font-weight: bold;",
         );
         log.debug("─".repeat(50));
@@ -5831,10 +5831,10 @@
         // log.debug('🔍 [Claude] ウィンドウ状態確認はスキップ（Content Script制限）');
 
         // ========================================
-        // ステップ6-4-1: Canvasプレビューボタンチェック
+        // Step 4-7-4-1: Canvasプレビューボタンチェック
         // ========================================
         log.debug(
-          "%c【Claude-ステップ6-4-1】Canvasプレビューボタンの存在確認",
+          "%c【Step 4-7-4-1】Canvasプレビューボタンの存在確認",
           "color: #9C27B0; font-weight: bold;",
         );
         log.debug("─".repeat(40));
@@ -5876,10 +5876,10 @@
         }
 
         // ========================================
-        // ステップ6-5: 「続ける」ボタンチェック
+        // Step 4-7-5: 「続ける」ボタンチェック
         // ========================================
         log.debug(
-          "%c【Claude-ステップ6-5】「続ける」ボタンの存在確認",
+          "%c【Step 4-7-5】「続ける」ボタンの存在確認",
           "color: #607D8B; font-weight: bold;",
         );
         log.debug("─".repeat(40));
@@ -6024,7 +6024,7 @@
           }
 
           log.debug(
-            "%c✅【Claude-ステップ6-5】「続ける」ボタン処理完了",
+            "%c✅【Step 4-7-5】「続ける」ボタン処理完了",
             "color: #4CAF50; font-weight: bold;",
           );
           await wait(2000); // 追加待機
@@ -6033,16 +6033,16 @@
             "「続ける」ボタンは見つかりませんでした。次のステップに進みます。",
           );
           log.debug(
-            "%c✅【Claude-ステップ6-5】「続ける」ボタンチェック完了",
+            "%c✅【Step 4-7-5】「続ける」ボタンチェック完了",
             "color: #4CAF50; font-weight: bold;",
           );
         }
 
         // ========================================
-        // 📥 ステップ7: 結果取得
+        // 📥 Step 4-8: 結果取得
         // ========================================
         log.debug(
-          "%c【Claude-ステップ7-1】テキスト取得処理開始",
+          "%c【Step 4-8-1】テキスト取得処理開始",
           "color: #3F51B5; font-weight: bold;",
         );
         log.debug("─".repeat(40));
@@ -6088,7 +6088,7 @@
         if (canvasResult) {
           log.debug("🎨 Canvas機能の最終テキストを取得中...");
           log.debug(
-            "🚫 【Claude-ステップ7-1】プロンプト除外機能を適用してテキスト取得",
+            "🚫 【Step 4-8-1】プロンプト除外機能を適用してテキスト取得",
           );
           const textInfo = await getTextPreview(canvasResult);
           log.debug(`📊 getTextPreview結果:`, {
@@ -6104,7 +6104,7 @@
               `📄 Canvas 最終テキスト取得完了 (${textInfo.length}文字)`,
             );
             log.debug(
-              "✅ 【Claude-ステップ7-2】プロンプト除外完了 - 純粋なAI応答を取得",
+              "✅ 【Step 4-8-2】プロンプト除外完了 - 純粋なAI応答を取得",
             );
             log.debug(
               "プレビュー:\n",
@@ -6119,7 +6119,7 @@
         if (!finalText) {
           log.debug("🔍 Canvas以外のテキストを確認中...");
           log.debug(
-            "🚫 【Claude-ステップ7-3】getReliableAIResponse()を使用してテキスト取得（通常応答）",
+            "🚫 【Step 4-8-3】getReliableAIResponse()を使用してテキスト取得（通常応答）",
           );
 
           // セレクタベースの要素検索は使わず、getReliableAIResponse()を直接使用
@@ -6137,7 +6137,7 @@
             finalText = textInfo.full;
             log.debug(`📄 通常 テキスト取得完了 (${textInfo.length}文字)`);
             log.debug(
-              "✅ 【Claude-ステップ7-4】プロンプト除外完了 - 純粋なAI応答を取得",
+              "✅ 【Step 4-8-4】プロンプト除外完了 - 純粋なAI応答を取得",
             );
             log.debug(
               "プレビュー:\n",
@@ -6190,7 +6190,7 @@
         }
 
         log.debug(
-          "%c✅【Claude-ステップ7-2】テキスト取得処理完了",
+          "%c✅【Step 4-8-2】テキスト取得処理完了",
           "color: #4CAF50; font-weight: bold;",
         );
         // 統合ログ: 回答取得完了（冒頭50文字）

@@ -53,12 +53,10 @@ window.scriptLoadTracker = {
   loadOrder: [],
   timestamps: {},
   dependencies: {
-    "step5-loop.js": ["step3-tasklist.js"],
     "step0-ui-controller.js": [
       "step1-setup.js",
       "step2-taskgroup.js",
       "step4-tasklist.js",
-      "step5-execute.js",
     ],
   },
   addScript: function (scriptName) {

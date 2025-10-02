@@ -98,14 +98,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
  * @fileoverview ChatGPT Automation V2 - 統合版
  *
  * 【ステップ構成】
- * Step 4-1-0: 初期化（固定セレクタ使用）
- * Step 4-1-1: ページ準備状態チェック
- * Step 4-1-2: テキスト入力
- * Step 4-1-3: モデル選択（条件付き）
- * Step 4-1-4: 機能選択（条件付き）
- * Step 4-1-5: メッセージ送信
- * Step 4-1-6: 応答待機（通常/特別モード）
- * Step 4-1-7: テキスト取得
+ * Step 4-0: 初期化（固定セレクタ使用）
+ * Step 4-1: ページ準備状態チェック
+ * Step 4-2: テキスト入力
+ * Step 4-3: モデル選択（条件付き）
+ * Step 4-4: 機能選択（条件付き）
+ * Step 4-5: メッセージ送信
+ * Step 4-7: 応答待機（通常/特別モード）
+ * Step 4-8: テキスト取得
  *
  * @version 3.1.0
  * @updated 2024-12-20 Step 4-1-X番号体系導入、詳細エラーログ強化
@@ -282,7 +282,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // );
 
   // ========================================
-  // Step 4-1-0-3: 統一ChatGPTRetryManager クラス定義
+  // Step 4-0-3: 統一ChatGPTRetryManager クラス定義
   // エラー分類とリトライ戦略を統合した統一システム
   // ========================================
 
@@ -344,12 +344,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
       this.abortController = null;
     }
 
-    // Step 4-1-0-3: ChatGPT特有のエラー分類器（詳細ログ付き）
+    // Step 4-0-3: ChatGPT特有のエラー分類器（詳細ログ付き）
     classifyError(error, context = {}) {
       const errorMessage = error?.message || error?.toString() || "";
       const errorName = error?.name || "";
 
-      log.debug(`🔍 [Step 4-1-0-3] エラー分類開始:`, {
+      log.debug(`🔍 [Step 4-0-3] エラー分類開始:`, {
         errorMessage,
         errorName,
         context,
@@ -367,7 +367,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         errorMessage.includes("Too many requests")
       ) {
         errorType = "RATE_LIMIT_ERROR";
-        log.debug(`⚠️ [Step 4-1-0-3] レート制限エラー検出:`, {
+        log.debug(`⚠️ [Step 4-0-3] レート制限エラー検出:`, {
           errorType,
           errorMessage,
           immediateEscalation: "HEAVY_RESET",
@@ -384,7 +384,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         errorMessage.includes("Please log in")
       ) {
         errorType = "LOGIN_ERROR";
-        log.debug(`🔐 [Step 4-1-0-3] ログインエラー検出:`, {
+        log.debug(`🔐 [Step 4-0-3] ログインエラー検出:`, {
           errorType,
           errorMessage,
           immediateEscalation: "HEAVY_RESET",
@@ -399,7 +399,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         errorMessage.includes("Session expired")
       ) {
         errorType = "SESSION_ERROR";
-        log.debug(`📋 [Step 4-1-0-3] セッションエラー検出:`, {
+        log.debug(`📋 [Step 4-0-3] セッションエラー検出:`, {
           errorType,
           errorMessage,
           immediateEscalation: "HEAVY_RESET",
@@ -416,7 +416,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         errorName.includes("NetworkError")
       ) {
         errorType = "NETWORK_ERROR";
-        log.debug(`🌐 [Step 4-1-0-3] ネットワークエラー検出:`, {
+        log.debug(`🌐 [Step 4-0-3] ネットワークエラー検出:`, {
           errorType,
           errorMessage,
           escalation: "MODERATE",
@@ -433,7 +433,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         errorMessage.includes("querySelector")
       ) {
         errorType = "DOM_ERROR";
-        log.debug(`🔍 [Step 4-1-0-3] DOM要素エラー検出:`, {
+        log.debug(`🔍 [Step 4-0-3] DOM要素エラー検出:`, {
           errorType,
           errorMessage,
           escalation: "LIGHTWEIGHT",
@@ -451,7 +451,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         errorMessage.includes("まで待機")
       ) {
         errorType = "UI_TIMING_ERROR";
-        log.debug(`⏱️ [Step 4-1-0-3] UIタイミングエラー検出:`, {
+        log.debug(`⏱️ [Step 4-0-3] UIタイミングエラー検出:`, {
           errorType,
           errorMessage,
           escalation: "LIGHTWEIGHT",
@@ -463,7 +463,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
       // デフォルト分類
       errorType = "GENERAL_ERROR";
-      log.debug(`❓ [Step 4-1-0-3] 一般エラーとして分類:`, {
+      log.debug(`❓ [Step 4-0-3] 一般エラーとして分類:`, {
         errorType,
         errorMessage,
         escalation: "MODERATE",
@@ -474,9 +474,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
       return errorType;
     }
 
-    // Step 4-1-0-3: エスカレーションレベルの判定（詳細ログ付き）
+    // Step 4-0-3: エスカレーションレベルの判定（詳細ログ付き）
     determineEscalationLevel(retryCount, errorType) {
-      log.debug(`📈 [Step 4-1-0-3] エスカレーション判定開始:`, {
+      log.debug(`📈 [Step 4-0-3] エスカレーション判定開始:`, {
         retryCount,
         errorType,
         consecutiveErrorCount: this.consecutiveErrorCount,
@@ -488,7 +488,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
       // 即座エスカレーション条件
       if (strategy.immediate_escalation) {
-        log.debug(`🚨 [Step 4-1-0-3] 即座エスカレーション適用:`, {
+        log.debug(`🚨 [Step 4-0-3] 即座エスカレーション適用:`, {
           errorType,
           escalationLevel: strategy.immediate_escalation,
           reason: "重大エラーのため即座に最高レベルエスカレーション",
@@ -498,7 +498,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
       // 連続同一エラー5回以上で即座にHEAVY_RESET
       if (this.consecutiveErrorCount >= 5) {
-        log.debug(`🔄 [Step 4-1-0-3] 連続エラーによる強制エスカレーション:`, {
+        log.debug(`🔄 [Step 4-0-3] 連続エラーによる強制エスカレーション:`, {
           consecutiveErrorCount: this.consecutiveErrorCount,
           errorType,
           escalationLevel: "HEAVY_RESET",
@@ -510,7 +510,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       // 通常のエスカレーション判定
       for (const [level, config] of Object.entries(this.escalationLevels)) {
         if (retryCount >= config.range[0] && retryCount <= config.range[1]) {
-          log.debug(`📊 [Step 4-1-0-3] 通常エスカレーション適用:`, {
+          log.debug(`📊 [Step 4-0-3] 通常エスカレーション適用:`, {
             retryCount,
             escalationLevel: level,
             range: config.range,
@@ -521,7 +521,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         }
       }
 
-      log.debug(`🔄 [Step 4-1-0-3] デフォルトエスカレーション適用:`, {
+      log.debug(`🔄 [Step 4-0-3] デフォルトエスカレーション適用:`, {
         retryCount,
         escalationLevel: "HEAVY_RESET",
         reason: "すべての範囲を超えたためデフォルトHEAVY_RESETを適用",
@@ -683,7 +683,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
     }
 
-    // Step 4-1-0-3: 段階的エスカレーションリトライの実行（詳細ログ付き）
+    // Step 4-0-3: 段階的エスカレーションリトライの実行（詳細ログ付き）
     async executeWithEscalation(config) {
       const {
         action,
@@ -698,7 +698,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       let lastError = null;
       const startTime = Date.now();
 
-      log.debug(`🚀 [Step 4-1-0-3] エスカレーションリトライ開始:`, {
+      log.debug(`🚀 [Step 4-0-3] エスカレーションリトライ開始:`, {
         actionName,
         maxRetries: 20,
         context,
@@ -712,7 +712,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           this.metrics.totalAttempts++;
           const attemptStartTime = Date.now();
 
-          log.debug(`🔄 [Step 4-1-0-3] ${actionName} 試行 ${retryCount}/20:`, {
+          log.debug(`🔄 [Step 4-0-3] ${actionName} 試行 ${retryCount}/20:`, {
             attemptNumber: retryCount,
             totalAttempts: this.metrics.totalAttempts,
             elapsedTime: attemptStartTime - startTime,
@@ -729,7 +729,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             const totalTime = Date.now() - startTime;
 
             log.debug(
-              `✅ [Step 4-1-0-3] ${actionName} 成功（${retryCount}回目）:`,
+              `✅ [Step 4-0-3] ${actionName} 成功（${retryCount}回目）:`,
               {
                 attemptNumber: retryCount,
                 totalTime,
@@ -763,7 +763,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           this.addErrorToHistory(errorType, error.message);
 
           log.error(
-            `❌ [Step 4-1-0-3] ${actionName} エラー (${retryCount}回目):`,
+            `❌ [Step 4-0-3] ${actionName} エラー (${retryCount}回目):`,
             {
               errorType,
               message: error.message,
@@ -781,7 +781,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             this.errorStrategies[errorType] ||
             this.errorStrategies.GENERAL_ERROR;
           if (retryCount >= (strategy.maxRetries || 20)) {
-            log.debug(`🛑 [Step 4-1-0-3] 最大リトライ回数到達:`, {
+            log.debug(`🛑 [Step 4-0-3] 最大リトライ回数到達:`, {
               retryCount,
               maxRetries: strategy.maxRetries || 20,
               errorType,
@@ -797,7 +797,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           );
           this.metrics.escalationCounts[escalationLevel]++;
 
-          log.debug(`🚀 [Step 4-1-0-3] エスカレーション実行:`, {
+          log.debug(`🚀 [Step 4-0-3] エスカレーション実行:`, {
             retryCount,
             errorType,
             escalationLevel,
@@ -817,14 +817,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
           if (escalationResult && escalationResult.success) {
             log.debug(
-              `✅ [Step 4-1-0-3] エスカレーション成功:`,
+              `✅ [Step 4-0-3] エスカレーション成功:`,
               escalationResult,
             );
             return escalationResult;
           }
 
           // 待機戦略実行
-          log.debug(`⏳ [Step 4-1-0-3] 待機戦略実行中...`);
+          log.debug(`⏳ [Step 4-0-3] 待機戦略実行中...`);
           await this.waitWithEscalationStrategy(
             escalationLevel,
             retryCount,
@@ -839,7 +839,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         ? this.classifyError(lastError, context)
         : "UNKNOWN";
 
-      log.error(`❌ [Step 4-1-0-3] ${actionName} 全リトライ失敗:`, {
+      log.error(`❌ [Step 4-0-3] ${actionName} 全リトライ失敗:`, {
         totalAttempts: retryCount,
         totalTime,
         finalError: lastError?.message,
@@ -1093,11 +1093,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
   window.AI_WAIT_CONFIG = AI_WAIT_CONFIG;
 
   // ========================================
-  // Step 4-1-0: 固定UIセレクタ（UI_SELECTORS依存なし）
+  // Step 4-0: 固定UIセレクタ（UI_SELECTORS依存なし）
   // ========================================
 
   logWithTimestamp(
-    "【Step 4-1-0-1】✅ 固定セレクタを使用（UI_SELECTORS不要）",
+    "【Step 4-0-1】✅ 固定セレクタを使用（UI_SELECTORS不要）",
     "success",
   );
 
@@ -1936,19 +1936,19 @@ async function reportSelectorError(selectorKey, error, selectors) {
   }
 
   // ========================================
-  // Step 4-1-0: ページ準備確認
+  // Step 4-0: ページ準備確認
   // ========================================
   async function waitForPageReady() {
     // デバッグログ削除済み
 
-    logWithTimestamp("\n【Step 4-1-0】ページ準備確認", "step");
+    logWithTimestamp("\n【Step 4-0】ページ準備確認", "step");
     const maxAttempts = 30; // 最大30秒待機
     let attempts = 0;
 
     while (attempts < maxAttempts) {
       attempts++;
       logWithTimestamp(
-        `[Step 4-1-0] 準備確認 (${attempts}/${maxAttempts})`,
+        `[Step 4-0] 準備確認 (${attempts}/${maxAttempts})`,
         "info",
       );
 
@@ -1961,7 +1961,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
       if (inputElement && isElementInteractable(inputElement)) {
         // デバッグログ削除済み
-        logWithTimestamp("✅ [Step 4-1-0] ページ準備完了", "success");
+        logWithTimestamp("✅ [Step 4-0] ページ準備完了", "success");
         return true;
       }
 
@@ -1969,7 +1969,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
     }
 
     // デバッグログ削除済み
-    logWithTimestamp("❌ [Step 4-1-0] ページ準備タイムアウト", "error");
+    logWithTimestamp("❌ [Step 4-0] ページ準備タイムアウト", "error");
     throw new Error("ページが準備できませんでした");
   }
 
@@ -2573,7 +2573,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
       try {
         // ========================================
-        // Step 4-1-0: ページ準備確認
+        // Step 4-0: ページ準備確認
         // ========================================
         console.log("📋 [ChatGPT] ページ準備状態確認中...");
         await waitForPageReady();
@@ -2581,7 +2581,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ1: ページ準備状態チェック（初回実行の問題を解決）
         // ========================================
-        logWithTimestamp("\n【Step 4-1-1】ページ初期化チェック", "step");
+        logWithTimestamp("\n【Step 4-1】ページ初期化チェック", "step");
 
         // 1-1. ChatGPT UIの基本要素が存在するか確認
         const criticalElements = {
@@ -2776,7 +2776,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ステップ2: テキスト入力（RetryManager統合版）
         // ========================================
         console.log("📝 [ChatGPT] テキスト入力開始");
-        logWithTimestamp("\n【Step 4-1-2】テキスト入力", "step");
+        logWithTimestamp("\n【Step 4-2】テキスト入力", "step");
 
         await inputTextChatGPT(prompt);
         logWithTimestamp("テキスト入力完了", "success");
@@ -2786,7 +2786,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         if (modelName && modelName !== "" && modelName !== "設定なし") {
           console.log("🤖 [ChatGPT] モデル選択処理開始");
-          logWithTimestamp("\n【Step 4-1-3】モデル選択", "step");
+          logWithTimestamp("\n【Step 4-3】モデル選択", "step");
           logWithTimestamp(`選択するモデル: ${modelName}`, "info");
 
           await selectModelChatGPT(modelName);
@@ -2806,7 +2806,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           featureName !== "設定なし"
         ) {
           console.log("🛠️ [ChatGPT] 機能選択処理開始");
-          logWithTimestamp("\n【Step 4-1-4】機能選択", "step");
+          logWithTimestamp("\n【Step 4-4】機能選択", "step");
           logWithTimestamp(`選択する機能: ${featureName}`, "info");
 
           await selectFunctionChatGPT(featureName);
@@ -2819,7 +2819,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ステップ5: メッセージ送信（RetryManager統合版）
         // ========================================
         console.log("📤 [ChatGPT] メッセージ送信準備");
-        logWithTimestamp("\n【Step 4-1-5】メッセージ送信", "step");
+        logWithTimestamp("\n【Step 4-5】メッセージ送信", "step");
 
         await sendMessageChatGPT();
         logWithTimestamp("🚀 送信ボタンをクリックしました！", "success");
@@ -2880,7 +2880,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ステップ6: 応答待機（エラーハンドリング強化版）
         // ========================================
         console.log("⏳ [ChatGPT] 応答待機開始");
-        logWithTimestamp("\n【Step 4-1-6】応答待機", "step");
+        logWithTimestamp("\n【Step 4-7】応答待機", "step");
 
         // 停止ボタンが表示されるまで待機
         let stopBtn = null;
@@ -3013,7 +3013,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ステップ7: テキスト取得
         // ========================================
         logWithTimestamp(
-          "\n【Step 4-1-7】テキスト取得（Canvas対応版）",
+          "\n【Step 4-8】テキスト取得（Canvas対応版）",
           "step",
         );
 
