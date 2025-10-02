@@ -3553,16 +3553,16 @@ async function generateTaskList(
       ? Object.values(taskGroup.columns.answer)
       : [];
 
-    // プロンプトがある最終行を検索
-    let lastPromptRow = dataStartRow;
+    // プロンプトがある最終行を検索（0-based index）
+    let lastPromptRow = dataStartRow - 1; // 0-basedに変換
 
-    for (let row = dataStartRow; row < spreadsheetData.length; row++) {
+    for (let row = dataStartRow - 1; row < spreadsheetData.length; row++) {
       let hasPrompt = false;
       for (const col of promptColumns) {
         const colIndex = columnToIndex(col);
         if (spreadsheetData[row] && spreadsheetData[row][colIndex]) {
           hasPrompt = true;
-          lastPromptRow = row + 1; // 1ベースに変換
+          lastPromptRow = row; // rowをそのまま使用（0-based）
           break;
         }
       }
@@ -3574,9 +3574,9 @@ async function generateTaskList(
     const skippedDetails = []; // スキップの詳細情報を記録
     const debugLogs = []; // デバッグログを収集
 
-    // デバッグ: タスク生成範囲を明示
+    // デバッグ: タスク生成範囲を明示（0-based indexなので表示時は+1）
     log.debug(
-      `[3-4] [step3-tasklist.js] タスク生成範囲: ${dataStartRow} ~ ${lastPromptRow}`,
+      `[3-4] [step3-tasklist.js] タスク生成範囲: ${dataStartRow} ~ ${lastPromptRow + 1}`,
     );
     log.debug(
       `[3-4] [step3-tasklist.js] グループ${taskGroup.groupNumber}のプロンプト列: ${promptColumns}`,
@@ -3585,13 +3585,13 @@ async function generateTaskList(
       `[3-4] [step3-tasklist.js] グループ${taskGroup.groupNumber}の回答列: ${answerColumns}`,
     );
 
-    for (let row = dataStartRow; row <= lastPromptRow; row++) {
-      const rowData = spreadsheetData[row - 1]; // 0ベースインデックス
+    for (let row = dataStartRow - 1; row <= lastPromptRow; row++) {
+      const rowData = spreadsheetData[row]; // rowをそのまま使用（0-based）
 
-      // デバッグ: 各行の処理状況を出力
-      if (row <= dataStartRow + 2) {
+      // デバッグ: 各行の処理状況を出力（表示時は+1して行番号に）
+      if (row <= dataStartRow + 1) {
         // 最初の数行だけデバッグ出力
-        log.debug(`[3-4] [step3-tasklist.js] 行${row}を処理中...`);
+        log.debug(`[3-4] [step3-tasklist.js] 行${row + 1}を処理中...`);
       }
 
       if (!rowData) continue;
@@ -3602,8 +3602,8 @@ async function generateTaskList(
         options.rowControls &&
         options.rowControls.length > 0
       ) {
-        if (!shouldProcessRow(row, options.rowControls)) {
-          skippedRows.push(row); // スキップした行を記録
+        if (!shouldProcessRow(row + 1, options.rowControls)) {
+          skippedRows.push(row + 1); // スキップした行を記録（1-based）
           continue;
         }
       }
@@ -3633,7 +3633,7 @@ async function generateTaskList(
             hasAnswer = true;
             // スキップ詳細を記録（後でまとめて出力）
             skippedDetails.push({
-              row: row,
+              row: row + 1, // 1-basedの行番号
               column: col,
               reason: "既に回答あり",
               cellValuePreview: cellValue.substring(0, 50) + "...",
@@ -3650,7 +3650,7 @@ async function generateTaskList(
               // 一時的なタスクオブジェクトを作成
               const tempTask = {
                 column: col,
-                row: row,
+                row: row + 1, // 1-basedの行番号
                 spreadsheetId:
                   options.spreadsheetId || window.globalState?.spreadsheetId,
                 groupNumber: taskGroup.groupNumber,
@@ -3662,7 +3662,7 @@ async function generateTaskList(
 
               if (cleared) {
                 ExecuteLogger.info(
-                  `[TaskList] 初回実行: 作業中マーカー削除後タスク作成 ${row}行目 (${col}列)`,
+                  `[TaskList] 初回実行: 作業中マーカー削除後タスク作成 ${row + 1}行目 (${col}列)`,
                   {
                     理由: "初回実行時の自動クリア",
                     元のマーカー: cellValue.substring(0, 50) + "...",
@@ -3671,7 +3671,7 @@ async function generateTaskList(
                   },
                 );
                 addLog(
-                  `[TaskList] ${row}行目: 初回実行で作業中マーカー削除 (${col}列)`,
+                  `[TaskList] ${row + 1}行目: 初回実行で作業中マーカー削除 (${col}列)`,
                   {
                     column: col,
                     originalMarker: cellValue.substring(0, 30) + "...",
@@ -3680,7 +3680,7 @@ async function generateTaskList(
                 );
               } else {
                 ExecuteLogger.warn(
-                  `[TaskList] 作業中マーカー削除失敗: ${row}行目 (${col}列)`,
+                  `[TaskList] 作業中マーカー削除失敗: ${row + 1}行目 (${col}列)`,
                   {
                     マーカー: cellValue.substring(0, 50) + "...",
                     グループ: taskGroup.groupNumber,
@@ -3689,7 +3689,7 @@ async function generateTaskList(
               }
             } else {
               ExecuteLogger.info(
-                `[TaskList] タスク作成対象: ${row}行目 (${col}列)`,
+                `[TaskList] タスク作成対象: ${row + 1}行目 (${col}列)`,
                 {
                   理由: "作業中マーカーは回答とみなさない",
                   マーカー: cellValue.substring(0, 50) + "...",
@@ -3698,7 +3698,7 @@ async function generateTaskList(
                 },
               );
               addLog(
-                `[TaskList] ${row}行目: 作業中マーカー検出 (${col}列) - タスク作成対象`,
+                `[TaskList] ${row + 1}行目: 作業中マーカー検出 (${col}列) - タスク作成対象`,
                 {
                   column: col,
                   marker: cellValue.substring(0, 30) + "...",
@@ -3711,7 +3711,7 @@ async function generateTaskList(
 
       // 回答済みチェック（統合ログ）
       if (hasAnswer && !options.forceReprocess) {
-        skippedRows.push(row);
+        skippedRows.push(row + 1); // 1-basedの行番号
         continue; // ログは既に出力済み
       }
 
@@ -3719,9 +3719,10 @@ async function generateTaskList(
       if (options.customSkipConditions) {
         let shouldSkip = false;
         for (const condition of options.customSkipConditions) {
-          if (condition(rowData, row)) {
+          if (condition(rowData, row + 1)) {
+            // 1-basedの行番号を渡す
             addLog(
-              `[TaskList] [Step3-2] ${row}行目: カスタム条件によりスキップ`,
+              `[TaskList] [Step3-2] ${row + 1}行目: カスタム条件によりスキップ`,
             );
             shouldSkip = true;
             break;
@@ -3770,7 +3771,7 @@ async function generateTaskList(
           // aiTypeは既にAI行から取得した正しい値（"ChatGPT", "Claude", "Gemini"など）
 
           // 【シンプル化】文字列結合でセル位置計算
-          const answerCell = getAnswerCell(taskGroup, aiType, row);
+          const answerCell = getAnswerCell(taskGroup, aiType, row + 1); // 1-basedの行番号
           // answerCellから列文字を抽出（例: "Q9" → "Q"）
           const answerColumn = answerCell
             ? answerCell.match(/^([A-Z]+)/)?.[1]
@@ -3826,7 +3827,7 @@ async function generateTaskList(
           }
 
           // 【追加】DynamicTaskSearchとの協調チェック - タスク生成前の重複防止
-          const taskId = `${answerColumn}${row}`;
+          const taskId = `${answerColumn}${row + 1}`; // 1-basedの行番号
 
           // DynamicTaskSearchで完了済みの場合はスキップ
           if (window.DynamicTaskSearch?.completedTasks?.has(taskId)) {
@@ -3861,13 +3862,13 @@ async function generateTaskList(
 
           // Step4との互換性のため、aiTypeフィールドも追加
           const task = {
-            taskId: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`,
-            id: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`, // Step4互換
+            taskId: `task_${taskGroup.groupNumber}_${row + 1}_${Date.now()}`, // 1-basedの行番号
+            id: `task_${taskGroup.groupNumber}_${row + 1}_${Date.now()}`, // Step4互換、1-basedの行番号
             groupNumber: taskGroup.groupNumber,
             groupType: taskGroup.groupType,
-            row: row,
+            row: row + 1, // 1-basedの行番号
             column: answerColumn, // プロンプト列ではなく回答列を設定
-            prompt: `現在${answerColumn ? `${answerColumn}${row}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
+            prompt: `現在${answerColumn ? `${answerColumn}${row + 1}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row + 1}`).join(",") : `行${row + 1}`}の作業中です。\n\n${prompts.join("\n\n")}`, // 1-basedの行番号
             ai: aiType, // 🔧 [FIX] 変換後のaiTypeを使用
             aiType:
               taskGroup.groupType === "3種類AI"
@@ -3884,17 +3885,17 @@ async function generateTaskList(
                   ]
                 : "",
             logCell: taskGroup.columns?.log
-              ? `${taskGroup.columns.log}${row}`
+              ? `${taskGroup.columns.log}${row + 1}` // 1-basedの行番号
               : taskGroup.logColumn
-                ? `${taskGroup.logColumn}${row}`
+                ? `${taskGroup.logColumn}${row + 1}` // 1-basedの行番号
                 : null,
-            promptCells: promptColumns.map((col) => `${col}${row}`),
+            promptCells: promptColumns.map((col) => `${col}${row + 1}`), // 1-basedの行番号
             answerCell: answerCell,
             tabId: windowInfo?.tabId, // 🆕 タブID追加
             windowId: windowInfo?.windowId, // 🆕 ウィンドウID追加
             cellInfo: {
               // Step4互換: cellInfo構造追加
-              row: row,
+              row: row + 1, // 1-basedの行番号
               column: answerColumn || promptColumns[0], // answerColumnを直接使用（正規表現不要）
               columnIndex: columnToIndex(answerColumn || promptColumns[0]),
             },
@@ -3904,12 +3905,13 @@ async function generateTaskList(
 
           // デバッグログを収集（後でまとめて表示）
           debugLogs.push({
-            row: row,
+            row: row + 1, // 1-basedの行番号
             taskId: task.taskId,
             answerCell: task.answerCell,
             logCell: task.logCell,
             aiType: task.ai,
             promptLength: task.prompt?.length || 0,
+            sheetName: task.sheetName, // シート名を追加
           });
 
           // DEBUG: タスク作成完了
@@ -3951,28 +3953,28 @@ async function generateTaskList(
         }
 
         const task = {
-          taskId: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`,
-          id: `task_${taskGroup.groupNumber}_${row}_${Date.now()}`, // Step4互換
+          taskId: `task_${taskGroup.groupNumber}_${row + 1}_${Date.now()}`, // 1-basedの行番号
+          id: `task_${taskGroup.groupNumber}_${row + 1}_${Date.now()}`, // Step4互換、1-basedの行番号
           groupNumber: taskGroup.groupNumber,
           groupType: taskGroup.groupType,
-          row: row,
+          row: row + 1, // 1-basedの行番号
           // Step 4-5-3: 統一プロンプト生成ロジック（作業列を優先表示）
-          prompt: `現在${taskGroup.columns.work ? `${taskGroup.columns.work}${row}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row}`).join(",") : `行${row}`}の作業中です。\n\n${prompts.join("\n\n")}`,
+          prompt: `現在${taskGroup.columns.work ? `${taskGroup.columns.work}${row + 1}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row + 1}`).join(",") : `行${row + 1}`}の作業中です。\n\n${prompts.join("\n\n")}`, // 1-basedの行番号
           ai: taskGroup.groupType,
           aiType: taskGroup.groupType, // Step4互換 - lowercase変換削除
           model: "",
           function: "",
           logCell: taskGroup.columns.log
-            ? `${taskGroup.columns.log}${row}`
+            ? `${taskGroup.columns.log}${row + 1}` // 1-basedの行番号
             : null,
           workCell: taskGroup.columns.work
-            ? `${taskGroup.columns.work}${row}`
+            ? `${taskGroup.columns.work}${row + 1}` // 1-basedの行番号
             : null,
           tabId: windowInfo?.tabId, // 🆕 タブID追加
           windowId: windowInfo?.windowId, // 🆕 ウィンドウID追加
           cellInfo: {
             // Step4互換: cellInfo構造追加
-            row: row,
+            row: row + 1, // 1-basedの行番号
             column: taskGroup.columns.work || "A",
             columnIndex: taskGroup.columns.work
               ? columnToIndex(taskGroup.columns.work)
@@ -3987,28 +3989,29 @@ async function generateTaskList(
           0,
           task.prompt.indexOf("\n\n") || 30,
         );
-        addLog(`[統一プロンプト] 行${row}: ${promptPreview}`);
+        addLog(`[統一プロンプト] 行${row + 1}: ${promptPreview}`); // 1-basedの行番号
 
         // デバッグログを収集（後でまとめて表示）
         debugLogs.push({
-          row: row,
+          row: row + 1, // 1-basedの行番号
           taskId: task.taskId,
           workCell: task.workCell,
           logCell: task.logCell,
           aiType: task.ai,
           promptLength: task.prompt?.length || 0,
+          sheetName: task.sheetName, // シート名を追加
         });
 
         log.debug(
-          `[3-4] [DEBUG] タスク追加: 行${row}, AI=${aiType}, hasAnswer状態不明`,
+          `[3-4] [DEBUG] タスク追加: 行${row + 1}, AI=${aiType}, hasAnswer状態不明`, // 1-basedの行番号
         );
         validTasks.push(task);
         tasksCreated++; // タスク作成数をインクリメント
       }
     }
 
-    // まとめログを出力
-    const totalRows = lastPromptRow - dataStartRow + 1;
+    // まとめログを出力（0-based indexから行数を計算）
+    const totalRows = lastPromptRow - (dataStartRow - 1) + 1;
     const processedRows = validTasks.length;
     const skippedCount = skippedRows.length;
 
@@ -7105,12 +7108,21 @@ async function createTaskListFromGroup(groupData) {
       spreadsheetData = window.globalState?.currentSpreadsheetData || [];
       specialRows = window.globalState?.specialRows || {};
       dataStartRow = window.globalState?.specialRows?.dataStartRow;
+
+      ExecuteLogger.info(
+        `[step3-tasklist.js] [Step 4-1-3] 📝 globalState.sheetName取得: "${window.globalState?.sheetName}"`,
+      );
+
       options = {
         spreadsheetUrl: window.globalState?.spreadsheetUrl || "",
         spreadsheetId: window.globalState?.spreadsheetId || "",
         gid: window.globalState?.gid || "",
         sheetName: window.globalState?.sheetName || "",
       };
+
+      ExecuteLogger.info(
+        `[step3-tasklist.js] [Step 4-1-3] ✅ options.sheetName設定: "${options.sheetName}"`,
+      );
 
       ExecuteLogger.info(
         "✅ [Step 4-1-3] 直接グループオブジェクト形式を検出:",
@@ -7542,6 +7554,7 @@ class DynamicTaskSearch {
               aiType: answerCol.aiType,
               spreadsheetId: window.globalState?.spreadsheetId,
               gid: window.globalState?.gid,
+              sheetName: window.globalState?.sheetName,
               groupNumber: taskGroup.groupNumber,
               // 追加情報
               cellRef: `${answerCol.column}${rowNumber}`,
@@ -8893,8 +8906,35 @@ async function executeStep3(taskList) {
         throw new Error("WindowController.openWindowsメソッドが見つかりません");
       }
 
+      // 🔧 [DYNAMIC-WINDOW] ウィンドウ事前作成を無効化
+      // タスクごとに必要なウィンドウのみを開くため、事前作成は行わない
+      /*
+      // タスクリストからwindowLayout配列を生成
+      // AIタイプごとにタスクをグループ化
+      const tasksByAI = {};
+      processTaskList.forEach((task) => {
+        const ai = task.aiType || task.ai;
+        if (!tasksByAI[ai]) tasksByAI[ai] = [];
+        tasksByAI[ai].push(task);
+      });
+
+      // 各AIタイプごとに、バッチサイズ（3タスク並列）に対応したウィンドウを作成
+      const windowLayout = [];
+      Object.keys(tasksByAI).forEach((aiType) => {
+        const taskCount = tasksByAI[aiType].length;
+        // 必要なウィンドウ数（最大3、タスク数が少なければそれに合わせる）
+        const windowCount = Math.min(3, taskCount);
+
+        for (let i = 0; i < windowCount; i++) {
+          windowLayout.push({
+            aiType: aiType,
+            position: i, // 0-basedインデックス（0, 1, 2）
+          });
+        }
+      });
+
       const windowResults =
-        await window.windowController.openWindows(windowLayoutInfo);
+        await window.windowController.openWindows(windowLayout);
       successfulWindows = windowResults.filter((w) => w.success);
       ExecuteLogger.info(
         `✅ [Step 4-6-3] ウィンドウ開く完了: ${successfulWindows.length}/${windowResults.length}個成功`,
@@ -8906,6 +8946,11 @@ async function executeStep3(taskList) {
 
       // 全ウィンドウが並列で開かれており、既に待機済みのため追加の待機は不要
       ExecuteLogger.info("✅ ウィンドウとタブの準備完了");
+      */
+
+      ExecuteLogger.info(
+        "✅ [Step 4-6-3] ウィンドウ事前作成スキップ - タスクごとに動的に開きます",
+      );
 
       // Step 4-6-3-0.5: ウィンドウチェックをスキップ（unused/stream-processor-v2.js準拠）
       // 元のコードではウィンドウチェックを行わず、直接タスク実行に進むため削除
@@ -9165,22 +9210,51 @@ async function executeStep3(taskList) {
               },
             );
           } else {
-            // 新しいウィンドウを作成する必要がある場合
-            // 注: 現在の実装では WindowController.openWindows で事前にウィンドウを作成しているため、
-            // このブロックは通常実行されません。
-            // unusedコードから持ち込まれた不要な処理のため、エラーとして記録
-            ExecuteLogger.error(
-              `❌ [step4-execute.js] 予期しない状態: ウィンドウが存在しません`,
-              {
-                taskIndex: taskIndex,
-                aiType: aiType,
-                position: position,
-                windowKey: windowKey,
-                note: "WindowController.openWindowsで事前作成されているはずです",
-              },
+            // 🔧 [DYNAMIC-WINDOW] 必要なウィンドウをその場で作成
+            ExecuteLogger.info(
+              `🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-2: ${windowKey}ウィンドウを新規作成`,
             );
-            // ウィンドウが存在しない場合は処理をスキップ
-            continue;
+
+            try {
+              const windowLayout = [
+                {
+                  aiType: normalizedAiType,
+                  position: position,
+                },
+              ];
+
+              const windowResults =
+                await window.windowController.openWindows(windowLayout);
+              const createdWindow = windowResults.find((w) => w.success);
+
+              if (!createdWindow) {
+                throw new Error(`ウィンドウ作成失敗: ${windowKey}`);
+              }
+
+              batchWindows.set(taskIndex, createdWindow);
+              ExecuteLogger.info(
+                `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-3: タスク${taskIndex + 1}に新規ウィンドウ割り当て`,
+                {
+                  taskIndex: taskIndex,
+                  aiType: aiType,
+                  tabId: createdWindow?.tabId,
+                  windowId: createdWindow?.windowId,
+                  position: position,
+                },
+              );
+            } catch (error) {
+              ExecuteLogger.error(
+                `❌ [step4-execute.js] ウィンドウ作成エラー: ${windowKey}`,
+                {
+                  taskIndex: taskIndex,
+                  aiType: aiType,
+                  position: position,
+                  error: error.message,
+                },
+              );
+              // ウィンドウが作成できない場合は処理をスキップ
+              continue;
+            }
           }
         }
 
@@ -9910,6 +9984,9 @@ async function executeStep3(taskList) {
             logCell: task.logCell,
             tabId: task.tabId,
             windowId: task.windowId,
+            sheetName: task.sheetName,
+            spreadsheetId: task.spreadsheetId,
+            gid: task.gid,
           };
 
           const messagePayload = {

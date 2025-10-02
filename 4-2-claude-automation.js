@@ -4011,10 +4011,14 @@
       if (chrome.runtime && chrome.runtime.sendMessage) {
         // シート名を追加（テストモードでは不要）
         const sheetName = taskData.sheetName;
+        console.log(
+          `[4-2-claude] 📝 taskData.sheetName受信: "${sheetName}" (type: ${typeof sheetName})`,
+        );
         if (!sheetName) {
-          log.warn(
+          console.warn(
             "⚠️ シート名が指定されていません（テストモードの可能性）- 送信時刻記録をスキップ",
           );
+          console.warn(`[4-2-claude] 📋 taskDataの内容:`, taskData);
           // テストモードの場合はスキップ
           log.debug("【Step 4-6】送信時刻記録スキップ（テストモード）");
         } else {
@@ -6843,13 +6847,8 @@
         // 1. モデルメニューボタンを探す
         let modelMenuButton = null;
 
-        // テストコードと同じセレクタパターンを使用
-        const selectors = [
-          'button[aria-label*="model"]',
-          'button[aria-haspopup="menu"]',
-          "button:has(svg)",
-          'div[role="button"]:has(svg)',
-        ];
+        // CLAUDE_SELECTORSを使用
+        const selectors = CLAUDE_SELECTORS.MODEL.BUTTON;
 
         for (const selector of selectors) {
           const elements = document.querySelectorAll(selector);
@@ -6900,12 +6899,10 @@
 
         // 2. モデルメニューが既に開いているかチェック
 
-        // 複数のセレクタを試す
-        let menu =
-          document.querySelector('div[role="menu"][data-state="open"]') ||
-          document.querySelector('div[role="menu"]') ||
-          document.querySelector(".absolute.bottom-full") ||
-          document.querySelector("[data-radix-popper-content-wrapper]");
+        // CLAUDE_SELECTORSを使用
+        let menu = document.querySelector(
+          CLAUDE_SELECTORS.MODEL.MENU_CONTAINER,
+        );
 
         if (!menu) {
           // PointerEventを使用（テストコードと同じ方法）
@@ -6929,17 +6926,12 @@
           // メニューが開くまで待機（少し長めに）
           await new Promise((resolve) => setTimeout(resolve, 1500));
 
-          // 再度複数のセレクタで検索
-          menu =
-            document.querySelector('div[role="menu"][data-state="open"]') ||
-            document.querySelector('div[role="menu"]') ||
-            document.querySelector(".absolute.bottom-full") ||
-            document.querySelector("[data-radix-popper-content-wrapper]");
+          // 再度検索
+          menu = document.querySelector(CLAUDE_SELECTORS.MODEL.MENU_CONTAINER);
 
           if (!menu) {
             return [];
           }
-        } else {
         }
 
         const models = extractModelsFromMenu(menu);
@@ -7077,37 +7069,15 @@
 
         // Step 1: 機能メニューボタンを探す
 
-        const allButtons = document.querySelectorAll("button");
-
         let functionButton = null;
 
-        // SVGパスを含むボタンを探す
-        const pathElement = document.querySelector('path[d*="M40,88H73a32"]');
-        if (pathElement) {
-          // pathから親のbutton要素を探す
-          functionButton = pathElement.closest("button");
-        }
+        // CLAUDE_SELECTORSを使用
+        const buttonSelectors = CLAUDE_SELECTORS.FEATURE.MENU_BUTTON;
 
-        if (!functionButton) {
-          // 代替方法：aria-expandedを持つボタンをすべて取得
-          const expandableButtons = document.querySelectorAll(
-            "button[aria-expanded]",
-          );
-
-          // 各ボタンを確認（2番目のlistboxボタンが機能の可能性）
-          for (let i = 0; i < expandableButtons.length; i++) {
-            const btn = expandableButtons[i];
-            const text = btn.textContent?.trim() || "";
-
-            // モデル選択ボタンでないことを確認
-            if (
-              !text.match(/Claude|Sonnet|Opus|Haiku/i) &&
-              btn.getAttribute("aria-haspopup") === "listbox" &&
-              i > 0
-            ) {
-              functionButton = btn;
-              break;
-            }
+        for (const selector of buttonSelectors) {
+          functionButton = document.querySelector(selector);
+          if (functionButton) {
+            break;
           }
         }
 
@@ -7129,13 +7099,8 @@
 
         let contentDiv = null;
 
-        // 複数のセレクタで検索
-        const menuSelectors = [
-          "div.absolute div.p-1\\.5.flex.flex-col",
-          "div[role='listbox']:last-of-type",
-          'div[class*="p-1.5"][class*="flex-col"]',
-          "div.w-full > div.p-1\\.5.flex.flex-col",
-        ];
+        // CLAUDE_SELECTORSを使用
+        const menuSelectors = CLAUDE_SELECTORS.FEATURE.MENU_CONTAINER;
 
         for (const selector of menuSelectors) {
           const elements = document.querySelectorAll(selector);
