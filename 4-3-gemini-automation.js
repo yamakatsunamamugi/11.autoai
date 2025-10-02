@@ -828,33 +828,39 @@ const log = {
   }
 
   // ========================================
-  // テキスト入力（Canvas/通常モード自動判定）
+  // テキスト入力（Canvas/通常モード自動判定） - RetryManager統合
   // ========================================
   async function inputTextGemini(text) {
-    // Canvasモードチェック
-    const canvas = document.querySelector(SELECTORS.canvas);
+    const retryManager = new GeminiRetryManager();
+    const result = await retryManager.executeWithRetry(
+      async () => {
+        // Canvasモードチェック
+        const canvas = document.querySelector(SELECTORS.canvas);
 
-    if (canvas && canvas.isContentEditable) {
-      return await inputToCanvas(text);
-    }
+        if (canvas && canvas.isContentEditable) {
+          await inputToCanvas(text);
+          return { success: true };
+        }
 
-    // 通常モード
-    const editor = document.querySelector(SELECTORS.normalInput);
+        // 通常モード
+        const editor = document.querySelector(SELECTORS.normalInput);
 
-    if (editor) {
-      return await inputToNormal(text);
-    }
+        if (editor) {
+          await inputToNormal(text);
+          return { success: true };
+        }
 
-    console.error(`❌ [inputTextGemini] テキスト入力欄が見つからない:`, {
-      canvasSelector: SELECTORS.canvas,
-      normalSelector: SELECTORS.normalInput,
-      availableElements: {
-        prosemirror: !!document.querySelector(".ProseMirror"),
-        qlEditor: !!document.querySelector(".ql-editor"),
-        contenteditable: !!document.querySelector('[contenteditable="true"]'),
+        throw new Error("テキスト入力欄が見つかりません");
       },
-    });
-    throw new Error("テキスト入力欄が見つかりません");
+      "Geminiテキスト入力",
+      { textLength: text?.length || 0 },
+    );
+
+    if (!result.success) {
+      throw new Error(result.error?.message || "テキスト入力失敗");
+    }
+
+    return result.result;
   }
 
   async function inputToCanvas(text) {
@@ -903,19 +909,34 @@ const log = {
   }
 
   // ========================================
-  // メッセージ送信
+  // メッセージ送信 - RetryManager統合
   // ========================================
   async function sendMessageGemini() {
-    let sendButton = document.querySelector(SELECTORS.sendButton);
+    const retryManager = new GeminiRetryManager();
+    const result = await retryManager.executeWithRetry(
+      async () => {
+        let sendButton = document.querySelector(SELECTORS.sendButton);
 
-    if (!sendButton) {
-      sendButton = findElement(SELECTORS.sendButtonAlt);
+        if (!sendButton) {
+          sendButton = findElement(SELECTORS.sendButtonAlt);
+        }
+
+        if (!sendButton) {
+          throw new Error("送信ボタンが見つかりません");
+        }
+
+        sendButton.click();
+        await wait(1000);
+
+        return { success: true };
+      },
+      "Gemini送信ボタンクリック",
+      {},
+    );
+
+    if (!result.success) {
+      throw new Error(result.error?.message || "送信ボタンクリック失敗");
     }
-
-    if (!sendButton) throw new Error("送信ボタンが見つかりません");
-
-    sendButton.click();
-    await wait(1000);
 
     return true;
   }
@@ -1126,7 +1147,7 @@ const log = {
   }
 
   // ========================================
-  // モデル選択機能
+  // モデル選択機能 - RetryManager統合
   // ========================================
   async function selectModel(modelName) {
     log.debug("【Step 4-3-3】モデル選択", modelName);
@@ -1136,49 +1157,55 @@ const log = {
       return { success: true, skipped: true };
     }
 
-    try {
-      // 【Step 4-3-3-1】メニューボタンをクリック
-      const menuButton = findElement(SELECTORS.menuButton);
-      if (!menuButton) {
-        throw new Error("モデル選択メニューボタンが見つかりません");
-      }
-      menuButton.click();
-      await wait(1500);
+    const retryManager = new GeminiRetryManager();
+    const result = await retryManager.executeWithRetry(
+      async () => {
+        // 【Step 4-3-3-1】メニューボタンをクリック
+        const menuButton = findElement(SELECTORS.menuButton);
+        if (!menuButton) {
+          throw new Error("モデル選択メニューボタンが見つかりません");
+        }
+        menuButton.click();
+        await wait(1500);
 
-      // 【Step 4-3-3-2】メニュー内でモデルを探して選択
-      const menuContainer = findElement(SELECTORS.menuContainer);
-      if (!menuContainer) {
-        throw new Error("モデル選択メニューが見つかりません");
-      }
+        // 【Step 4-3-3-2】メニュー内でモデルを探して選択
+        const menuContainer = findElement(SELECTORS.menuContainer);
+        if (!menuContainer) {
+          throw new Error("モデル選択メニューが見つかりません");
+        }
 
-      const modelButtons = findElements(SELECTORS.modelButtons, menuContainer);
-      const targetButton = Array.from(modelButtons).find((btn) => {
-        const text = getCleanText(btn);
-        return text && text.includes(modelName);
-      });
+        const modelButtons = findElements(
+          SELECTORS.modelButtons,
+          menuContainer,
+        );
+        const targetButton = Array.from(modelButtons).find((btn) => {
+          const text = getCleanText(btn);
+          return text && text.includes(modelName);
+        });
 
-      if (!targetButton) {
-        throw new Error(`モデル "${modelName}" が見つかりません`);
-      }
+        if (!targetButton) {
+          throw new Error(`モデル "${modelName}" が見つかりません`);
+        }
 
-      targetButton.click();
-      await wait(2000);
+        targetButton.click();
+        await wait(2000);
 
-      // 【Step 4-3-3-3】選択確認 - 現在選択されているモデルをログ出力
-      const displayElement = findElement(SELECTORS.modelDisplay);
-      const displayText = getCleanText(displayElement);
+        // 【Step 4-3-3-3】選択確認
+        const displayElement = findElement(SELECTORS.modelDisplay);
+        const displayText = getCleanText(displayElement);
 
-      // モデル選択後の実際の表示をログ出力（一致チェックは行わない）
-      log.info(`📊 モデル選択後確認 - 現在表示中: "${displayText}"`);
-      return { success: true, selected: displayText };
-    } catch (error) {
-      log.error("モデル選択エラー:", error);
-      return { success: false, error: error.message };
-    }
+        log.info(`📊 モデル選択後確認 - 現在表示中: "${displayText}"`);
+        return { success: true, selected: displayText };
+      },
+      "Geminiモデル選択",
+      { modelName },
+    );
+
+    return result.success ? result.result : result;
   }
 
   // ========================================
-  // 機能選択機能
+  // 機能選択機能 - RetryManager統合
   // ========================================
   async function selectFeature(featureName) {
     log.debug("【Step 4-3-4】機能選択", featureName);
@@ -1188,76 +1215,77 @@ const log = {
       return { success: true, skipped: true };
     }
 
-    try {
-      // 【Step 4-3-4-1】まずメインボタンから探す
-      let featureButton = null;
-      const allButtons = findElements(SELECTORS.mainButtons);
-      featureButton = Array.from(allButtons).find(
-        (btn) =>
-          getCleanText(findElement(SELECTORS.featureLabel, btn)) ===
-          featureName,
-      );
-
-      // 【Step 4-3-4-2】見つからなければ「その他」メニューを開く
-      if (!featureButton) {
-        const moreButton = findElement(SELECTORS.moreButton);
-        if (!moreButton) {
-          throw new Error("「その他」ボタンが見つかりません");
-        }
-        moreButton.click();
-        await wait(1500);
-
-        const menuButtons = findElements(SELECTORS.featureMenuItems);
-        featureButton = Array.from(menuButtons).find(
+    const retryManager = new GeminiRetryManager();
+    const result = await retryManager.executeWithRetry(
+      async () => {
+        // 【Step 4-3-4-1】まずメインボタンから探す
+        let featureButton = null;
+        const allButtons = findElements(SELECTORS.mainButtons);
+        featureButton = Array.from(allButtons).find(
           (btn) =>
             getCleanText(findElement(SELECTORS.featureLabel, btn)) ===
             featureName,
         );
-      }
 
-      if (!featureButton) {
-        throw new Error(`機能「${featureName}」が見つかりません`);
-      }
+        // 【Step 4-3-4-2】見つからなければ「その他」メニューを開く
+        if (!featureButton) {
+          const moreButton = findElement(SELECTORS.moreButton);
+          if (!moreButton) {
+            throw new Error("「その他」ボタンが見つかりません");
+          }
+          moreButton.click();
+          await wait(1500);
 
-      // 【Step 4-3-4-3】機能をクリック
-      featureButton.click();
-      await wait(2000);
-
-      // 【Step 4-3-4-4】選択確認 - 現在選択されている機能をログ出力
-
-      // Canvasモードの特別処理
-      if (featureName === "Canvas") {
-        // Canvas選択はボタンクリックで完了
-        // 編集画面はメッセージ送信後に表示されるため、ここでは確認不要
-        log.info(`📊 機能選択後確認 - Canvasモードが選択されました`);
-        return { success: true, selected: featureName };
-      }
-
-      // 通常の機能ボタンの確認
-      const selectedButtons = findElements(SELECTORS.selectedFeatures);
-      const selectedFeatureNames = [];
-
-      selectedButtons.forEach((button) => {
-        const featureText = getCleanText(button);
-        if (featureText) {
-          selectedFeatureNames.push(featureText);
+          const menuButtons = findElements(SELECTORS.featureMenuItems);
+          featureButton = Array.from(menuButtons).find(
+            (btn) =>
+              getCleanText(findElement(SELECTORS.featureLabel, btn)) ===
+              featureName,
+          );
         }
-      });
 
-      // 機能選択後の実際の選択状態をログ出力（一致チェックは行わない）
-      if (selectedFeatureNames.length > 0) {
-        log.info(
-          `📊 機能選択後確認 - 現在選択中: [${selectedFeatureNames.join(", ")}]`,
-        );
-      } else {
-        // Canvas以外で選択が確認できない場合
-        log.info(`📊 機能選択後確認 - 選択された機能なし`);
-      }
-      return { success: true, selected: featureName };
-    } catch (error) {
-      log.error("機能選択エラー:", error);
-      return { success: false, error: error.message };
-    }
+        if (!featureButton) {
+          throw new Error(`機能「${featureName}」が見つかりません`);
+        }
+
+        // 【Step 4-3-4-3】機能をクリック
+        featureButton.click();
+        await wait(2000);
+
+        // 【Step 4-3-4-4】選択確認
+
+        // Canvasモードの特別処理
+        if (featureName === "Canvas") {
+          log.info(`📊 機能選択後確認 - Canvasモードが選択されました`);
+          return { success: true, selected: featureName };
+        }
+
+        // 通常の機能ボタンの確認
+        const selectedButtons = findElements(SELECTORS.selectedFeatures);
+        const selectedFeatureNames = [];
+
+        selectedButtons.forEach((button) => {
+          const featureText = getCleanText(button);
+          if (featureText) {
+            selectedFeatureNames.push(featureText);
+          }
+        });
+
+        // 機能選択後の実際の選択状態をログ出力
+        if (selectedFeatureNames.length > 0) {
+          log.info(
+            `📊 機能選択後確認 - 現在選択中: [${selectedFeatureNames.join(", ")}]`,
+          );
+        } else {
+          log.info(`📊 機能選択後確認 - 選択された機能なし`);
+        }
+        return { success: true, selected: featureName };
+      },
+      "Gemini機能選択",
+      { featureName },
+    );
+
+    return result.success ? result.result : result;
   }
 
   // ========================================
@@ -1361,7 +1389,7 @@ const log = {
   }
 
   // ========================================
-  // タスク実行（拡張版） - RetryManager統合
+  // タスク実行（拡張版） - Claude型RetryManager統合
   // ========================================
   async function executeTask(taskData) {
     log.info("🚀 【Step 4-3】Gemini タスク実行開始", taskData);
@@ -1369,127 +1397,105 @@ const log = {
     // taskIdを最初に定義（スコープ全体で利用可能にする）
     const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
 
-    // RetryManagerを使用してタスク実行（20回リトライ、3段階エスカレーション）
-    return await geminiRetryManager.executeWithRetry(
-      async () => {
-        // タスク実行ロジック
-        // プロンプトの適切な処理 - オブジェクトの場合は文字列化
-        let promptText;
-        if (typeof taskData.prompt === "object" && taskData.prompt !== null) {
-          // オブジェクトの場合は適切なプロパティを探す
-          promptText =
-            taskData.prompt.text ||
-            taskData.prompt.content ||
-            taskData.prompt.prompt ||
-            JSON.stringify(taskData.prompt);
-        } else {
-          promptText = taskData.prompt || "テストメッセージです";
-        }
+    try {
+      // プロンプトの適切な処理 - オブジェクトの場合は文字列化
+      let promptText;
+      if (typeof taskData.prompt === "object" && taskData.prompt !== null) {
+        // オブジェクトの場合は適切なプロパティを探す
+        promptText =
+          taskData.prompt.text ||
+          taskData.prompt.content ||
+          taskData.prompt.prompt ||
+          JSON.stringify(taskData.prompt);
+      } else {
+        promptText = taskData.prompt || "テストメッセージです";
+      }
 
-        const modelName = taskData.model || "";
-        const featureName = taskData.function || ""; // feature → function に修正
+      const modelName = taskData.model || "";
+      const featureName = taskData.function || ""; // feature → function に修正
 
-        // 🔍 [DEBUG] タスクデータの詳細確認
-        log.debug("📋 [Gemini Debug] TaskData詳細:", {
-          model: modelName,
-          feature: featureName,
-          hasModel: !!modelName,
-          hasFeature: !!featureName,
-          modelType: typeof modelName,
-          featureType: typeof featureName,
+      // 🔍 [DEBUG] タスクデータの詳細確認
+      log.debug("📋 [Gemini Debug] TaskData詳細:", {
+        model: modelName,
+        feature: featureName,
+        hasModel: !!modelName,
+        hasFeature: !!featureName,
+        modelType: typeof modelName,
+        featureType: typeof featureName,
+        taskDataKeys: taskData ? Object.keys(taskData) : [],
+      });
+
+      // 🔍 [DEBUG] セル位置情報を追加（ChatGPT・Claudeと統一）
+      if (
+        taskData &&
+        taskData.cellInfo &&
+        taskData.cellInfo.column &&
+        taskData.cellInfo.row
+      ) {
+        const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
+        promptText = `【現在${cellPosition}セルを処理中です】\n\n${promptText}`;
+        log.debug(`📍 [Gemini] セル位置情報を追加: ${cellPosition}`);
+      } else {
+        log.debug("📍 [Gemini] セル位置情報なし:", {
+          hasCellInfo: !!(taskData && taskData.cellInfo),
+          cellInfo: taskData && taskData.cellInfo,
           taskDataKeys: taskData ? Object.keys(taskData) : [],
         });
+      }
 
-        // 🔍 [DEBUG] セル位置情報を追加（ChatGPT・Claudeと統一）
-        if (
-          taskData &&
-          taskData.cellInfo &&
-          taskData.cellInfo.column &&
-          taskData.cellInfo.row
-        ) {
-          const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
-          promptText = `【現在${cellPosition}セルを処理中です】\n\n${promptText}`;
-          log.debug(`📍 [Gemini] セル位置情報を追加: ${cellPosition}`);
-        } else {
-          log.debug("📍 [Gemini] セル位置情報なし:", {
-            hasCellInfo: !!(taskData && taskData.cellInfo),
-            cellInfo: taskData && taskData.cellInfo,
-            taskDataKeys: taskData ? Object.keys(taskData) : [],
-          });
+      // 【Step 4-3-2】テキスト入力（RetryManager内蔵）
+      await inputTextGemini(promptText);
+
+      // 【Step 4-3-3】モデル選択（必要な場合、RetryManager内蔵）
+      if (modelName && modelName !== "設定なし") {
+        const modelResult = await selectModel(modelName);
+        if (!modelResult.success && !modelResult.skipped) {
+          throw new Error(`モデル選択失敗: ${modelResult.error}`);
         }
+      }
 
-        // 【Step 4-3-2】テキスト入力
-
-        try {
-          await inputTextGemini(promptText);
-        } catch (inputError) {
-          console.error(`❌ [Gemini Step 2] テキスト入力エラー:`, inputError);
-          throw inputError;
+      // 【Step 4-3-4】機能選択（必要な場合、RetryManager内蔵）
+      if (featureName && featureName !== "設定なし") {
+        const featureResult = await selectFeature(featureName);
+        if (!featureResult.success && !featureResult.skipped) {
+          throw new Error(`機能選択失敗: ${featureResult.error}`);
         }
+      }
 
-        // 【Step 4-3-3】モデル選択（必要な場合）
+      // 【Step 4-3-5】メッセージ送信（RetryManager内蔵）
+      await sendMessageGemini();
 
-        if (modelName && modelName !== "設定なし") {
-          try {
-            const modelResult = await selectModel(modelName);
-            if (!modelResult.success && !modelResult.skipped) {
-              throw new Error(`モデル選択失敗: ${modelResult.error}`);
-            }
-          } catch (modelError) {
-            console.error(`❌ [Gemini Step 3a] モデル選択エラー:`, modelError);
-            throw modelError;
-          }
+      // 送信時刻を記録
+      const sendTime = new Date();
+
+      // モデルと機能を取得
+      const modelName_current = modelName || "不明";
+      const featureName_var = featureName || "通常";
+
+      // background.jsに送信時刻を記録
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        // シート名を追加（taskDataから取得）
+        const sheetName = taskData.sheetName;
+        if (!sheetName) {
+          throw new Error("シート名が指定されていません");
         }
+        const fullLogCell = taskData.logCell?.includes("!")
+          ? taskData.logCell
+          : `'${sheetName}'!${taskData.logCell}`;
 
-        // 【Step 4-3-4】機能選択（必要な場合）
-
-        if (featureName && featureName !== "設定なし") {
-          try {
-            const featureResult = await selectFeature(featureName);
-            if (!featureResult.success && !featureResult.skipped) {
-              throw new Error(`機能選択失敗: ${featureResult.error}`);
-            }
-          } catch (featureError) {
-            console.error(`❌ [Gemini Step 4a] 機能選択エラー:`, featureError);
-            throw featureError;
-          }
-        }
-
-        // 【Step 4-3-5】メッセージ送信
-        try {
-          await sendMessageGemini();
-
-          // 送信時刻を記録
-          const sendTime = new Date();
-
-          // モデルと機能を取得
-          const modelName_current = modelName || "不明";
-          const featureName_var = featureName || "通常";
-
-          // background.jsに送信時刻を記録
-          if (chrome.runtime && chrome.runtime.sendMessage) {
-            // シート名を追加（taskDataから取得）
-            const sheetName = taskData.sheetName;
-            if (!sheetName) {
-              throw new Error("シート名が指定されていません");
-            }
-            const fullLogCell = taskData.logCell?.includes("!")
-              ? taskData.logCell
-              : `'${sheetName}'!${taskData.logCell}`;
-
-            const messageToSend = {
-              type: "recordSendTime",
-              taskId: taskId,
-              sendTime: sendTime.toISOString(),
-              taskInfo: {
-                aiType: "Gemini",
-                model: modelName_current,
-                function: featureName_var,
-                // URLは応答完了時に取得するため、ここでは記録しない（Claudeと同じ）
-                cellInfo: taskData.cellInfo,
-              },
-              logCell: fullLogCell, // シート名付きログセル
-            };
+        const messageToSend = {
+          type: "recordSendTime",
+          taskId: taskId,
+          sendTime: sendTime.toISOString(),
+          taskInfo: {
+            aiType: "Gemini",
+            model: modelName_current,
+            function: featureName_var,
+            // URLは応答完了時に取得するため、ここでは記録しない（Claudeと同じ）
+            cellInfo: taskData.cellInfo,
+          },
+          logCell: fullLogCell, // シート名付きログセル
+        };
 
             // Promise化してタイムアウト処理を追加
             const sendMessageWithTimeout = () => {
@@ -1725,15 +1731,14 @@ const log = {
           );
         }
 
-        return result;
-      },
-      "Geminiタスク実行",
-      {
-        feature: taskData.function,
-        model: taskData.model,
-        taskId: taskId,
-      },
-    );
+      return result;
+    } catch (error) {
+      log.error(`❌ [Gemini] タスク実行エラー:`, error);
+      return {
+        success: false,
+        error: error.message || "タスク実行失敗",
+      };
+    }
   }
 
   // リトライ可能なエラーか判定

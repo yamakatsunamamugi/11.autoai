@@ -2429,38 +2429,51 @@ async function reportSelectorError(selectorKey, error, selectors) {
     */
 
   /**
-   * 🎯 ChatGPTモデル選択処理
+   * 🎯 ChatGPTモデル選択処理 - RetryManager統合
    * @description 指定されたモデル名のモデルを選択
    * @param {string} modelName - 選択するモデル名（例: "GPT-4", "GPT-3.5"）
    * @returns {Promise<boolean>} 選択成功フラグ
    * @throws {Error} モデルが見つからない場合
    */
   async function selectModelChatGPT(modelName) {
-    const modelButton = await findElement(
-      SELECTORS.modelButton,
-      "モデルボタン",
-    );
-    await openModelMenu(modelButton);
+    const retryManager = new ChatGPTRetryManager();
+    const result = await retryManager.executeWithRetry(
+      async () => {
+        const modelButton = await findElement(
+          SELECTORS.modelButton,
+          "モデルボタン",
+        );
+        await openModelMenu(modelButton);
 
-    const modelMenuEl = await findElement(
-      SELECTORS.modelMenu,
-      "モデルメニュー",
-    );
-    if (!modelMenuEl) throw new Error("モデルメニューが開きません");
+        const modelMenuEl = await findElement(
+          SELECTORS.modelMenu,
+          "モデルメニュー",
+        );
+        if (!modelMenuEl) throw new Error("モデルメニューが開きません");
 
-    // メインメニューから検索
-    const mainMenuItems = modelMenuEl.querySelectorAll(
-      '[role="menuitem"][data-testid^="model-switcher-"]',
+        // メインメニューから検索
+        const mainMenuItems = modelMenuEl.querySelectorAll(
+          '[role="menuitem"][data-testid^="model-switcher-"]',
+        );
+        for (const item of mainMenuItems) {
+          if (getCleanText(item).includes(modelName)) {
+            item.click();
+            await sleep(1000);
+            return { success: true };
+          }
+        }
+
+        throw new Error(`モデル '${modelName}' が見つかりません`);
+      },
+      "ChatGPTモデル選択",
+      { modelName },
     );
-    for (const item of mainMenuItems) {
-      if (getCleanText(item).includes(modelName)) {
-        item.click();
-        await sleep(1000);
-        return true;
-      }
+
+    if (!result.success) {
+      throw new Error(result.error?.message || "モデル選択失敗");
     }
 
-    throw new Error(`モデル '${modelName}' が見つかりません`);
+    return true;
   }
 
   /**
