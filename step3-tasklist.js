@@ -6976,12 +6976,16 @@ class DynamicTaskSearch {
         this.cache.spreadsheetData = null;
         this.cache.lastFetchTime = null;
 
-        // 新しいグループに関連しない処理中タスクをクリア
+        // 新しいグループに関連しない処理中タスクと完了タスクをクリア
         if (
           changeEvent.currentGroup?.groupNumber !==
           changeEvent.previousGroup?.groupNumber
         ) {
           this.processingTasks.clear(); // 前のグループの処理中タスクをクリア
+          this.completedTasks.clear(); // 前のグループの完了タスクもクリア
+          log.info(
+            `[3-4] 🔄 グループ${changeEvent.currentGroup?.groupNumber}に移行 - タスク記録をリセット`,
+          );
         }
       };
 
@@ -7522,14 +7526,11 @@ class DynamicTaskSearch {
 
   /**
    * タスクが実行可能かチェック
-   * 【修正】重複実行防止のための厳密なチェック
+   * 【修正】スプレッドシートの実データを優先して確認
    */
   async isTaskAvailable(taskId, cellValue) {
     const startTimestamp = new Date().toISOString();
     const callId = `${taskId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-
-    // 🔍 【詳細デバッグ】Group 2のタスク可用性詳細チェック
-    // 競合状態検知のための内部記録のみ（ログ出力削除）
 
     // エラー相関トラッカーへのイベント記録
     if (window.errorCorrelationTracker) {
@@ -7545,18 +7546,13 @@ class DynamicTaskSearch {
       );
     }
 
-    // 【修正1】すでに完了済みならスキップ（優先度：最高）
-    if (this.completedTasks.has(taskId)) {
-      return false;
-    }
-
-    // 【修正2】現在処理中ならスキップ（優先度：最高）
+    // 【優先度1】現在処理中ならスキップ（並列実行の安全性）
     if (this.processingTasks.has(taskId)) {
       log.debug(`[3-4] ❌ タスク実行拒否 - 処理中: ${taskId}`);
       return false;
     }
 
-    // 【修正2.5】セル位置ベースの重複チェック（より確実な重複防止）
+    // 【優先度2】セル位置ベースの重複チェック（並列実行の安全性）
     const cellPosition = this.extractCellPosition(taskId);
     if (cellPosition) {
       for (const processingTaskId of this.processingTasks) {
@@ -7573,85 +7569,76 @@ class DynamicTaskSearch {
       }
     }
 
-    // 【修正3】最新データ再取得による二重確認
-    // セル値が空の場合、スプレッドシートから最新値を再確認
-    if (!cellValue || !cellValue.trim()) {
-      log.debug(`[3-4] ⚠️ セル空検出 - 最新データ再確認: ${taskId}`);
+    // 【優先度3】スプレッドシートの実データを常に確認（最新データ優先）
+    // completedTasksのメモリチェックより実データを優先
+    try {
+      // 最新のスプレッドシートデータを強制取得
+      const latestData = await this.fetchLatestSpreadsheetData(true); // forceRefresh=true
 
-      try {
-        // 最新のスプレッドシートデータを強制取得
-        const latestData = await this.fetchLatestSpreadsheetData(true); // forceRefresh=true
+      // 該当セルの最新値を確認
+      const match = taskId.match(/([A-Z]+)(\d+)/);
+      if (match && latestData) {
+        const [, column, row] = match;
+        const rowIndex = parseInt(row) - 1;
+        const colIndex = this.columnToIndex(column);
 
-        // 該当セルの最新値を確認
-        const match = taskId.match(/([A-Z]+)(\d+)/);
-        if (match && latestData) {
-          const [, column, row] = match;
-          const rowIndex = parseInt(row) - 1;
-          const colIndex = this.columnToIndex(column);
+        if (latestData[rowIndex] && latestData[rowIndex][colIndex]) {
+          const latestCellValue = latestData[rowIndex][colIndex];
 
-          if (latestData[rowIndex] && latestData[rowIndex][colIndex]) {
-            const latestCellValue = latestData[rowIndex][colIndex];
-
-            // 最新セル値の内部確認
-
-            // 最新データに内容がある場合は実行拒否
-            if (latestCellValue && latestCellValue.trim()) {
-              if (latestCellValue.startsWith("作業中")) {
-                return false;
+          // 最新データに内容がある場合は実行拒否
+          if (latestCellValue && latestCellValue.trim()) {
+            // 作業中マーカーの場合
+            if (latestCellValue.startsWith("作業中")) {
+              // TaskStatusManagerでタイムアウトチェック
+              if (window.TaskStatusManager) {
+                const taskInfo = this.extractTaskInfo(taskId);
+                if (taskInfo) {
+                  const statusManager = new window.TaskStatusManager();
+                  const isTimeout = statusManager.isTaskTimedOut(
+                    latestCellValue,
+                    taskInfo,
+                  );
+                  if (isTimeout) {
+                    log.info(
+                      `[3-4] ⏰ タイムアウト検出 - 再実行可能: ${taskId}`,
+                    );
+                    // completedTasksから削除（再実行可能にする）
+                    this.completedTasks.delete(taskId);
+                    return true;
+                  }
+                }
               }
-
-              // 実際の回答がある場合
-              this.completedTasks.add(taskId); // 完了済みとしてマーク
-              log.debug(`[3-4] ✅ 最新確認で回答発見 - 重複防止: ${taskId}`);
-              return false;
+              return false; // タイムアウトしていないのでブロック
             }
+
+            // 実際の回答がある場合
+            this.completedTasks.add(taskId); // 完了済みとしてマーク
+            log.debug(`[3-4] ✅ 最新確認で回答発見 - 重複防止: ${taskId}`);
+            return false;
           }
         }
-      } catch (error) {
-        log.debug(`[3-4] ⚠️ 最新データ確認エラー: ${error.message}`);
-        // エラーの場合は慎重にスキップ
-        return false;
-      }
-    }
-
-    // セルに値がある場合
-    if (cellValue && cellValue.trim()) {
-      // 作業中マーカーの場合
-      if (cellValue.startsWith("作業中")) {
-        // 既存のTaskStatusManagerでタイムアウトチェック
-        if (window.TaskStatusManager) {
-          const taskInfo = this.extractTaskInfo(taskId);
-          if (taskInfo) {
-            const statusManager = new window.TaskStatusManager();
-            const isTimeout = statusManager.isTaskTimedOut(cellValue, taskInfo);
-            if (isTimeout) {
-              log.info(`[3-4] ⏰ タイムアウト検出 - 再実行可能: ${taskId}`);
-              return true; // タイムアウトしたので実行可能
-            }
-          }
-        }
-        return false; // タイムアウトしていないのでブロック
       }
 
-      // すでに回答がある場合
-      this.completedTasks.add(taskId); // 完了済みとしてマーク
+      // スプレッドシートで空セルを確認 → completedTasksから削除（回答削除のケース）
+      if (this.completedTasks.has(taskId)) {
+        log.info(`[3-4] 🔄 回答削除を検知 - 再実行可能: ${taskId}`);
+        this.completedTasks.delete(taskId);
+      }
+    } catch (error) {
+      log.debug(`[3-4] ⚠️ 最新データ確認エラー: ${error.message}`);
+      // エラーの場合は慎重にスキップ
       return false;
     }
 
-    // 【修正4】最終確認：処理中状態を再度チェック
+    // 【優先度4】最終確認：処理中状態を再度チェック
     if (this.processingTasks.has(taskId)) {
       log.debug(`[3-4] ❌ 最終チェックで処理中検出 - 重複防止: ${taskId}`);
       return false;
     }
 
-    // セルが本当に空の場合のみ実行可能
-    const result = true;
-    const endTimestamp = new Date().toISOString();
-
-    // 最終判定結果の内部記録のみ（ログ出力削除）
-
+    // セルが空の場合のみ実行可能
     log.info(`[3-4] ✅ タスク実行許可: ${taskId}`);
-    return result;
+    return true;
   }
 
   /**
