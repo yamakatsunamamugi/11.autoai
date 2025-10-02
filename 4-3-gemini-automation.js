@@ -1732,23 +1732,6 @@ const log = {
     }
   }
 
-  // リトライ可能なエラーか判定
-  function isRetryableError(error) {
-    const retryableErrors = [
-      "タイムアウト",
-      "timeout",
-      "ネットワーク",
-      "network",
-      "一時的",
-      "temporary",
-      "停止ボタン",
-      "応答待機",
-    ];
-
-    const errorMessage = (error.message || "").toLowerCase();
-    return retryableErrors.some((keyword) => errorMessage.includes(keyword));
-  }
-
   // ========================================
   // グローバル公開
   // ========================================

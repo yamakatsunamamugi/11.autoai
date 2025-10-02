@@ -9165,6 +9165,538 @@ ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "SpreadsheetDataManage
 ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "DetailedLogManager");
 ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "WindowLifecycleManager");
 ExecuteLogger.debug("✅ [DEBUG] クラス定義完了:", "SpecialTaskProcessor");
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readSpreadsheet(range, retryCount = 0) {
+  LoopLogger.info(`[Helper] スプレッドシート読み込み: ${range}`);
+
+  try {
+    // グローバル状態から認証情報とスプレッドシートIDを取得
+    if (!window.globalState || !window.globalState.authToken) {
+      throw new Error("認証情報が見つかりません");
+    }
+
+    if (!window.globalState.spreadsheetId) {
+      throw new Error("スプレッドシートIDが見つかりません");
+    }
+
+    const spreadsheetId = window.globalState.spreadsheetId;
+    const accessToken = window.globalState.authToken;
+
+    // Google Sheets API呼び出し（既存のapiHeadersを活用）
+    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+    const headers = window.globalState.apiHeaders || {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    };
+
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: headers,
+    });
+
+    if (!response.ok) {
+      // 429エラー（レート制限）の場合、リトライ処理（最大5回）
+      if (response.status === 429 && retryCount < 5) {
+        const retryAfter = response.headers.get("Retry-After");
+
+        // バックオフ戦略: 5秒→10秒→20秒→30秒→60秒
+        const backoffTimes = [5000, 10000, 20000, 30000, 60000];
+        const waitTime = retryAfter
+          ? parseInt(retryAfter) * 1000
+          : backoffTimes[Math.min(retryCount, backoffTimes.length - 1)];
+
+        LoopLogger.warn(
+          `[Helper] APIレート制限エラー (429) 検出。${waitTime}ms後にリトライ...`,
+          {
+            リトライ回数: retryCount + 1,
+            最大リトライ: 5,
+            待機時間: `${waitTime / 1000}秒`,
+            範囲: range,
+          },
+        );
+
+        await sleep(waitTime);
+        return readSpreadsheet(range, retryCount + 1);
+      }
+
+      throw new Error(
+        `API応答エラー: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const data = await response.json();
+    LoopLogger.info(
+      `[Helper] 読み込み成功: ${data.values ? data.values.length : 0}行取得`,
+    );
+
+    return data;
+  } catch (error) {
+    LoopLogger.error("[Helper] スプレッドシート読み込みエラー:", error);
+    throw error;
+  }
+}
+
+/**
+ * スプレッドシート全体のデータを取得（Step3が期待する2次元配列形式）
+ * @returns {Promise<Array>} スプレッドシートの2次元配列データ
+ */
+async function readFullSpreadsheet() {
+  // DEBUG: readFullSpreadsheet関数実行開始
+
+  LoopLogger.info("[Helper] スプレッドシート全体データ取得開始");
+
+  try {
+    if (!window.globalState || !window.globalState.spreadsheetId) {
+      throw new Error("スプレッドシートIDが見つかりません");
+    }
+
+    // シート名を取得
+    const sheetName =
+      window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
+
+    // 全体範囲を取得（A1:ZZ1000の範囲で十分なデータを取得）
+    const fullRange = `'${sheetName}'!A1:ZZ1000`;
+    const data = await readSpreadsheet(fullRange);
+
+    if (!data || !data.values) {
+      LoopLogger.warn("[Helper] スプレッドシートデータが空です");
+      return [];
+    }
+
+    // ログバッファに集約
+    const logData = {
+      取得行数: data.values.length,
+      "データサンプル（最初の3行）": data.values.slice(0, 3),
+    };
+    LoopLogger.info(`[Helper] スプレッドシート全体データ取得完了:`, logData);
+
+    // 🔍 デバッグログ：データの形状
+    try {
+      const debugInfo = {
+        全体行数: data.values?.length,
+        各行の列数: data.values?.slice(0, 10).map((row, i) => ({
+          行番号: i + 1,
+          列数: row.length,
+        })),
+        最長行: Math.max(...(data.values?.map((row) => row.length) || [0])),
+        最短行: Math.min(...(data.values?.map((row) => row.length) || [0])),
+        "36行目の列数": data.values?.[35]?.length,
+        "36行目の内容プレビュー": data.values?.[35]?.slice(0, 5),
+      };
+
+      // デバッグ情報を一つのログにまとめる
+      const debugLog = {
+        データ形状: debugInfo,
+        プロパティ詳細: {},
+      };
+
+      // オブジェクトの各プロパティをチェック
+      for (const [key, value] of Object.entries(debugInfo)) {
+        debugLog["プロパティ詳細"][key] = {
+          type: typeof value,
+          isNull: value === null,
+          isUndefined: value === undefined,
+          valuePreview: JSON.stringify(value).substring(0, 100),
+        };
+      }
+
+      // LoopLogger.debug("🔍 [DEBUG] データ形状詳細（統合）:", debugLog);
+    } catch (debugError) {
+      LoopLogger.error("❌ [DEBUG] デバッグ情報の出力エラー:", {
+        message: debugError.message,
+        stack: debugError.stack,
+        lineNumber: debugError.lineNumber,
+      });
+    }
+
+    return data.values;
+  } catch (error) {
+    LoopLogger.error("[Helper] スプレッドシート全体データ取得エラー:", error);
+    throw error;
+  }
+}
+
+async function createTaskList(taskGroup, isFirstRun = false) {
+  LoopLogger.info("[Helper] タスクリスト作成開始:", {
+    グループ番号: taskGroup?.groupNumber,
+    グループタイプ: taskGroup?.groupType,
+    列情報: taskGroup?.columns,
+    dataStartRow: taskGroup?.dataStartRow,
+    初回実行: isFirstRun
+      ? "はい（作業中マーカー削除あり）"
+      : "いいえ（通常処理）",
+  });
+
+  // ログバッファを初期化
+  const logBuffer = [];
+  const addLog = (message, data) => {
+    if (data) {
+      logBuffer.push(`${message}: ${JSON.stringify(data)}`);
+    } else {
+      logBuffer.push(message);
+    }
+  };
+
+  try {
+    // Step3TaskList利用可能性の詳細チェック
+
+    // step3-tasklist.jsのgenerateTaskList関数を利用
+    if (!window.Step3TaskList || !window.Step3TaskList.generateTaskList) {
+      throw new Error("Step3TaskList.generateTaskListが利用できません");
+    }
+
+    // 重要：Step3が期待する実際のスプレッドシートデータ（2次元配列）を取得
+    LoopLogger.info("[Helper] スプレッドシート全体データを取得中...");
+    const spreadsheetData = await readFullSpreadsheet();
+
+    if (!spreadsheetData || spreadsheetData.length === 0) {
+      LoopLogger.warn(
+        "[Helper] スプレッドシートデータが空のため、タスク生成をスキップ",
+      );
+      return [];
+    }
+
+    const specialRows = {
+      menuRow: window.globalState.setupResult?.menuRow || 3,
+      aiRow: window.globalState.setupResult?.aiRow || 5,
+      modelRow: window.globalState.setupResult?.modelRow || 6,
+      functionRow: window.globalState.setupResult?.functionRow || 7,
+    };
+
+    // taskGroupから直接dataStartRowを取得（統一構造）
+    const dataStartRow =
+      taskGroup?.dataStartRow ||
+      window.globalState.setupResult?.dataStartRow ||
+      9;
+
+    const options = {
+      batchSize: 3,
+      forceReprocess: false,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${window.globalState.spreadsheetId}/edit#gid=${window.globalState.gid}`,
+    };
+
+    // Step 5-3-前処理: 制御情報の取得と適用
+    LoopLogger.info(
+      "[createTaskList] [Step 5-3-前処理] 行制御・列制御情報を取得中...",
+    );
+
+    let rowControls = [];
+    let columnControls = [];
+
+    try {
+      // Step 5-3-1: 行制御をチェック
+      rowControls = window.Step3TaskList.getRowControl(spreadsheetData);
+
+      // 🔧 [OFFSET-FIX] createTaskList用のdataStartRowオフセット適用
+      // 注意：spreadsheetDataは全体データなので、dataStartRowオフセットは不要
+      // rowControlsは既に正しい行番号を持っている
+
+      LoopLogger.info("[createTaskList] [Step 5-3-1] 行制御情報取得完了:", {
+        制御数: rowControls.length,
+        詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
+        備考: "全体データからの行制御取得（オフセット不要）",
+      });
+
+      // Step 5-3-2: 列制御の再チェック（タスクグループ作成後の追加フィルタ）
+      const columnControlRow =
+        window.globalState.setupResult?.columnControlRow || 4;
+      columnControls = window.Step3TaskList.getColumnControl(
+        spreadsheetData,
+        columnControlRow,
+      );
+      LoopLogger.info("[createTaskList] [Step 5-3-2] 列制御情報取得完了:", {
+        制御数: columnControls.length,
+        制御行: columnControlRow,
+        詳細: columnControls.map((c) => `${c.type}制御: ${c.column}列`),
+      });
+    } catch (error) {
+      LoopLogger.error(
+        "[createTaskList] [Step 5-3-前処理] 制御情報取得エラー:",
+        {
+          エラーメッセージ: error.message,
+          スタック: error.stack,
+        },
+      );
+      // エラーが発生しても処理を継続
+    }
+
+    // Step 5-3-3: 列制御チェック（タスクグループレベルでの追加フィルタリング）
+    if (columnControls.length > 0) {
+      LoopLogger.info("[createTaskList] [Step 5-3-3] 列制御チェック実行中...");
+
+      if (
+        !window.Step3TaskList.shouldProcessColumn(taskGroup, columnControls)
+      ) {
+        LoopLogger.info("[createTaskList] [Step 5-3-3] タスクグループ除外:", {
+          グループ番号: taskGroup.groupNumber,
+          理由: "列制御により除外（この列から処理/この列の処理後に停止/この列のみ処理）",
+          グループ列: taskGroup?.columns?.prompts,
+          列制御: columnControls.map((c) => `${c.type}:${c.column}`),
+        });
+        return []; // このタスクグループは処理しない
+      } else {
+        LoopLogger.info("[createTaskList] [Step 5-3-3] タスクグループ通過:", {
+          グループ番号: taskGroup.groupNumber,
+          理由: "列制御を通過",
+        });
+      }
+    } else {
+      LoopLogger.info(
+        "[createTaskList] [Step 5-3-前処理] 列制御なし - 全てのタスクグループを処理",
+      );
+    }
+
+    // 拡張オプションに制御情報を追加
+    const extendedOptions = {
+      ...options,
+      rowControls: rowControls,
+      columnControls: columnControls,
+      applyRowControl: true,
+      applyColumnControl: true,
+      isFirstRun: isFirstRun, // 初回実行フラグを追加
+    };
+
+    // DEBUG: Step3に渡すパラメータ
+
+    // ログバッファを一つのログとして出力
+    // LoopLogger.info(`[Step5-Loop] [統合ログ]\n${logBuffer.join("\n")}`);
+
+    // generateTaskList内でaddLogが使われているため、グローバルに定義
+    if (typeof window.addLog === "undefined") {
+      window.addLog = (message, data) => {
+        if (data) {
+          LoopLogger.info(`[Step3-TaskList] ${message}:`, data);
+        } else {
+          LoopLogger.info(`[Step3-TaskList] ${message}`);
+        }
+      };
+    }
+
+    // タスクリスト生成を実行（制御情報付き）
+    const tasks = await window.Step3TaskList.generateTaskList(
+      taskGroup,
+      spreadsheetData, // 修正：実際の2次元配列データを渡す
+      specialRows,
+      dataStartRow,
+      extendedOptions, // 制御情報を含む拡張オプション
+    );
+
+    LoopLogger.info(`[Helper] タスクリスト作成完了: ${tasks.length}件のタスク`);
+    if (tasks.length > 0) {
+      LoopLogger.info("[Helper] 生成されたタスクサンプル:", tasks.slice(0, 2));
+    } else {
+      LoopLogger.warn(
+        "[Helper] ⚠️ 0件のタスクが生成されました。以下を確認してください:",
+      );
+      LoopLogger.warn(
+        "  - taskGroup.columns.prompts:",
+        taskGroup?.columns?.prompts,
+      );
+      LoopLogger.warn("  - プロンプトデータの存在確認が必要");
+    }
+
+    return tasks;
+  } catch (error) {
+    LoopLogger.error("[Helper] タスクリスト作成エラー:", {
+      エラーメッセージ: error.message,
+      スタック: error.stack,
+      taskGroup: taskGroup,
+      "window.Step3TaskList": !!window.Step3TaskList,
+    });
+    throw error;
+  }
+}
+
+async function executeTasks(tasks, taskGroup) {
+  LoopLogger.info(`[Helper] タスク実行開始: ${tasks.length}件`, {
+    グループ番号: taskGroup?.groupNumber,
+    タスクタイプ: taskGroup?.taskType,
+    パターン: taskGroup?.pattern,
+  });
+
+  // 🔍 デバッグ: 関数開始直後のログ
+  // DEBUG: executeTasks関数に入りました
+
+  try {
+    // step4-execute.jsのexecuteStep4関数を利用
+    // DEBUG: executeStep4チェック開始
+    // DEBUG: executeStep4呼び出し前チェック
+
+    if (!window.executeStep4) {
+      log.error("executeStep4が見つかりません！");
+      throw new Error("executeStep4関数が利用できません");
+    }
+
+    // DEBUG: executeStep4が見つかりました
+
+    if (!tasks || tasks.length === 0) {
+      LoopLogger.warn("[Helper] 実行するタスクがありません");
+      return [];
+    }
+
+    // タスクリストを適切な形式に変換（Step4が期待する形式に統一）
+    const formattedTasks = tasks.map((task, index) => {
+      // DEBUG: Step3からのタスクデータ詳細
+
+      // Step3で生成されたタスクの情報を使用（AI行の実際の値）
+      // taskGroupのAI列の値も考慮（グループ2はClaude、グループ3はChatGPT等）
+      let aiType = task.ai || task.aiType;
+
+      // aiTypeが取得できない場合、taskGroupの回答列から推測
+      if (!aiType && taskGroup?.answerColumnLetter) {
+        const columnLetter = taskGroup.answerColumnLetter;
+        // AG列 = Claude, P列 = ChatGPT, Q列 = Gemini 等のマッピング
+        if (columnLetter === "AG" || columnLetter === "AK") {
+          aiType = "Claude";
+        } else if (columnLetter === "P" || columnLetter === "T") {
+          aiType = "ChatGPT";
+        } else if (columnLetter === "Q" || columnLetter === "U") {
+          aiType = "Gemini";
+        } else {
+          aiType = "Claude"; // デフォルト
+        }
+        log.debug(`[DEBUG] aiType推測: ${columnLetter}列 → ${aiType}`);
+      }
+
+      // それでも取得できない場合はデフォルト値
+      aiType = aiType || "Claude";
+
+      // DEBUG: aiType決定プロセス
+
+      const formattedTask = {
+        id:
+          task.taskId ||
+          task.id ||
+          `task-${task.row}-${taskGroup.groupNumber}-${index}`,
+        row: task.row,
+        aiType: aiType,
+        prompt: task.prompt || task.text || "",
+        answerCell: task.answerCell, // 🔧 [FIX] 直接task.answerCellを設定
+        logCell: task.logCell, // 🔧 [FIX] ルートレベルにlogCellを追加
+        spreadsheetData: {
+          id: window.globalState.spreadsheetId,
+          gid: window.globalState.gid,
+          spreadsheetId: task.spreadsheetId || window.globalState.spreadsheetId, // Step3からの情報
+          answerCell: task.answerCell, // Step3で計算された回答セル
+          logCell: task.logCell, // Step3で計算されたログセル（互換性のため残す）
+        },
+        columns: taskGroup.columns,
+        taskGroup: taskGroup,
+        // Step3からの詳細情報を保持
+        model: task.model || "",
+        function: task.function || "",
+        groupNumber: task.groupNumber,
+        groupType: task.groupType,
+      };
+
+      // DEBUG: 最終フォーマットタスクの確認
+
+      LoopLogger.info(`[Helper] タスク${index + 1}フォーマット完了:`, {
+        taskId: formattedTask.id,
+        row: formattedTask.row,
+        aiType: formattedTask.aiType,
+        プロンプト長: formattedTask.prompt.length,
+        answerCell: formattedTask.answerCell, // 🔧 [FIX] 直接参照するように変更
+        logCell: formattedTask.spreadsheetData.logCell,
+      });
+
+      return formattedTask;
+    });
+
+    LoopLogger.info(
+      `[Helper] フォーマット済みタスク: ${formattedTasks.length}件`,
+    );
+    LoopLogger.info("[Helper] 最初のタスク詳細:", formattedTasks[0]);
+
+    // Step4バリデーション
+    for (const task of formattedTasks) {
+      if (!task.aiType) {
+        throw new Error(`タスク${task.id}: aiTypeが未定義`);
+      }
+      if (!task.prompt) {
+        throw new Error(`タスク${task.id}: promptが未定義`);
+      }
+      // 特殊タスク（report, genspark）の場合はanswerCellが不要なので警告を出さない
+      const isSpecialTask =
+        task.groupType === "report" ||
+        task.groupType === "genspark" ||
+        task.ai === "Report" ||
+        task.ai === "Genspark";
+
+      // デバッグログ：タスクの詳細情報を出力
+      if (!task.spreadsheetData.answerCell) {
+        // DEBUG: answerCell検証
+
+        if (!isSpecialTask) {
+          LoopLogger.warn(`タスク${task.id}: answerCellが未定義（通常タスク）`);
+        } else {
+          LoopLogger.info(`タスク${task.id}: answerCell不要（特殊タスク）`);
+        }
+      }
+    }
+
+    // Step4を実行
+    LoopLogger.info("[Helper] Step4実行中...");
+
+    // 🔧 [UNIFICATION] タスク配列生成確認ログ
+    LoopLogger.info("📋 [UNIFICATION] processIncompleteTasks → executeStep4:", {
+      データ形式: "タスク配列",
+      タスク数: formattedTasks.length,
+      グループ番号: formattedTasks[0]?.groupNumber || "不明",
+      最初のタスクID: formattedTasks[0]?.id || "不明",
+      プロンプトプレビュー:
+        formattedTasks[0]?.prompt?.substring(0, 50) + "..." || "なし",
+      executeStep4呼び出し: "step3経由（統一フロー）",
+      生成方法: "generateTaskList経由",
+    });
+
+    // DEBUG: executeStep4呼び出し直前の詳細ログ
+    // DEBUG: executeStep4を呼び出す直前
+
+    // 🎯 [DEBUG] 最終チェック - より詳細な情報
+    // DEBUG: executeStep4呼び出し直前の最終チェック
+
+    try {
+      // DEBUG: executeStep4を呼び出し
+      log.debug(
+        "🔍 [STEP3-EXEC] executeStep4呼び出し前のSimpleSheetsClient状態:",
+        !!window.simpleSheetsClient,
+      );
+      const results = await window.executeStep4(formattedTasks);
+      // DEBUG: executeStep4完了
+      log.debug(
+        "✅ [STEP3-EXEC] executeStep4実行完了後のSimpleSheetsClient状態:",
+        !!window.simpleSheetsClient,
+      );
+      return results || [];
+    } catch (step4Error) {
+      log.error("executeStep4でエラーが発生:", step4Error.message);
+      throw step4Error;
+    }
+  } catch (error) {
+    LoopLogger.error("⚠️ [DEBUG] エラー詳細:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      cause: error.cause,
+    });
+
+    LoopLogger.error("[Helper] タスク実行エラー:", {
+      エラーメッセージ: error.message,
+      スタック: error.stack,
+      タスク数: tasks?.length,
+      グループ情報: {
+        番号: taskGroup?.groupNumber,
+        タイプ: taskGroup?.taskType,
+      },
+      "window.executeStep4存在": !!window.executeStep4,
+    });
+    throw error;
+  }
+}
 
 // ========================================
 // Export to window for global access
@@ -9205,6 +9737,12 @@ if (typeof window !== "undefined") {
     hasExecuteWithRetry:
       typeof window.windowLifecycleManager.executeWithRetry === "function",
   });
+
+  // タスク実行関連の関数をエクスポート
+  window.readSpreadsheet = readSpreadsheet;
+  window.readFullSpreadsheet = readFullSpreadsheet;
+  window.createTaskList = createTaskList;
+  window.executeTasks = executeTasks;
 
   ExecuteLogger.info("✅ executeStep4 exported to window");
   ExecuteLogger.info(

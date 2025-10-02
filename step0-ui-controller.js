@@ -57,7 +57,6 @@ window.scriptLoadTracker = {
     "step0-ui-controller.js": [
       "step1-setup.js",
       "step2-taskgroup.js",
-      "step3-loop.js",
       "step4-tasklist.js",
       "step5-execute.js",
     ],

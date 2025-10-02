@@ -3241,81 +3241,6 @@
     };
 
     /**
-     * ユーザー/アシスタント境界検出
-     * 【動作説明】最後のユーザーメッセージ後のAI応答を確実に取得
-     * 【戻り値】Element or null: AI応答要素
-     */
-    const getCleanAIResponse = async () => {
-      log.debug("🔍 [getCleanAIResponse] ユーザー/アシスタント境界検出");
-
-      // 最後のユーザーメッセージを探す
-      const userMessages = document.querySelectorAll(
-        '[data-testid="user-message"]',
-      );
-      const lastUserMessage = userMessages[userMessages.length - 1];
-
-      if (lastUserMessage) {
-        log.debug("  ✓ 最後のユーザーメッセージを発見");
-
-        // 最後のユーザーメッセージの後の要素を取得
-        let nextElement = lastUserMessage.nextElementSibling;
-
-        while (nextElement) {
-          // アシスタントメッセージを探す
-          if (
-            nextElement.matches('[data-testid="assistant-message"]') ||
-            nextElement.querySelector('[data-testid="assistant-message"]')
-          ) {
-            log.debug("  ✓ アシスタントメッセージを検出");
-
-            // standard-markdownクラスを最優先で探す
-            const standardContent = nextElement.querySelector(
-              ".grid-cols-1.grid.standard-markdown",
-            );
-            if (standardContent && !shouldExcludeElement(standardContent)) {
-              log.debug("  ✓ 標準マークダウン要素を発見（最優先）");
-              return standardContent;
-            } else if (standardContent) {
-              log.debug("  ⚠️ 標準マークダウン要素は除外対象");
-            }
-
-            // 次にCanvas要素を探す
-            const canvasContent = nextElement.querySelector(
-              "#markdown-artifact, .grid-cols-1.grid.gap-2\\.5, .code-block__code",
-            );
-
-            if (canvasContent && !shouldExcludeElement(canvasContent)) {
-              log.debug("  ✓ Canvas要素を発見");
-              return canvasContent;
-            } else if (canvasContent) {
-              log.debug("  ⚠️ Canvas要素は除外対象");
-            }
-
-            // フォールバック：単純な.standard-markdownクラス
-            const simpleStandardContent =
-              nextElement.querySelector(".standard-markdown");
-            if (
-              simpleStandardContent &&
-              !shouldExcludeElement(simpleStandardContent)
-            ) {
-              log.debug("  ✓ 標準マークダウン要素を発見（フォールバック）");
-              return simpleStandardContent;
-            } else if (simpleStandardContent) {
-              log.debug(
-                "  ⚠️ 標準マークダウン要素は除外対象（フォールバック）",
-              );
-            }
-          }
-          nextElement = nextElement.nextElementSibling;
-        }
-      } else {
-        log.debug("  ⚠️ ユーザーメッセージが見つかりません");
-      }
-
-      return null;
-    };
-
-    /**
      * 除外すべき要素かを判定する統一関数
      * 【動作説明】ユーザーメッセージと思考プロセスを確実に除外
      * 【引数】element: チェック対象の要素
@@ -3397,103 +3322,6 @@
       }
 
       return false;
-    };
-
-    /**
-     * 思考プロセス除外の強化（簡略版）
-     * 【動作説明】思考プロセス要素を確実に除外
-     * 【引数】element: チェック対象の要素
-     * 【戻り値】Element or null: クリーンな要素
-     */
-    const excludeThinkingProcess = (element) => {
-      if (!element) return null;
-
-      log.debug("🧹 [excludeThinkingProcess] 思考プロセス除外チェック開始");
-
-      const textContent = element.textContent?.trim() || "";
-
-      // テキスト内容による思考プロセス判定
-      const thinkingTextPatterns = [
-        "思考プロセス",
-        "Thinking Process",
-        "Let me think",
-        "考えてみます",
-      ];
-
-      for (const pattern of thinkingTextPatterns) {
-        if (textContent.toLowerCase().includes(pattern.toLowerCase())) {
-          log.debug(`  ❌ 思考プロセステキストを検出: "${pattern}"`);
-          return null;
-        }
-      }
-
-      // 詳細要素（details/summary）のチェック
-      const details = element.querySelectorAll("details");
-      for (const detail of details) {
-        const summary = detail.querySelector("summary");
-        if (summary && summary.textContent?.includes("思考")) {
-          log.debug(
-            `  ❌ 思考プロセス詳細要素を検出: "${summary.textContent}"`,
-          );
-          return null;
-        }
-      }
-
-      // 非常に短いテキストをチェック
-      if (textContent.length < 10) {
-        log.debug(`  ❌ テキストが短すぎます: ${textContent.length}文字`);
-        return null;
-      }
-
-      // 有効性をチェック
-      const validContentLength = textContent.replace(/\s+/g, " ").trim().length;
-      if (validContentLength < 20) {
-        log.debug(`  ❌ 有効なコンテンツが不足: ${validContentLength}文字`);
-        return null;
-      }
-
-      log.debug(`  ✅ 有効なコンテンツ: ${validContentLength}文字`);
-      return element;
-    };
-
-    /**
-     * コンテンツ検証（簡略版）
-     * 【動作説明】セレクタベースでの除外がメインのため、基本的なチェックのみ
-     * 【引数】element: 検証対象の要素
-     * 【戻り値】boolean: 有効なコンテンツかどうか
-     */
-    const validateResponseContent = (element) => {
-      if (!element) return false;
-
-      // 統一除外関数でチェック
-      if (shouldExcludeElement(element)) {
-        log.debug("  ⚠️ shouldExcludeElement()で除外");
-        return false;
-      }
-
-      // ========== 基本的なコンテンツチェック ==========
-      const text = element.textContent?.trim() || "";
-
-      // UIラベルのみのチェック
-      const uiLabels = [
-        "User",
-        "Assistant",
-        "ユーザーのプロンプト",
-        "思考プロセス",
-      ];
-      if (uiLabels.includes(text.trim())) {
-        log.debug(`  ⚠️ UIラベルを検出: ${text.trim()}`);
-        return false;
-      }
-
-      // 最小文字数チェック
-      if (text.length < 10) {
-        log.debug(`  ⚠️ テキストが短すぎます: ${text.length}文字`);
-        return false;
-      }
-
-      log.debug(`  ✓ 有効なコンテンツ: ${text.length}文字`);
-      return true;
     };
 
     // findElementBySelectors関数は削除（重複のため）
@@ -3654,34 +3482,6 @@
         text: text,
         method: `Font Claude Response (${responseType})`,
       };
-    };
-
-    /**
-     * テキスト内容によるプロンプト除外（簡略版）
-     * 【動作説明】セレクタベースの除外がメインのため、テキストパターンマッチングは簡略化
-     * 【引数】fullText: 完全テキスト
-     * 【戻り値】String: テキスト（セレクタベースで除外されているためそのまま返却）
-     */
-    const removePromptFromText = (fullText, sentPrompt = null) => {
-      if (!fullText) return "";
-
-      log.debug(
-        "✂️ [removePromptFromText] セレクタベースで除外済みのため、テキストをそのまま返却",
-      );
-      log.debug(`  - 入力テキスト長: ${fullText.length}文字`);
-
-      // セレクタベースでのPROMPT除外がメインのため、テキストパターンマッチングは簡略化
-      // HTML構造の<details>タグのみ除外（思考プロセスの折りたたみブロック）
-      let processedText = fullText;
-      if (processedText.includes("<details>")) {
-        log.debug("  - <details>ブロックを除外");
-        processedText = processedText.replace(
-          /<details>[\s\S]*?<\/details>/gi,
-          "",
-        );
-      }
-
-      return processedText.trim();
     };
 
     // Claude-ステップ1-9: テキストプレビュー取得関数（統一版）
@@ -5361,10 +5161,6 @@
                 isTransient: true,
                 description: "不明なエラー",
               };
-            };
-
-            const isTransientError = (error) => {
-              return classifyError(error).isTransient;
             };
 
             // リトライ付きsendMessage実行関数

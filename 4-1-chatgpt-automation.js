@@ -2014,91 +2014,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
     return null;
   }
 
-  // 6-1: 停止ボタン出現待機
-  async function waitForStopButton() {
-    logWithTimestamp("【Step 4-1-6-1】停止ボタン出現待機", "step");
-    for (let i = 0; i < 60; i++) {
-      const stopBtn = await findElement(SELECTORS.stopButton, 1);
-      if (stopBtn) {
-        logWithTimestamp(
-          `停止ボタンが表示されました (${i + 1}秒後)`,
-          "success",
-        );
-        return stopBtn;
-      }
-      if (i % 10 === 0 && i > 0) {
-        logWithTimestamp(`停止ボタン待機中... ${i}秒経過`, "info");
-      }
-      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-    }
-    logWithTimestamp(
-      "【Step 4-1-6-1】停止ボタンが表示されませんでした",
-      "warning",
-    );
-    return null;
-  }
-
-  // 6-2: 2分間初期待機
-  async function initialWaitCheck() {
-    logWithTimestamp("【Step 4-1-6-2】2分間初期待機チェック", "step");
-    for (let i = 0; i < 120; i++) {
-      const stopBtn = await findElement(SELECTORS.stopButton, 1);
-      if (!stopBtn) {
-        const minutes = Math.floor(i / 60);
-        const seconds = i % 60;
-        logWithTimestamp(
-          `停止ボタンが消えました (${minutes}分${seconds}秒で完了)`,
-          "info",
-        );
-        return true;
-      }
-      if (i % 30 === 0 && i > 0) {
-        logWithTimestamp(
-          `待機中... (${Math.floor(i / 60)}分${i % 60}秒経過)`,
-          "info",
-        );
-      }
-      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
-    }
-    return false;
-  }
-
-  // 6-3: 再送信処理
-  async function retryWithPrompt() {
-    logWithTimestamp(
-      "【Step 4-1-6-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）",
-      "step",
-    );
-    const input = await findElement(SELECTORS.textInput);
-    if (!input) return;
-
-    const retryMessage = "いいから元のプロンプトを確認して作業をして";
-
-    // テキスト入力
-    if (
-      input.classList.contains("ProseMirror") ||
-      input.classList.contains("ql-editor")
-    ) {
-      input.innerHTML = "";
-      const p = document.createElement("p");
-      p.textContent = retryMessage;
-      input.appendChild(p);
-      input.classList.remove("ql-blank");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    } else {
-      input.textContent = retryMessage;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-
-    // 送信
-    const sendBtn = await findElement(SELECTORS.sendButton);
-    if (sendBtn) {
-      sendBtn.click();
-      logWithTimestamp("【Step 4-1-6-2】再送信完了", "success");
-      await sleep(AI_WAIT_CONFIG.LONG_WAIT);
-    }
-  }
-
   // ========================================
   // 【関数一覧】検出システム用エクスポート関数
   // ========================================
@@ -3791,47 +3706,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
   // ChatGPTLogManagerをwindowに設定（即座実行関数内で実行）
   window.ChatGPTLogManager = ChatGPTLogManager;
-
-  /*
-┌─────────────────────────────────────────────────────┐
-│                【使用例】                              │
-└─────────────────────────────────────────────────────┘
-
-// 基本的な使用の流れ
-import {
-    selectModelChatGPT,
-    inputTextChatGPT,
-    sendMessageChatGPT,
-    waitForResponseChatGPT,
-    getResponseTextChatGPT
-} from './chatgpt-automation.js';
-
-async function chatWithChatGPT() {
-    try {
-        // 1. モデル選択
-        await selectModelChatGPT('GPT-4');
-
-        // 2. テキスト入力
-        await inputTextChatGPT('こんにちは、世界！JavaScriptについて教えて');
-
-        // 3. 送信
-        await sendMessageChatGPT();
-
-        // 4. レスポンス待機
-        await waitForResponseChatGPT();
-
-        // 5. 結果取得
-        const response = await getResponseTextChatGPT();
-        log.debug('ChatGPT回答:', response);
-
-        return response;
-    } catch (error) {
-        log.error('ChatGPT操作エラー:', error);
-        throw error;
-    }
-}
-
-*/
 
   // ========================================
   // 注意: ChatGPTLogManagerはIIFE内で定義されているため、

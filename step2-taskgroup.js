@@ -1329,6 +1329,991 @@ async function executeStep2TaskGroups() {
   }
 }
 
+// ========================================
+// グループ管理システム（旧step3から統合）
+// ========================================
+
+/**
+ * currentGroupの一元管理システム
+ */
+class CurrentGroupManager {
+  constructor() {
+    this.listeners = new Set();
+    this.updateHistory = [];
+    this.maxHistorySize = 10;
+    this.lastUpdateTimestamp = null;
+    this.updateLock = false;
+    log.debug("🔧 [CurrentGroupManager] 初期化完了");
+  }
+
+  async updateCurrentGroup(newGroup, source = "system") {
+    if (this.updateLock) {
+      log.debug("⏳ [CurrentGroupManager] 更新ロック中 - 待機");
+      await this.waitForUnlock();
+    }
+    this.updateLock = true;
+
+    try {
+      const oldGroup = window.globalState?.currentGroup;
+      const timestamp = new Date().toISOString();
+
+      if (
+        oldGroup?.groupNumber === newGroup?.groupNumber &&
+        oldGroup?.taskType === newGroup?.taskType
+      ) {
+        log.debug("🔄 [CurrentGroupManager] 同じグループへの更新 - スキップ");
+        return true;
+      }
+
+      if (!window.globalState) {
+        window.globalState = {};
+      }
+
+      const previousGroup = window.globalState.currentGroup;
+      window.globalState.currentGroup = {
+        ...newGroup,
+        _metadata: {
+          updatedBy: source,
+          updatedAt: timestamp,
+          previousGroup: previousGroup?.groupNumber || null,
+        },
+      };
+
+      this.recordUpdate({ from: oldGroup, to: newGroup, source, timestamp });
+
+      log.info("✅ [CurrentGroupManager] currentGroup更新完了:", {
+        previousGroup: oldGroup?.groupNumber || "none",
+        newGroup: newGroup.groupNumber,
+        source,
+      });
+
+      this.notifyListeners({
+        type: "GROUP_CHANGED",
+        previousGroup: oldGroup,
+        currentGroup: newGroup,
+        source,
+        timestamp,
+      });
+
+      return true;
+    } catch (error) {
+      log.error("❌ [CurrentGroupManager] currentGroup更新エラー:", error);
+      return false;
+    } finally {
+      this.updateLock = false;
+    }
+  }
+
+  getCurrentGroup() {
+    return window.globalState?.currentGroup;
+  }
+
+  addListener(listener) {
+    this.listeners.add(listener);
+  }
+
+  removeListener(listener) {
+    this.listeners.delete(listener);
+  }
+
+  notifyListeners(changeEvent) {
+    for (const listener of this.listeners) {
+      try {
+        listener(changeEvent);
+      } catch (error) {
+        log.warn("⚠️ [CurrentGroupManager] リスナー通知エラー:", error.message);
+      }
+    }
+  }
+
+  recordUpdate(updateRecord) {
+    this.updateHistory.push(updateRecord);
+    if (this.updateHistory.length > this.maxHistorySize) {
+      this.updateHistory = this.updateHistory.slice(-this.maxHistorySize);
+    }
+    this.lastUpdateTimestamp = updateRecord.timestamp;
+  }
+
+  async waitForUnlock() {
+    const maxWaitTime = 5000;
+    const checkInterval = 100;
+    let waitTime = 0;
+
+    while (this.updateLock && waitTime < maxWaitTime) {
+      await new Promise((resolve) => setTimeout(resolve, checkInterval));
+      waitTime += checkInterval;
+    }
+
+    if (waitTime >= maxWaitTime) {
+      log.warn("⚠️ [CurrentGroupManager] 更新ロック解除タイムアウト");
+      this.updateLock = false;
+    }
+  }
+
+  reset() {
+    this.listeners.clear();
+    this.updateHistory = [];
+    this.lastUpdateTimestamp = null;
+    this.updateLock = false;
+    if (window.globalState) {
+      window.globalState.currentGroup = null;
+    }
+    log.info("🔄 [CurrentGroupManager] システムリセット完了");
+  }
+}
+
+// グローバルインスタンス作成
+if (!window.currentGroupManager) {
+  window.currentGroupManager = new CurrentGroupManager();
+}
+
+/**
+ * currentGroupの統一アクセス関数
+ */
+function setCurrentGroup(newGroup, source = "system") {
+  return window.currentGroupManager.updateCurrentGroup(newGroup, source);
+}
+
+function getCurrentGroup() {
+  return window.currentGroupManager.getCurrentGroup();
+}
+
+function addCurrentGroupListener(listener) {
+  return window.currentGroupManager.addListener(listener);
+}
+
+function removeCurrentGroupListener(listener) {
+  return window.currentGroupManager.removeListener(listener);
+}
+
+// =======================================
+// グループ検証・完了チェック関数
+// =======================================
+
+function validateTaskGroupForStep5(taskGroup) {
+  const errors = [];
+
+  if (!taskGroup) {
+    errors.push("タスクグループが未定義");
+    return errors;
+  }
+
+  if (!taskGroup.columns) {
+    errors.push("columns構造が未定義");
+  } else {
+    if (
+      !taskGroup.columns.prompts ||
+      !Array.isArray(taskGroup.columns.prompts)
+    ) {
+      errors.push("prompts列が未定義または配列ではない");
+    }
+    if (!taskGroup.columns.answer) {
+      errors.push("answer列が未定義");
+    }
+  }
+
+  if (!taskGroup.dataStartRow || typeof taskGroup.dataStartRow !== "number") {
+    errors.push("dataStartRowが未定義または数値ではない");
+  }
+
+  return errors;
+}
+
+async function checkCompletionStatus(taskGroup) {
+  const completionCheckId = `completion_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  log.debug(
+    `🔍 [COMPLETION-CHECK] グループ${taskGroup.groupNumber}完了チェック開始`,
+  );
+
+  LoopLogger.info("[step5-loop.js→Step5-1] 完了状況の確認開始", {
+    completionCheckId,
+    groupNumber: taskGroup.groupNumber || "undefined",
+    taskType: taskGroup.taskType || "undefined",
+    pattern: taskGroup.pattern || "undefined",
+    columns: taskGroup.columns || {},
+  });
+
+  // データ検証
+  const validationErrors = validateTaskGroupForStep5(taskGroup);
+  if (validationErrors.length > 0) {
+    LoopLogger.error(
+      "[step5-loop.js] [Step 5-1] タスクグループ検証エラー:",
+      validationErrors,
+    );
+    throw new Error(`タスクグループ検証失敗: ${validationErrors.join(", ")}`);
+  }
+
+  try {
+    // ========================================
+    // シート名の取得
+    // ========================================
+    const sheetName =
+      window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
+    LoopLogger.info(`[step5-loop.js] 対象シート: ${sheetName}`);
+
+    // ========================================
+    // 行制御情報の取得（タスクグループの範囲内）
+    // ========================================
+    let rowControls = [];
+
+    // タスクグループの範囲のデータを取得して行制御を抽出
+    // 注意：B列に行制御命令が入っているため、B列を含む範囲を取得する必要がある
+    const controlCheckRange = `'${sheetName}'!B${taskGroup.dataStartRow}:B1000`;
+    let controlData;
+    try {
+      controlData = await readSpreadsheet(controlCheckRange);
+      if (controlData && controlData.values) {
+        // getRowControlの形式に合わせてデータを整形
+        const formattedData = controlData.values.map((row, index) => {
+          // B列のデータを2列目として配置（getRowControlがrowData[1]を見るため）
+          return [null, row[0] || ""];
+        });
+
+        // 行制御を取得
+        if (
+          window.Step3TaskList &&
+          typeof window.Step3TaskList.getRowControl === "function"
+        ) {
+          rowControls = window.Step3TaskList.getRowControl(formattedData);
+
+          // 🔧 [OFFSET-FIX] dataStartRowオフセットを行制御の行番号に適用
+          rowControls = rowControls.map((control) => ({
+            ...control,
+            row: control.row + taskGroup.dataStartRow - 1,
+          }));
+
+          LoopLogger.info("[step5-loop.js] 行制御情報取得:", {
+            制御数: rowControls.length,
+            詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
+            オフセット適用: `dataStartRow(${taskGroup.dataStartRow}) - 1`,
+          });
+        } else {
+          LoopLogger.warn("[step5-loop.js] getRowControl関数が利用不可");
+        }
+      }
+    } catch (error) {
+      LoopLogger.warn("[step5-loop.js] 行制御取得エラー:", error.message);
+      // エラーがあっても処理は継続（行制御なしで全行対象）
+    }
+
+    // ========================================
+    // Step 5-1-1: プロンプト列の確認
+    // ========================================
+    LoopLogger.info("[step5-loop.js→Step5-1-1] プロンプト列を確認中...");
+
+    // 必須データの検証
+    if (!taskGroup.columns || !taskGroup.columns.prompts) {
+      throw new Error(
+        "[step5-loop.js] [Step 5-1-1] エラー: columns.promptsが定義されていません",
+      );
+    }
+    if (!taskGroup.dataStartRow) {
+      LoopLogger.warn(
+        "[step5-loop.js] [Step 5-1-1] 警告: dataStartRowが未定義。デフォルト値7を使用",
+      );
+      taskGroup.dataStartRow = 7;
+    }
+
+    // セル範囲計算（自己完結型）
+    const startCol = taskGroup.columns.prompts[0];
+    const endCol =
+      taskGroup.columns.prompts[taskGroup.columns.prompts.length - 1];
+    const promptRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
+    LoopLogger.info(`[step5-loop.js] [Step 5-1-1] 取得範囲: ${promptRange}`, {
+      開始列: taskGroup.columns.prompts[0],
+      終了列: taskGroup.columns.prompts[taskGroup.columns.prompts.length - 1],
+      開始行: taskGroup.dataStartRow,
+      列数: taskGroup.columns.prompts.length,
+    });
+
+    let promptValues;
+    try {
+      promptValues = await readSpreadsheet(promptRange);
+    } catch (error) {
+      LoopLogger.error(
+        "[step5-loop.js] [Step 5-1-1] スプレッドシート読み込みエラー:",
+        {
+          範囲: promptRange,
+          エラー: error.message,
+        },
+      );
+      throw error;
+    }
+
+    // 値があるプロンプト行をカウント（行ベース：複数列でも1行は1タスク）
+    let promptCount = 0;
+    let promptDetails = [];
+    if (promptValues && promptValues.values) {
+      LoopLogger.info(
+        `[step5-loop.js] [Step 5-1-1] プロンプトデータ取得成功: ${promptValues.values.length}行`,
+      );
+      for (
+        let rowIndex = 0;
+        rowIndex < promptValues.values.length;
+        rowIndex++
+      ) {
+        const row = promptValues.values[rowIndex];
+        if (!row) continue;
+
+        // 実際の行番号を計算
+        const actualRow = taskGroup.dataStartRow + rowIndex;
+
+        // 行制御チェック
+        if (rowControls.length > 0) {
+          if (
+            window.Step3TaskList &&
+            typeof window.Step3TaskList.shouldProcessRow === "function"
+          ) {
+            if (
+              !window.Step3TaskList.shouldProcessRow(actualRow, rowControls)
+            ) {
+              LoopLogger.debug(
+                `[step5-loop.js] 行${actualRow}は行制御によりスキップ`,
+              );
+              continue;
+            }
+          }
+        }
+
+        // この行にプロンプトが存在するかチェック
+        let hasPromptInRow = false;
+        let firstPromptContent = "";
+
+        for (
+          let colIndex = 0;
+          colIndex < row.length && colIndex < taskGroup.columns.prompts.length;
+          colIndex++
+        ) {
+          const cell = row[colIndex];
+          if (cell && cell.trim()) {
+            hasPromptInRow = true;
+            if (!firstPromptContent) {
+              firstPromptContent = cell;
+            }
+          }
+        }
+
+        // この行にプロンプトがあれば1カウント
+        if (hasPromptInRow) {
+          promptCount++;
+          promptDetails.push({
+            行: actualRow,
+            列: taskGroup.columns.prompts.join(", "),
+            内容プレビュー:
+              firstPromptContent.substring(0, 30) +
+              (firstPromptContent.length > 30 ? "..." : ""),
+          });
+        }
+      }
+    } else {
+      LoopLogger.error(
+        "[step5-loop.js] [Step 5-1-1] ❌ プロンプトデータが取得できませんでした",
+        {
+          promptValues: promptValues,
+          範囲: promptRange,
+          タスクグループ: {
+            番号: taskGroup.groupNumber,
+            prompts列: taskGroup.columns.prompts,
+          },
+        },
+      );
+    }
+    LoopLogger.info(
+      `[step5-loop.js] [Step 5-1-1] プロンプト数: ${promptCount}件`,
+      {
+        詳細: promptDetails.slice(0, 3), // 最初の3件のみ表示
+        全件数: promptDetails.length,
+        検索範囲: promptRange,
+        prompts列設定: taskGroup.columns.prompts,
+      },
+    );
+    log.info(`📊 グループ${taskGroup.groupNumber}: プロンプト=${promptCount}`);
+
+    // ========================================
+    // Step 5-1-2: 回答列の確認
+    // ========================================
+    LoopLogger.info("[step5-loop.js→Step5-1-2] 回答列を確認中...");
+
+    let answerRange;
+    let answerCount = 0;
+
+    if (taskGroup.pattern === "3種類AI") {
+      // 3種類AIパターンの場合（行ベースでカウント）
+      LoopLogger.info(
+        "[step5-loop.js] [Step 5-1-2] 3種類AIパターンの回答を確認（行ベース）",
+      );
+
+      // 【統一修正】全てオブジェクト形式になったのでチェックを調整
+      if (
+        !taskGroup.columns.answer ||
+        typeof taskGroup.columns.answer !== "object"
+      ) {
+        throw new Error(
+          "[step5-loop.js] [Step 5-1-2] エラー: answer列がオブジェクト形式ではありません（統一修正後のエラー）",
+        );
+      }
+
+      const columns = [
+        taskGroup.columns.answer.chatgpt,
+        taskGroup.columns.answer.claude,
+        taskGroup.columns.answer.gemini,
+      ];
+
+      LoopLogger.info("[step5-loop.js] [Step 5-1-2] AI回答列:", {
+        ChatGPT列: columns[0] || "undefined",
+        Claude列: columns[1] || "undefined",
+        Gemini列: columns[2] || "undefined",
+      });
+
+      // 3列をまとめて取得（行ベースで処理するため）
+      const startCol = columns[0]; // ChatGPT列
+      const endCol = columns[2]; // Gemini列
+      answerRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
+
+      LoopLogger.info(
+        `[step5-loop.js] [Step 5-1-2] 3種類AI回答範囲: ${answerRange}`,
+      );
+
+      let values;
+      try {
+        values = await readSpreadsheet(answerRange);
+      } catch (error) {
+        LoopLogger.error(
+          "[step5-loop.js] [Step 5-1-2] 3種類AI回答読み込みエラー:",
+          {
+            範囲: answerRange,
+            エラー: error.message,
+          },
+        );
+        throw error;
+      }
+
+      if (values && values.values) {
+        // 行ごとに処理（いずれかのAIに回答があれば1カウント）
+        for (let rowIndex = 0; rowIndex < values.values.length; rowIndex++) {
+          const row = values.values[rowIndex];
+          if (!row) continue;
+
+          // 実際の行番号を計算
+          const actualRow = taskGroup.dataStartRow + rowIndex;
+
+          // 行制御チェック
+          if (rowControls.length > 0) {
+            if (
+              window.Step3TaskList &&
+              typeof window.Step3TaskList.shouldProcessRow === "function"
+            ) {
+              if (
+                !window.Step3TaskList.shouldProcessRow(actualRow, rowControls)
+              ) {
+                continue;
+              }
+            }
+          }
+
+          let hasAnswerInRow = false;
+          // 3列（ChatGPT, Claude, Gemini）をチェック
+          for (
+            let colIndex = 0;
+            colIndex < 3 && colIndex < row.length;
+            colIndex++
+          ) {
+            const cellValue = row[colIndex] ? row[colIndex].trim() : "";
+            // 値があり、かつ「作業中」マーカーでない場合のみ回答としてカウント
+            if (cellValue && !cellValue.startsWith("作業中")) {
+              hasAnswerInRow = true;
+              break; // 1つでも回答があれば十分
+            }
+          }
+
+          if (hasAnswerInRow) {
+            answerCount++; // 行ごとに1カウント
+          }
+        }
+      }
+
+      // 注意：3種類AIでもプロンプト数を3倍にしない（行ベースで比較）
+      LoopLogger.info(
+        `[step5-loop.js] [Step 5-1-2] 3種類AI回答数（行ベース）: ${answerCount}行`,
+      );
+    } else {
+      // 【統一修正】通常パターンもオブジェクト形式に統一
+      LoopLogger.info("[step5-loop.js] [Step 5-1-2] 通常パターンの回答を確認");
+
+      // 【シンプル化】primary列を使用して範囲を生成
+      const answerColumn = taskGroup.columns.answer.primary || "C";
+      answerRange = `'${sheetName}'!${answerColumn}${taskGroup.dataStartRow}:${answerColumn}1000`;
+      LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 取得範囲: ${answerRange}`);
+
+      // 【問題特定ログ】通常パターンでのスプレッドシート読み込み前ログ
+      log.debug(`[DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み開始:`, {
+        answerRange: answerRange,
+        answerColumn: answerColumn,
+        taskGroupNumber: taskGroup.groupNumber,
+        dataStartRow: taskGroup.dataStartRow,
+        読み込み前タイムスタンプ: new Date().toISOString(),
+      });
+
+      const answerValues = await readSpreadsheet(answerRange);
+
+      // 【問題特定ログ】通常パターンでのスプレッドシート読み込み後ログ
+      log.debug(`[DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み完了:`, {
+        answerRange: answerRange,
+        answerValues存在: !!answerValues,
+        answerValuesValues存在: !!(answerValues && answerValues.values),
+        rawDataLength: answerValues?.values?.length || 0,
+        読み込み後タイムスタンプ: new Date().toISOString(),
+        rawDataプレビュー: answerValues?.values?.slice(0, 5) || "データなし",
+      });
+
+      if (answerValues && answerValues.values) {
+        for (
+          let rowIndex = 0;
+          rowIndex < answerValues.values.length;
+          rowIndex++
+        ) {
+          const row = answerValues.values[rowIndex];
+          if (!row) continue;
+
+          // 実際の行番号を計算
+          const actualRow = taskGroup.dataStartRow + rowIndex;
+
+          // 行制御チェック
+          if (rowControls.length > 0) {
+            if (
+              window.Step3TaskList &&
+              typeof window.Step3TaskList.shouldProcessRow === "function"
+            ) {
+              if (
+                !window.Step3TaskList.shouldProcessRow(actualRow, rowControls)
+              ) {
+                continue;
+              }
+            }
+          }
+
+          const cellValue = row[0] ? row[0].trim() : "";
+
+          // 【根本原因特定ログ】セル詳細と直近書き込み記録の照合
+          if (actualRow >= 11 && actualRow <= 13) {
+            // 直近書き込み記録をチェック
+            const recentWrites = window.globalState?.recentWrites || [];
+            const matchingWrite = recentWrites.find(
+              (write) =>
+                write.cellRef === `${answerColumn}${actualRow}` &&
+                write.groupNumber === taskGroup.groupNumber,
+            );
+
+            log.debug(
+              `[DEBUG-PROBLEM-TRACE] セル詳細チェック (行${actualRow}):`,
+              {
+                actualRow: actualRow,
+                cellValue: cellValue,
+                cellValueLength: cellValue.length,
+                isEmpty: !cellValue,
+                isWorkingMarker: cellValue.startsWith("作業中"),
+                willCount: cellValue && !cellValue.startsWith("作業中"),
+                rowIndex: rowIndex,
+                answerColumn: answerColumn,
+                cellRef: `${answerColumn}${actualRow}`,
+                // 直近書き込み情報
+                hasMatchingWrite: !!matchingWrite,
+                matchingWriteInfo: matchingWrite
+                  ? {
+                      taskId: matchingWrite.taskId,
+                      writeTimestamp: new Date(
+                        matchingWrite.timestamp,
+                      ).toISOString(),
+                      verificationTimestamp: new Date(
+                        matchingWrite.verificationTimestamp,
+                      ).toISOString(),
+                      wasVerified: matchingWrite.isVerified,
+                      expectedTextLength: matchingWrite.textLength,
+                      timeSinceWrite: `${(Date.now() - matchingWrite.timestamp) / 1000}秒前`,
+                    }
+                  : null,
+                // APIキャッシュ疑惑判定
+                possibleCacheIssue:
+                  matchingWrite && matchingWrite.isVerified && !cellValue,
+                タイムスタンプ: new Date().toISOString(),
+              },
+            );
+
+            // APIキャッシュ問題の疑いがある場合、追加検証
+            if (matchingWrite && matchingWrite.isVerified && !cellValue) {
+              log.warn(`🚨 [CACHE-ISSUE-DETECTED] APIキャッシュ問題の疑い:`, {
+                cellRef: `${answerColumn}${actualRow}`,
+                expectedFromWrite: `${matchingWrite.textLength}文字`,
+                actualFromRead: `${cellValue.length}文字`,
+                writeTime: new Date(matchingWrite.timestamp).toISOString(),
+                readTime: new Date().toISOString(),
+                timeDifference: `${(Date.now() - matchingWrite.timestamp) / 1000}秒`,
+                writeWasVerified: matchingWrite.isVerified,
+              });
+            }
+          }
+
+          // 値があり、かつ「作業中」マーカーでない場合のみ回答としてカウント
+          if (cellValue && !cellValue.startsWith("作業中")) {
+            answerCount++;
+
+            // 【問題特定ログ】カウントしたセルの詳細（U12付近のみ）
+            if (actualRow >= 11 && actualRow <= 13) {
+              log.debug(
+                `[DEBUG-PROBLEM-TRACE] 回答カウント実行 (行${actualRow}):`,
+                {
+                  actualRow: actualRow,
+                  cellValue: cellValue.substring(0, 100),
+                  現在のanswerCount: answerCount,
+                  answerColumn: answerColumn,
+                  タイムスタンプ: new Date().toISOString(),
+                },
+              );
+            }
+          }
+        }
+      }
+    }
+
+    LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 回答数: ${answerCount}件`);
+    log.debug(
+      `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: 回答検索完了 - answerCount=${answerCount}, 範囲=${answerRange}`,
+    );
+
+    // 統計情報更新
+    window.globalState.stats.totalPrompts = promptCount;
+    window.globalState.stats.completedAnswers = answerCount;
+    window.globalState.stats.pendingTasks = promptCount - answerCount;
+
+    // ========================================
+    // Step 5-1-3: 完了判定
+    // ========================================
+    LoopLogger.info("[step5-loop.js→Step5-1-3] 完了判定を実行");
+
+    log.debug(
+      `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: promptCount=${promptCount}, answerCount=${answerCount}`,
+    );
+
+    // 【問題特定ログ】完了判定前の詳細状態
+    log.debug(`[DEBUG-PROBLEM-TRACE] 完了判定前の最終状態:`, {
+      promptCount: promptCount,
+      answerCount: answerCount,
+      difference: promptCount - answerCount,
+      taskGroupNumber: taskGroup.groupNumber,
+      promptRange: promptRange,
+      answerRange: answerRange,
+      判定タイムスタンプ: new Date().toISOString(),
+    });
+
+    // 🔍 【強化】空白タスク詳細検出ログ
+    const blankTasks = [];
+    const completedTasks = [];
+
+    // 🔄 【修正】キャッシュを使わず直接APIから最新データ取得
+    log.debug(`🔍 [CACHE-FIX] 個別タスク検証のためAPI直接読み取り開始`, {
+      completionCheckId,
+      taskGroupNumber: taskGroup.groupNumber,
+      dataStartRow: taskGroup.dataStartRow,
+      promptCount,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 🔍 【シート名統一】GIDからシート名を取得して使用
+    let sheetPrefix = "";
+    if (window.globalState?.gid) {
+      try {
+        // SimpleSheetsClientのインスタンスからシート名取得
+        if (window.simpleSheetsClientStep5?.getSheetNameFromGid) {
+          const sheetName =
+            await window.simpleSheetsClientStep5.getSheetNameFromGid(
+              window.globalState.spreadsheetId,
+              window.globalState.gid,
+            );
+          if (sheetName) {
+            sheetPrefix = `'${sheetName}'!`;
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `⚠️ [BATCH-READ] シート名取得失敗、デフォルトシート使用:`,
+          err,
+        );
+      }
+    }
+
+    // バッチ読み取り範囲の計算
+    // columns.promptsは常に配列（例: ['O', 'P']）
+    const promptCol =
+      Array.isArray(taskGroup.columns?.prompts) &&
+      taskGroup.columns.prompts.length > 0
+        ? taskGroup.columns.prompts[0]
+        : null;
+
+    // columns.answerは2つの構造に対応:
+    // 1. 文字列（古い構造）: 'Q'
+    // 2. オブジェクト（新しい構造）: {primary: 'Q'} または {chatgpt: 'C', claude: 'D', gemini: 'E'}
+    let answerCol = null;
+    if (taskGroup.columns?.answer) {
+      if (typeof taskGroup.columns.answer === "string") {
+        // 古い構造（文字列）
+        answerCol = taskGroup.columns.answer;
+      } else if (typeof taskGroup.columns.answer === "object") {
+        // 新しい構造（オブジェクト）
+        answerCol =
+          taskGroup.columns.answer.primary ||
+          taskGroup.columns.answer.claude ||
+          taskGroup.columns.answer.chatgpt ||
+          taskGroup.columns.answer.gemini;
+      }
+    }
+
+    // 列が取得できない場合はエラー
+    if (!promptCol || !answerCol) {
+      console.error(`❌ [BATCH-READ] 列情報が不正:`, {
+        promptCol,
+        answerCol,
+        columns: taskGroup.columns,
+      });
+      // 個別タスク詳細を空で返す
+      log.debug(
+        `🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析（スキップ）`,
+        {
+          completionCheckId,
+          taskGroupNumber: taskGroup.groupNumber,
+          error: "列情報が取得できません",
+        },
+      );
+      return { isComplete: false, blankTasks, completedTasks };
+    }
+
+    const startRow = taskGroup.dataStartRow;
+    const endRow = taskGroup.dataStartRow + promptCount - 1;
+
+    // SpreadsheetDataを使用したセルアドレスベースのアクセス
+    const spreadsheetData = new (window.SpreadsheetData || SpreadsheetData)();
+
+    // 両列を含む範囲を取得
+    const minCol = promptCol < answerCol ? promptCol : answerCol;
+    const maxCol = promptCol > answerCol ? promptCol : answerCol;
+    const batchRange = `${sheetPrefix}${minCol}${startRow}:${maxCol}${endRow}`;
+
+    log.debug(`📊 [BATCH-READ] バッチ読み取り開始:`, {
+      range: batchRange,
+      rowCount: promptCount,
+      startRow: startRow,
+      endRow: endRow,
+      promptCol,
+      answerCol,
+    });
+
+    try {
+      // APIレート制限対策：バッチ読み取り前に少し待機
+      await new Promise((resolve) => setTimeout(resolve, 200)); // 200ms待機
+
+      const batchResponse = await readSpreadsheet(batchRange);
+      if (batchResponse?.values) {
+        // SpreadsheetDataにデータをロード
+        spreadsheetData.loadBatchData(batchRange, batchResponse.values);
+
+        // セルアドレスで直接アクセス
+        for (let row = startRow; row <= endRow; row++) {
+          const promptAddress = `${promptCol}${row}`;
+          const answerAddress = `${answerCol}${row}`;
+
+          const promptValue = spreadsheetData.getCell(promptAddress) || "";
+          const answerValue = spreadsheetData.getCell(answerAddress) || "";
+
+          const taskInfo = {
+            row,
+            promptAddress,
+            answerAddress,
+            promptValue: promptValue,
+            answerValue: answerValue,
+            hasPrompt: spreadsheetData.hasValue(promptAddress),
+            hasAnswer: spreadsheetData.hasValue(answerAddress),
+          };
+
+          if (taskInfo.hasPrompt && !taskInfo.hasAnswer) {
+            blankTasks.push(taskInfo);
+          } else if (taskInfo.hasPrompt && taskInfo.hasAnswer) {
+            completedTasks.push(taskInfo);
+          }
+
+          // デバッグログ（最初の3件のみ）
+          if (row <= startRow + 2) {
+            log.debug(
+              `🔍 [BATCH-READ] ${promptAddress}/${answerAddress}の結果:`,
+              {
+                promptValue: promptValue?.substring(0, 50),
+                answerValue: answerValue?.substring(0, 50),
+                hasPrompt: taskInfo.hasPrompt,
+                hasAnswer: taskInfo.hasAnswer,
+              },
+            );
+          }
+        }
+
+        // デバッグ用：読み込まれたセルを表示
+        if (taskGroup.groupNumber === 2) {
+          log.debug(`🔍 [GROUP-2-CELLS] Group 2のセルアドレス確認:`);
+          spreadsheetData.debugPrintCells(5);
+        }
+      } else {
+        console.warn(`⚠️ [BATCH-READ] バッチ読み取りの結果が空です`);
+      }
+    } catch (batchError) {
+      console.error(`❌ [BATCH-READ] バッチ読み取りエラー:`, batchError);
+      // エラー時は個別読み取りにフォールバック（レート制限対策付き）
+      log.info(`🔄 [BATCH-READ] 個別読み取りにフォールバック`);
+
+      // APIレート制限対策：個別読み取りを小さいバッチに分割
+      const BATCH_SIZE = 5; // 5行ずつ処理
+      const BATCH_DELAY = 1000; // バッチ間で1秒待機
+
+      for (
+        let batchStart = startRow;
+        batchStart <= endRow;
+        batchStart += BATCH_SIZE
+      ) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endRow);
+
+        // バッチ間の待機（最初のバッチ以外）
+        if (batchStart > startRow) {
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
+        }
+
+        for (let row = batchStart; row <= batchEnd; row++) {
+          try {
+            const promptAddress = `${promptCol}${row}`;
+            const answerAddress = `${answerCol}${row}`;
+            const promptRange = `${sheetPrefix}${promptAddress}`;
+            const answerRange = `${sheetPrefix}${answerAddress}`;
+
+            // 個別API呼び出し間にも小さな待機
+            await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms待機
+
+            const promptResponse = await readSpreadsheet(promptRange);
+            await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms待機
+            const answerResponse = await readSpreadsheet(answerRange);
+
+            const promptValue = promptResponse?.values?.[0]?.[0] || "";
+            const answerValue = answerResponse?.values?.[0]?.[0] || "";
+
+            const taskInfo = {
+              row,
+              promptAddress,
+              answerAddress,
+              promptValue: promptValue,
+              answerValue: answerValue,
+              hasPrompt: Boolean(promptValue && promptValue.trim()),
+              hasAnswer: Boolean(answerValue && answerValue.trim()),
+            };
+
+            if (taskInfo.hasPrompt && !taskInfo.hasAnswer) {
+              blankTasks.push(taskInfo);
+            } else if (taskInfo.hasPrompt && taskInfo.hasAnswer) {
+              completedTasks.push(taskInfo);
+            }
+          } catch (readError) {
+            console.error(
+              `❌ [FALLBACK] ${promptCol}${row}/${answerCol}${row}読み取りエラー:`,
+              readError,
+            );
+
+            // 429エラー（レート制限）の場合は長めに待機
+            if (
+              readError.message?.includes("429") ||
+              readError.message?.includes("Quota exceeded")
+            ) {
+              log.info(`⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`);
+              await new Promise((resolve) => setTimeout(resolve, 5000)); // 5秒待機
+            }
+          }
+        }
+      }
+    }
+
+    log.debug(`🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析`, {
+      completionCheckId,
+      taskGroupNumber: taskGroup.groupNumber,
+      totalTasks: promptCount,
+      completedTasks: completedTasks.length,
+      blankTasks: blankTasks.length,
+      blankTaskRows: blankTasks.map((t) => t.row),
+      blankTaskDetails: blankTasks.slice(0, 3), // 最初の3件のみ表示
+      timestamp: new Date().toISOString(),
+    });
+
+    // 厳格な完了判定：プロンプトと回答が一致し、かつプロンプトが存在する場合のみ完了
+    const isComplete = promptCount > 0 && promptCount === answerCount;
+
+    // 🔍 【強化】完了判定結果の詳細ログ
+    log.debug(`🔍 [COMPLETION-CHECK-RESULT] 完了判定結果`, {
+      completionCheckId,
+      isComplete: isComplete,
+      promptCount: promptCount,
+      answerCount: answerCount,
+      promptCountCheck: promptCount > 0,
+      equalityCheck: promptCount === answerCount,
+      blankTasksFound: blankTasks.length,
+      taskGroupNumber: taskGroup.groupNumber,
+      cacheStatus: {
+        hasCacheData: Boolean(window.globalState?.cache?.spreadsheetData),
+        cacheDataRows: window.globalState?.cache?.spreadsheetData?.length || 0,
+      },
+      timestamp: new Date().toISOString(),
+    });
+
+    // 【問題特定ログ】完了判定結果の詳細
+    log.debug(`[DEBUG-PROBLEM-TRACE] 完了判定結果:`, {
+      isComplete: isComplete,
+      promptCount: promptCount,
+      answerCount: answerCount,
+      promptCountCheck: promptCount > 0,
+      equalityCheck: promptCount === answerCount,
+      taskGroupNumber: taskGroup.groupNumber,
+      blankTasksCount: blankTasks.length,
+      判定結果タイムスタンプ: new Date().toISOString(),
+    });
+
+    LoopLogger.info("[step5-loop.js] [Step 5-1-3] 完了状況:", {
+      プロンプト数: promptCount,
+      回答数: answerCount,
+      未完了: window.globalState.stats.pendingTasks,
+      完了判定: isComplete ? "完了" : "未完了",
+      完了率:
+        promptCount > 0
+          ? Math.round((answerCount / promptCount) * 100) + "%"
+          : "0%",
+      グループ番号: taskGroup.groupNumber,
+      タスクタイプ: taskGroup.taskType,
+    });
+
+    if (!isComplete && promptCount > 0) {
+      LoopLogger.info("[step5-loop.js] [Step 5-1-3] 未完了詳細:", {
+        残りタスク数: promptCount - answerCount,
+        推定処理時間: `約${(promptCount - answerCount) * 30}秒`,
+      });
+    }
+
+    // 完了判定
+    return isComplete;
+  } catch (error) {
+    LoopLogger.error("[step5-loop.js] [Step 5-1] 完了状況確認エラー:", {
+      エラーメッセージ: error.message,
+      スタック: error.stack,
+      タスクグループ: {
+        番号: taskGroup.groupNumber,
+        タイプ: taskGroup.taskType,
+        パターン: taskGroup.pattern,
+      },
+      現在の統計: window.globalState.stats,
+    });
+    throw error;
+  }
+}
+
 // エクスポート（モジュールとして使用する場合）
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
@@ -1340,6 +2325,10 @@ if (typeof module !== "undefined" && module.exports) {
     reorganizeTaskGroups,
     logTaskGroups,
     saveDefinitions,
+    setCurrentGroup,
+    getCurrentGroup,
+    validateTaskGroupForStep5,
+    checkCompletionStatus,
   };
 }
 
@@ -1354,6 +2343,12 @@ if (typeof window !== "undefined") {
   window.reorganizeTaskGroups = reorganizeTaskGroups;
   window.logTaskGroups = logTaskGroups;
   window.saveDefinitions = saveDefinitions;
+  window.setCurrentGroup = setCurrentGroup;
+  window.getCurrentGroup = getCurrentGroup;
+  window.addCurrentGroupListener = addCurrentGroupListener;
+  window.removeCurrentGroupListener = removeCurrentGroupListener;
+  window.validateTaskGroupForStep5 = validateTaskGroupForStep5;
+  window.checkCompletionStatus = checkCompletionStatus;
 }
 
 // 自動実行を無効化（STEP専用ボタンから手動で実行するため）
