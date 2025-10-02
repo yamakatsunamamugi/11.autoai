@@ -947,44 +947,24 @@ async function applySkipConditions() {
         const promptUrl = `${sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(promptRange)}`;
 
         // プロンプト列取得
-        log.debug(`[2-1-4][step2-taskgroup.js] API呼び出し: ${promptUrl}`);
-
         const promptResponse = await window.fetchWithTokenRefresh(promptUrl, {
           headers: apiHeaders,
         });
 
-        log.debug(
-          `[2-1-4][step2-taskgroup.js] API応答ステータス: ${promptResponse.status}`,
-        );
-
         const promptData = await promptResponse.json();
         const promptValues = promptData.values || [];
-
-        log.debug(
-          `[2-1-4][step2-taskgroup.js] ✅ プロンプト取得完了: ${promptValues.length}行`,
-        );
 
         // 回答列の取得
         const answerRange = `'${sheetName}'!${answerCol}${dataStartRow}:${answerCol}${endRow}`;
         const answerUrl = `${sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(answerRange)}`;
 
         // 回答列取得
-        log.debug(`[2-1-4][step2-taskgroup.js] API呼び出し: ${answerUrl}`);
-
         const answerResponse = await window.fetchWithTokenRefresh(answerUrl, {
           headers: apiHeaders,
         });
 
-        log.debug(
-          `[2-1-4][step2-taskgroup.js] API応答ステータス: ${answerResponse.status}`,
-        );
-
         const answerData = await answerResponse.json();
         const answerValues = answerData.values || [];
-
-        log.debug(
-          `[2-1-4][step2-taskgroup.js] ✅ 回答取得完了: ${answerValues.length}行`,
-        );
 
         // 回答取得完了: ${answerValues.length}行
 
@@ -1055,44 +1035,15 @@ async function applySkipConditions() {
   const skippedGroups = groupResults.filter(
     (r) => r.status === "skipped",
   ).length;
-  log.debug(
-    `[2-1-4][step2-taskgroup.js] 📊 グループ判定結果: 全${groupResults.length}個 | 処理対象${activeGroups}個 | スキップ${skippedGroups}個`,
-  );
-  log.debug(
-    "[2-1-4]┌─────────────────────────────────────────────────────────────────────────────────────┐",
-  );
-  log.debug(
-    "[2-1-4]│ グループ │ タイプ     │ 状態       │ セル範囲      │ 処理済み │ 未処理 │ 備考        │",
-  );
-  log.debug(
-    "[2-1-4]├─────────────────────────────────────────────────────────────────────────────────────┤",
-  );
 
-  groupResults.forEach((result) => {
-    const group = `グループ${result.groupNumber}`.padEnd(8);
-    const type = (result.type || "").substring(0, 8).padEnd(8);
-    const status = {
-      active: "✅ 処理対象",
-      skipped: "⏭️ スキップ",
-      "already-skipped": "🔒 除外済み",
-      special: "🔹 特殊",
-      error: "❌ エラー",
-    }[result.status].padEnd(10);
-    const cellRange = (result.cellRange || "").substring(0, 12).padEnd(12);
-    const processed = String(result.processedCount).padStart(6);
-    const unprocessed = String(result.unprocessedCount).padStart(6);
-    const note = (result.skipReason || result.error || "").substring(0, 12);
+  // 処理対象グループの詳細のみ表示
+  const activeGroupDetails = groupResults
+    .filter((r) => r.status === "active")
+    .map((r) => `グループ${r.groupNumber}(${r.unprocessedCount}未処理)`)
+    .join(", ");
 
-    log.debug(
-      `[2-1-4]│ ${group} │ ${type} │ ${status} │ ${cellRange} │ ${processed} │ ${unprocessed} │ ${note} │`,
-    );
-  });
-
-  log.debug(
-    "[2-1-4]└─────────────────────────────────────────────────────────────────────────────────────┘",
-  );
-  log.debug(
-    `[2-1-4][step2-taskgroup.js] [Step 2-3] ✅ 判定完了: チェック${checkedGroups}個, データによるスキップ${skippedByData}個`,
+  log.info(
+    `[2-1-4][step2-taskgroup.js] 📊 タスクグループ判定完了: 全${groupResults.length}個 | 処理対象${activeGroups}個 | スキップ${skippedGroups}個 | ${activeGroupDetails || "なし"}`,
   );
 }
 

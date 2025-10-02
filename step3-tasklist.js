@@ -38,8 +38,7 @@ const BATCH_PROCESSING_CONFIG = {
   ENABLE_DYNAMIC_NEXT_TASK: true, // 動的次タスク開始を再有効化
   SAFE_MODE: false, // 新機能有効化
 
-  // === 独立ウィンドウ処理モード設定 ===
-  INDEPENDENT_WINDOW_MODE: true, // 各ウィンドウ独立処理モード（デフォルトON = 独立処理）
+  // === バッチ完了待機設定 ===
   WAIT_FOR_BATCH_COMPLETION: true, // バッチ完了待機（デフォルトON = 3つ全て待つ）
 
   // === 待機時間設定（ミリ秒） ===
@@ -58,9 +57,6 @@ const BATCH_PROCESSING_CONFIG = {
   CONTENT_SCRIPT_WAIT: 3000, // Content Script初期化待機: 3秒
   ELEMENT_RETRY_COUNT: 5, // 要素検出リトライ回数: 5回
   ELEMENT_RETRY_INTERVAL: 2500, // 要素検出リトライ間隔: 2.5秒
-
-  // === デバッグ設定 ===
-  DEBUG_INDEPENDENT_MODE: false, // 独立モードの詳細ログ出力
 };
 
 // Chrome Storageからログレベルを取得（非同期）
@@ -87,16 +83,11 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       console.log(
         "📋 [step3-tasklist] Chrome Storageから設定を読み込みました:",
         {
-          INDEPENDENT_WINDOW_MODE:
-            BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE,
           WAIT_FOR_BATCH_COMPLETION:
             BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION,
           SPREADSHEET_WAIT_TIME: BATCH_PROCESSING_CONFIG.SPREADSHEET_WAIT_TIME,
           WINDOW_CLOSE_WAIT_TIME:
             BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME,
-          処理モード: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE
-            ? "🏃 独立ウィンドウ処理モード"
-            : "🛡️ 通常バッチ処理モード",
         },
       );
     } else {
@@ -179,16 +170,11 @@ log.info("[3-0] 🔧 [バッチ処理設定]", {
     BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_WINDOW_CLOSE,
   ENABLE_DYNAMIC_NEXT_TASK: BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
   SAFE_MODE: BATCH_PROCESSING_CONFIG.SAFE_MODE,
-  // 新規: 独立処理モード設定
-  INDEPENDENT_WINDOW_MODE: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE,
+  // バッチ完了待機設定
   WAIT_FOR_BATCH_COMPLETION: BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION,
-  // 新規: 待機時間設定
+  // 待機時間設定
   SPREADSHEET_WAIT_TIME: `${BATCH_PROCESSING_CONFIG.SPREADSHEET_WAIT_TIME}ms`,
   WINDOW_CLOSE_WAIT_TIME: `${BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME}ms`,
-  // 現在の処理モード
-  status: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE
-    ? "🏃 独立ウィンドウ処理モード"
-    : "🛡️ 通常バッチ処理モード（安全）",
 });
 
 /**
@@ -259,123 +245,6 @@ function safeStringify(obj, maxDepth = 3) {
     return stringify(obj);
   } catch (error) {
     return `[Stringify Error: ${error.message}]`;
-  }
-}
-
-/**
- * 独立ウィンドウ処理モード
- * 各ウィンドウが独立してタスクを処理し、完了後即座に次のタスクを開始
- */
-async function executeIndependentProcessing(batchPromises, originalTasks = []) {
-  log.info("[3-0] 🚀 [独立処理モード] 各ウィンドウが独立してタスク処理を開始", {
-    タスク数: batchPromises.length,
-    INDEPENDENT_WINDOW_MODE: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE,
-    WAIT_FOR_BATCH_COMPLETION:
-      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION,
-  });
-
-  const results = [];
-  const activeWindows = new Map(); // aiType -> { promise, taskIndex, status }
-
-  // 各タスクを独立して開始（完了を待たない）
-  batchPromises.forEach((promise, index) => {
-    const originalTask = originalTasks[index] || {};
-    const aiType = originalTask.aiType || originalTask.ai || `window_${index}`;
-
-    if (BATCH_PROCESSING_CONFIG.DEBUG_INDEPENDENT_MODE) {
-      log.debug(`[3-0] 🔄 [独立処理] ウィンドウ開始: ${aiType}`, {
-        taskIndex: index,
-        taskId: originalTask.id,
-        row: originalTask.row,
-      });
-    }
-
-    // 各ウィンドウのPromiseを独立して処理
-    const independentPromise = Promise.resolve(promise)
-      .then(async (result) => {
-        // タスク完了処理
-        const enhancedResult = {
-          ...result,
-          column: result.column || originalTask.column,
-          row: result.row || originalTask.row,
-          windowId: result.windowId || originalTask.windowId,
-          aiType: aiType,
-        };
-
-        log.info(`[3-0] ✅ [独立処理] ${aiType} タスク完了`, {
-          taskIndex: index,
-          success: enhancedResult.success,
-          row: enhancedResult.row,
-        });
-
-        // 個別完了処理を即座に実行
-        if (
-          enhancedResult.success &&
-          BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION
-        ) {
-          await handleIndividualTaskCompletion(enhancedResult, index);
-        }
-
-        // 完了したウィンドウの状態を更新
-        activeWindows.set(aiType, {
-          status: "completed",
-          result: enhancedResult,
-          completedAt: Date.now(),
-        });
-
-        // 次のタスクを即座に探して実行（独立モードの場合）
-        if (!BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION) {
-          log.info(`[3-0] 🔍 [独立処理] ${aiType} 次のタスク検索を即座に開始`);
-          // ここで次のタスク検索・実行ロジックを呼び出す
-          // ※実際の実装は step4.5-dynamic-search.js の機能を利用
-        }
-
-        return { status: "fulfilled", value: enhancedResult };
-      })
-      .catch((error) => {
-        log.error(`[3-0] ❌ [独立処理エラー] ${aiType}:`, error);
-        activeWindows.set(aiType, {
-          status: "failed",
-          error: error,
-          failedAt: Date.now(),
-        });
-        return { status: "rejected", reason: error };
-      });
-
-    results.push(independentPromise);
-  });
-
-  // WAIT_FOR_BATCH_COMPLETIONがtrueの場合は全て待つ、falseの場合は即座に返す
-  if (BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION) {
-    log.info("[3-0] ⏳ [独立処理] バッチ完了待機モード - 全タスクの完了を待機");
-    return await Promise.all(results);
-  } else {
-    log.info(
-      "[3-0] 🏃 [独立処理] 即座実行モード - タスク開始後、完了を待たずに続行",
-    );
-    // 非同期で結果を収集（待機しない）
-    Promise.all(results).then(() => {
-      log.info("[3-0] ✅ [独立処理] 全ウィンドウのタスク処理が完了");
-    });
-    // Promise.allSettled互換形式で返す（success: true, inProgress: trueで実行中を示す）
-    const returnValue = results.map((_, index) => ({
-      status: "fulfilled",
-      value: {
-        success: true,
-        inProgress: true,
-        taskIndex: index,
-        startedAt: Date.now(),
-      },
-    }));
-
-    log.info("[3-0] 🔍 [仮説検証-Step1] executeIndependentProcessing戻り値:", {
-      returnValueLength: returnValue.length,
-      returnValueSample: returnValue[0],
-      allStatuses: returnValue.map((r) => r.status),
-      allInProgress: returnValue.map((r) => r.value.inProgress),
-    });
-
-    return returnValue;
   }
 }
 
@@ -4450,9 +4319,6 @@ class WindowController {
         aiType: l.aiType,
         position: l.position,
       })),
-      currentOpenedWindowsSize: this.openedWindows.size,
-      currentOpenedWindowsEntries: Array.from(this.openedWindows.entries()),
-      windowServiceExists: !!this.windowService,
     });
 
     // WindowService初期化確認
@@ -4788,9 +4654,12 @@ class WindowController {
           timestamp: Date.now(),
         };
 
-        ExecuteLogger.debug(
-          `📡 [Content Script Check] Attempt ${i + 1}/${maxRetries}`,
-        );
+        // 初回のみログ出力
+        if (i === 0) {
+          ExecuteLogger.debug(
+            `📡 [Content Script Check] Attempt ${i + 1}/${maxRetries}`,
+          );
+        }
 
         // タイムアウト付きでpingを送信
         const response = await Promise.race([
@@ -4866,33 +4735,22 @@ class WindowController {
         const attemptTimestamp = new Date().toISOString();
         const tab = await chrome.tabs.get(tabId);
 
-        // 🔍 [TAB-LIFECYCLE] タブ状態チェック詳細
-        console.log(`🔍 [TAB-LIFECYCLE] タブ状態チェック:`, {
-          lifecycleId,
-          tabId,
-          attempt: i + 1,
-          maxRetries,
-          attemptTimestamp,
-          tabState: {
-            exists: Boolean(tab),
-            status: tab?.status,
-            url: tab?.url,
-            windowId: tab?.windowId,
-            active: tab?.active,
-            id: tab?.id,
-          },
-          isReady: tab && tab.status === "complete",
-        });
-
-        ExecuteLogger.info(
-          `🔄 [Tab Ready Check] Attempt ${i + 1}/${maxRetries}:`,
-          {
-            tabId: tabId,
-            status: tab?.status,
-            url: tab?.url,
-            readyCheck: tab?.status === "complete",
-          },
-        );
+        // 🔍 [TAB-LIFECYCLE] タブ状態チェック詳細（初回とエラー時のみ）
+        if (i === 0 || i === maxRetries - 1) {
+          console.log(`🔍 [TAB-LIFECYCLE] タブ状態チェック:`, {
+            lifecycleId,
+            tabId,
+            attempt: i + 1,
+            maxRetries,
+            attemptTimestamp,
+            tabState: {
+              exists: Boolean(tab),
+              status: tab?.status,
+              url: tab?.url,
+            },
+            isReady: tab && tab.status === "complete",
+          });
+        }
 
         if (tab && tab.status === "complete") {
           const completionTimestamp = new Date().toISOString();

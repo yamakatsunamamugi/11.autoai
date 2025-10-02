@@ -1359,16 +1359,11 @@ if (
 // UI表更新関数
 function updateAITable(aiType, data) {
   try {
-    log.debug(`🔧 [updateAITable] 開始: ${aiType}`);
-    log.debug(`🔧 [updateAITable] 受信データキー:`, Object.keys(data));
-
     const tbody = document.getElementById("ai-integrated-tbody");
     if (!tbody) {
       log.error("AI統合表のtbodyが見つかりません");
       return;
     }
-
-    log.debug(`🔧 [updateAITable] tbody要素発見: ${aiType}`);
 
     // 表の行を取得または作成
     let row = tbody.querySelector("tr");
@@ -1411,41 +1406,27 @@ function updateAITable(aiType, data) {
       const modelList = data.models.map((model) => `• ${model}`).join("<br>");
       cells[modelCellIndex].innerHTML =
         modelList || '<span style="color: #999;">未検出</span>';
-      log.debug(`✅ ${aiType}モデル情報更新完了:`, data.models);
     }
 
     // 機能情報を更新（詳細情報付き）
     if (data.functionsWithDetails && cells[functionCellIndex]) {
-      log.debug(`🔧 [updateAITable] ${aiType} functionsWithDetails処理開始`);
-      log.debug(
-        `🔧 [updateAITable] functionsWithDetails配列長: ${data.functionsWithDetails.length}`,
-      );
-
       try {
         const functionList = data.functionsWithDetails
-          .map((func, index) => {
-            log.debug(
-              `🔧 [updateAITable] 機能${index}: 型=${typeof func}`,
-              func,
-            );
-
+          .map((func) => {
             // オブジェクトが文字列として送信されている場合の対応
             if (typeof func === "string") {
-              log.debug(`🔧 [updateAITable] 文字列機能: ${func}`);
               return `${func}`;
             }
 
             // 正常なオブジェクトの場合の処理
             if (typeof func === "object" && func !== null) {
               const funcName = func.name || func.functionName || "Unknown";
-              log.debug(`🔧 [updateAITable] オブジェクト機能: ${funcName}`);
 
               let status = "";
 
               // トグル状態を表示
               if (func.isToggleable) {
                 status += func.isToggled ? " 🟢" : " 🔴";
-                log.debug(`🔧 [updateAITable] トグル状態: ${func.isToggled}`);
               }
 
               // セレクタ状態を表示
@@ -1456,23 +1437,17 @@ function updateAITable(aiType, data) {
               // 有効/無効状態を表示（見やすくするため）
               const enabledIcon = func.isEnabled ? "" : " (無効)";
 
-              const result = `${funcName}${status}${enabledIcon}`;
-              log.debug(`🔧 [updateAITable] 生成された表示: ${result}`);
-              return result;
+              return `${funcName}${status}${enabledIcon}`;
             }
 
             // 予期しない形式の場合は型情報と共に表示
-            log.debug(`🔧 [updateAITable] 予期しない形式:`, func);
             return `Unknown (${typeof func})`;
           })
           .filter((item) => item && item.trim() !== "") // 空の項目を除外
           .join("<br>");
 
-        log.debug(`🔧 [updateAITable] 最終的な機能リスト: ${functionList}`);
-
         cells[functionCellIndex].innerHTML =
           functionList || '<span style="color: #999;">未検出</span>';
-        log.debug(`✅ ${aiType}機能情報更新完了:`, data.functionsWithDetails);
       } catch (error) {
         log.error(`❌ ${aiType}機能情報処理エラー:`, error);
         log.debug("エラー発生時のデータ:", data.functionsWithDetails);
@@ -1488,17 +1463,11 @@ function updateAITable(aiType, data) {
       }
     } else if (data.functions && cells[functionCellIndex]) {
       // フォールバック：data.functions配列の処理（オブジェクト対応）
-      log.debug(`🔧 [updateAITable] ${aiType} functions処理開始`);
-      log.debug(`🔧 [updateAITable] functions配列長: ${data.functions.length}`);
-
       const functionList = data.functions
-        .map((func, index) => {
-          log.debug(`🔧 [updateAITable] 機能${index}: 型=${typeof func}`, func);
-
+        .map((func) => {
           // オブジェクトの場合は名前を抽出
           if (typeof func === "object" && func !== null) {
             const funcName = func.name || func.functionName || "Unknown";
-            log.debug(`🔧 [updateAITable] オブジェクト機能名: ${funcName}`);
 
             let status = "";
 
@@ -1515,34 +1484,24 @@ function updateAITable(aiType, data) {
             // 有効/無効状態を表示
             const enabledIcon = func.isEnabled ? "" : " (無効)";
 
-            const result = `${funcName}${status}${enabledIcon}`;
-            log.debug(`🔧 [updateAITable] 生成された表示: ${result}`);
-            return result;
+            return `${funcName}${status}${enabledIcon}`;
           }
 
           // 文字列の場合はそのまま使用
           if (typeof func === "string") {
-            log.debug(`🔧 [updateAITable] 文字列機能: ${func}`);
             return func;
           }
 
           // その他の場合
-          log.debug(`🔧 [updateAITable] 予期しない形式:`, func);
           return `Unknown (${typeof func})`;
         })
         .filter((item) => item && item.trim() !== "") // 空の項目を除外
         .join("<br>");
 
-      log.debug(`🔧 [updateAITable] 最終的な機能リスト: ${functionList}`);
-
       cells[functionCellIndex].innerHTML =
         functionList || '<span style="color: #999;">未検出</span>';
-      log.debug(`✅ ${aiType}機能情報更新完了:`, data.functions);
     } else if (data.features && cells[functionCellIndex]) {
       // Gemini等でfeaturesとして送信された場合の処理
-      log.debug(`🔧 [updateAITable] ${aiType} features処理開始`);
-      log.debug(`🔧 [updateAITable] features配列長: ${data.features.length}`);
-
       const featureList = data.features
         .map((feature) => {
           if (typeof feature === "string") {
@@ -1555,7 +1514,6 @@ function updateAITable(aiType, data) {
 
       cells[functionCellIndex].innerHTML =
         featureList || '<span style="color: #999;">未検出</span>';
-      log.debug(`✅ ${aiType}機能情報更新完了:`, data.features);
     }
 
     // 更新時刻・日付を表示（各セルの下部に追加）
@@ -1595,7 +1553,14 @@ function updateAITable(aiType, data) {
       }
     }
 
-    log.info(`🔍 [UI] ${aiType}の情報表示を更新しました`);
+    const modelCount = data.models?.length || 0;
+    const funcCount = (
+      data.functionsWithDetails ||
+      data.functions ||
+      data.features ||
+      []
+    ).length;
+    log.info(`✅ ${aiType}情報更新: ${modelCount}モデル, ${funcCount}機能`);
   } catch (error) {
     log.error("AI表更新エラー:", error);
   }
