@@ -14,7 +14,7 @@
     if (window.UniversalErrorHandler) {
       window.geminiErrorHandler =
         window.UniversalErrorHandler.createForAI("gemini");
-      console.log("✅ [GEMINI] エラーハンドラー初期化完了");
+      console.log("✅ [Step 4-0-0] [GEMINI] エラーハンドラー初期化完了");
       return true;
     }
 
@@ -23,7 +23,7 @@
       setTimeout(tryInitialize, 100);
     } else {
       console.error(
-        "❌ [GEMINI] 共通エラーハンドリングモジュールが見つかりません",
+        "❌ [Step 4-0-0] [GEMINI] 共通エラーハンドリングモジュールが見つかりません",
         "manifest.jsonの設定を確認してください",
       );
     }
@@ -565,9 +565,9 @@ const log = {
       ".gds-mode-switch-button .mdc-button__label div",
     ],
 
-    // 機能ボタン（修正版）
-    toolboxButton: 'button[aria-label="ツール"] mat-icon[fonticon="page_info"]',
-    toolboxButtonParent: 'button[aria-label="ツール"]',
+    // 機能ボタン（修正版 2025-10-02）
+    toolboxButton: 'mat-icon[fonticon="page_info"]',
+    toolboxButtonParent: ".toolbox-drawer-button",
     featureMenuItems: "toolbox-drawer-item > button",
     featureLabel: ".label, .gds-label-l",
     mainButtons: "toolbox-drawer-item > button",
@@ -685,8 +685,8 @@ const log = {
         // タイムアウト付きでsendMessageを実行
         const sendMessageWithTimeout = new Promise((resolve) => {
           const timeout = setTimeout(() => {
-            console.error(
-              "⏱️ [SendToUI Step 4 Error] sendMessageがタイムアウト（3秒経過）",
+            log.error(
+              "⏱️ [Step 4-0-3] [SendToUI] sendMessageがタイムアウト（3秒経過）",
             );
             resolve({
               error: "timeout",
@@ -700,8 +700,8 @@ const log = {
 
               // chrome.runtime.lastErrorをチェック
               if (chrome.runtime.lastError) {
-                console.error(
-                  "⚠️ [SendToUI Step 6 Error] chrome.runtime.lastError:",
+                log.error(
+                  "⚠️ [Step 4-0-3] [SendToUI] chrome.runtime.lastError:",
                   chrome.runtime.lastError.message,
                 );
                 resolve({
@@ -714,7 +714,10 @@ const log = {
             });
           } catch (error) {
             clearTimeout(timeout);
-            log.warn("❌ [Gemini] sendMessage実行エラー:", error.message);
+            log.warn(
+              "❌ [Step 4-0-3] [Gemini] sendMessage実行エラー:",
+              error.message,
+            );
             resolve({
               error: "execution_error",
               message: error.message,
@@ -821,10 +824,24 @@ const log = {
     try {
       const featureNames = new Set();
 
-      // ツールボタンを見つける
-      const toolboxButton = findElement(SELECTORS.toolboxButtonParent);
+      // ツールボタンを見つける（リトライ機能付き）
+      let toolboxButton = null;
+      const maxAttempts = 10;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        toolboxButton = findElement(SELECTORS.toolboxButtonParent);
+        if (toolboxButton) {
+          log.info(
+            `【Step 4-0-3-4】ツールボタン発見（試行${attempt}回目）、クリック実行`,
+          );
+          break;
+        }
+        log.debug(
+          `【Step 4-0-3-4】ツールボタン待機中... (${attempt}/${maxAttempts})`,
+        );
+        await wait(500);
+      }
+
       if (toolboxButton) {
-        log.info("【Step 4-0-3-4】ツールボタン発見、クリック実行");
         toolboxButton.click();
         await wait(1500);
 
@@ -845,7 +862,9 @@ const log = {
         if (overlay) overlay.click();
         await wait(500);
       } else {
-        log.warn("【Step 4-0-3-4】ツールボタンが見つかりませんでした");
+        log.warn(
+          "【Step 4-0-3-4】ツールボタンが見つかりませんでした（10回試行後）",
+        );
       }
 
       window.availableFeatures = Array.from(featureNames).filter(Boolean);
@@ -1537,83 +1556,95 @@ const log = {
 
       // background.jsに送信時刻を記録
       if (chrome.runtime && chrome.runtime.sendMessage) {
-        // シート名を追加（taskDataから取得）
+        // シート名を追加（taskDataから取得、テストモードでは不要）
         const sheetName = taskData.sheetName;
         if (!sheetName) {
-          throw new Error("シート名が指定されていません");
-        }
-        const fullLogCell = taskData.logCell?.includes("!")
-          ? taskData.logCell
-          : `'${sheetName}'!${taskData.logCell}`;
+          log.warn(
+            "⚠️ [Step 4-5] シート名が指定されていません（テストモードの可能性）- 送信時刻記録をスキップ",
+          );
+          // テストモードの場合はスキップ
+          log.debug("【Step 4-5】送信時刻記録スキップ（テストモード）");
+        } else {
+          const fullLogCell = taskData.logCell?.includes("!")
+            ? taskData.logCell
+            : `'${sheetName}'!${taskData.logCell}`;
 
-        const messageToSend = {
-          type: "recordSendTime",
-          taskId: taskId,
-          sendTime: sendTime.toISOString(),
-          taskInfo: {
-            aiType: "Gemini",
-            model: modelName_current,
-            function: featureName_var,
-            // URLは応答完了時に取得するため、ここでは記録しない（Claudeと同じ）
-            cellInfo: taskData.cellInfo,
-          },
-          logCell: fullLogCell, // シート名付きログセル
-        };
+          const messageToSend = {
+            type: "recordSendTime",
+            taskId: taskId,
+            sendTime: sendTime.toISOString(),
+            taskInfo: {
+              aiType: "Gemini",
+              model: modelName_current,
+              function: featureName_var,
+              // URLは応答完了時に取得するため、ここでは記録しない（Claudeと同じ）
+              cellInfo: taskData.cellInfo,
+            },
+            logCell: fullLogCell, // シート名付きログセル
+          };
 
-        // Promise化してタイムアウト処理を追加
-        const sendMessageWithTimeout = () => {
-          return new Promise((resolve) => {
-            const timeout = setTimeout(() => {
-              console.warn("⚠️ [Gemini] 送信時刻記録タイムアウト");
-              resolve(null);
-            }, 5000); // 5秒でタイムアウト
-
-            try {
-              // 拡張機能のコンテキストが有効か確認
-              if (!chrome.runtime?.id) {
-                console.warn("⚠️ [Gemini] 拡張機能のコンテキストが無効です");
-                clearTimeout(timeout);
+          // Promise化してタイムアウト処理を追加
+          const sendMessageWithTimeout = () => {
+            return new Promise((resolve) => {
+              const timeout = setTimeout(() => {
+                log.warn("⚠️ [Step 4-5] [Gemini] 送信時刻記録タイムアウト");
                 resolve(null);
-                return;
-              }
+              }, 5000); // 5秒でタイムアウト
 
-              chrome.runtime.sendMessage(messageToSend, (response) => {
-                clearTimeout(timeout);
-                // エラーチェックを先に行う
-                if (chrome.runtime.lastError) {
-                  // ポートが閉じられたエラーは警告レベルに留める
-                  if (
-                    chrome.runtime.lastError.message.includes("port closed")
-                  ) {
-                    console.warn(
-                      "⚠️ [Gemini] メッセージポートが閉じられました（送信は成功している可能性があります）",
-                    );
-                  } else {
-                    console.warn(
-                      "⚠️ [Gemini] 送信時刻記録エラー:",
-                      chrome.runtime.lastError.message,
-                    );
-                  }
+              try {
+                // 拡張機能のコンテキストが有効か確認
+                if (!chrome.runtime?.id) {
+                  log.warn(
+                    "⚠️ [Step 4-5] [Gemini] 拡張機能のコンテキストが無効です",
+                  );
+                  clearTimeout(timeout);
                   resolve(null);
-                } else if (response) {
-                  console.log("✅ [Gemini] 送信時刻記録成功", response);
-                  resolve(response);
-                } else {
-                  // レスポンスがnullの場合
-                  console.warn("⚠️ [Gemini] 送信時刻記録: レスポンスなし");
-                  resolve(null);
+                  return;
                 }
-              });
-            } catch (error) {
-              clearTimeout(timeout);
-              console.error("❌ [Gemini] 送信時刻記録失敗:", error);
-              resolve(null);
-            }
-          });
-        };
 
-        // 非同期で実行（ブロックしない）
-        sendMessageWithTimeout();
+                chrome.runtime.sendMessage(messageToSend, (response) => {
+                  clearTimeout(timeout);
+                  // エラーチェックを先に行う
+                  if (chrome.runtime.lastError) {
+                    // ポートが閉じられたエラーは警告レベルに留める
+                    if (
+                      chrome.runtime.lastError.message.includes("port closed")
+                    ) {
+                      log.warn(
+                        "⚠️ [Step 4-5] [Gemini] メッセージポートが閉じられました（送信は成功している可能性があります）",
+                      );
+                    } else {
+                      log.warn(
+                        "⚠️ [Step 4-5] [Gemini] 送信時刻記録エラー:",
+                        chrome.runtime.lastError.message,
+                      );
+                    }
+                    resolve(null);
+                  } else if (response) {
+                    log.info(
+                      "✅ [Step 4-5] [Gemini] 送信時刻記録成功",
+                      response,
+                    );
+                    resolve(response);
+                  } else {
+                    // レスポンスがnullの場合
+                    log.warn(
+                      "⚠️ [Step 4-5] [Gemini] 送信時刻記録: レスポンスなし",
+                    );
+                    resolve(null);
+                  }
+                });
+              } catch (error) {
+                clearTimeout(timeout);
+                log.error("❌ [Step 4-5] [Gemini] 送信時刻記録失敗:", error);
+                resolve(null);
+              }
+            });
+          };
+
+          // 非同期で実行（ブロックしない）
+          sendMessageWithTimeout();
+        }
       }
       const startTime = Date.now();
 
@@ -1640,7 +1671,7 @@ const log = {
           }
         }
       } catch (waitError) {
-        console.error(`❌ 【Step 4-7】応答待機エラー:`, waitError);
+        log.error(`❌ 【Step 4-7】応答待機エラー:`, waitError);
         throw waitError;
       }
 
@@ -1652,13 +1683,13 @@ const log = {
       } catch (getTextError) {
         // 部分的な結果の場合はエラーを許容
         if (isPartialResult) {
-          console.warn(
+          log.warn(
             `⚠️ 【Step 4-8】部分的な結果の取得を試みます:`,
             getTextError,
           );
           content = "[タイムアウトによる部分的な応答]";
         } else {
-          console.error(`❌ 【Step 4-8】テキスト取得エラー:`, getTextError);
+          log.error(`❌ 【Step 4-8】テキスト取得エラー:`, getTextError);
           throw getTextError;
         }
       }
@@ -1708,16 +1739,21 @@ const log = {
         // Promise化してエラーハンドリングを改善
         const sendCompletionMessage = () => {
           return new Promise((resolve) => {
+            // シート名付きlogCellを準備（taskDataから取得、テストモードでは不要）
+            const sheetName = taskData.sheetName;
+            if (!sheetName) {
+              log.warn(
+                "【Step 4-9】⚠️ シート名が指定されていません（テストモードの可能性）- 完了時刻記録をスキップ",
+              );
+              resolve(null);
+              return;
+            }
+
             const timeout = setTimeout(() => {
               log.warn("【Step 4-9】⚠️ recordCompletionTime送信タイムアウト");
               resolve(null);
             }, 5000);
 
-            // シート名付きlogCellを準備（taskDataから取得）
-            const sheetName = taskData.sheetName;
-            if (!sheetName) {
-              throw new Error("シート名が指定されていません");
-            }
             const fullLogCell = taskData.logCell?.includes("!")
               ? taskData.logCell
               : `'${sheetName}'!${taskData.logCell}`;
@@ -1773,8 +1809,8 @@ const log = {
 
             chrome.runtime.sendMessage(completionMessage, (response) => {
               if (chrome.runtime.lastError) {
-                console.warn(
-                  "⚠️ [Gemini-TaskCompletion] 完了通知エラー:",
+                log.warn(
+                  "⚠️ 【Step 4-9】[Gemini-TaskCompletion] 完了通知エラー:",
                   chrome.runtime.lastError.message,
                 );
               } else {
@@ -1783,8 +1819,8 @@ const log = {
           }
         }
       } catch (completionError) {
-        console.warn(
-          "⚠️ [Gemini-TaskCompletion] 完了処理エラー:",
+        log.warn(
+          "⚠️ 【Step 4-9】[Gemini-TaskCompletion] 完了処理エラー:",
           completionError.message,
         );
       }
@@ -1867,7 +1903,7 @@ const log = {
           }
         }
         if (!found) {
-          console.warn(`⚠️ [Gemini] テキスト入力欄が見つかりません`);
+          log.warn(`⚠️ [Step 4-1] [Gemini] テキスト入力欄が見つかりません`);
         }
         sendResponse({ found: found });
         return true;
@@ -1883,7 +1919,10 @@ const log = {
               result: result,
             });
           } catch (error) {
-            console.error(`❌ [Gemini] DISCOVER_FEATURESエラー:`, error);
+            log.error(
+              `❌ [Step 4-0-3] [Gemini] DISCOVER_FEATURESエラー:`,
+              error,
+            );
             sendResponse({
               success: false,
               error: error.message,
@@ -1910,8 +1949,8 @@ const log = {
                 const result = await executeTask(taskToExecute);
                 sendResponse({ success: true, result });
               } catch (taskError) {
-                console.error(
-                  `❌ [Gemini] executeTaskエラー [ID:${requestId}]:`,
+                log.error(
+                  `❌ [Step 4-9] [Gemini] executeTaskエラー [ID:${requestId}]:`,
                   taskError,
                 );
                 sendResponse({
@@ -1921,8 +1960,8 @@ const log = {
                 });
               }
             } else {
-              console.error(
-                `❌ [Gemini] executeTask関数が未定義 [ID:${requestId}]`,
+              log.error(
+                `❌ [Step 4-9] [Gemini] executeTask関数が未定義 [ID:${requestId}]`,
                 {
                   requestId: requestId,
                   availableFunctions: {
@@ -1940,7 +1979,10 @@ const log = {
               });
             }
           } catch (error) {
-            console.error(`❌ [Gemini] エラー [ID:${requestId}]:`, error);
+            log.error(
+              `❌ [Step 4-9] [Gemini] エラー [ID:${requestId}]:`,
+              error,
+            );
             sendResponse({ success: false, error: error.message });
           }
         })();
@@ -1968,7 +2010,7 @@ const log = {
 
   function handleGeminiOverloadedError() {
     if (geminiOverloadedRetryCount >= MAX_GEMINI_OVERLOADED_RETRIES) {
-      console.error(
+      log.error(
         "❌ [GEMINI-OVERLOADED-HANDLER] 最大リトライ回数に達しました。手動対応が必要です。",
       );
       return;
@@ -1990,7 +2032,7 @@ const log = {
             nextRetryIn: retryInterval,
           })
           .catch((err) => {
-            console.error(
+            log.error(
               "❌ [GEMINI-OVERLOADED-HANDLER] background scriptへのメッセージ送信失敗:",
               err,
             );
@@ -2035,7 +2077,7 @@ const log = {
         (e.reason && String(e.reason).includes("Overloaded"));
 
       if (isOverloadedError) {
-        console.error("🚨 [GEMINI-OVERLOADED-ERROR]", {
+        log.error("🚨 [GEMINI-OVERLOADED-ERROR]", {
           message: errorMessage,
           name: errorName,
           type: "OVERLOADED_ERROR",
@@ -2059,7 +2101,7 @@ const log = {
         errorName.includes("NetworkError");
 
       if (isNetworkError) {
-        console.error("🌐 [Gemini-GLOBAL-NETWORK-ERROR]", {
+        log.error("🌐 [Gemini-GLOBAL-NETWORK-ERROR]", {
           message: errorMessage,
           name: errorName,
           type: "NETWORK_ERROR",
@@ -2084,7 +2126,7 @@ const log = {
           // エラー記録失敗は無視
         }
       } else {
-        console.error("🚨 [Gemini-GLOBAL-ERROR]", e.message);
+        log.error("🚨 [Gemini-GLOBAL-ERROR]", e.message);
       }
     });
 
@@ -2103,7 +2145,7 @@ const log = {
         errorName.includes("NetworkError");
 
       if (isNetworkError) {
-        console.error("🌐 [Gemini-UNHANDLED-NETWORK-ERROR]", {
+        log.error("🌐 [Gemini-UNHANDLED-NETWORK-ERROR]", {
           message: errorMessage,
           name: errorName,
           type: "NETWORK_ERROR",
@@ -2125,20 +2167,20 @@ const log = {
 
           // 🔄 アクティブなタスクがある場合のリトライ準備 (将来実装用)
           if (window.currentGeminiTask) {
-            console.warn(
+            log.warn(
               "🔄 [Gemini-RETRY-TRIGGER] アクティブタスク検出 - リトライ実行準備",
             );
             // Gemini用リトライマネージャーは将来実装
             // 現在は統計記録のみ
           }
         } catch (retryError) {
-          console.error(
+          log.error(
             "❌ [Gemini-RETRY-MANAGER] エラー記録処理エラー:",
             retryError,
           );
         }
       } else {
-        console.error("🚨 [Gemini-UNHANDLED-PROMISE]", e.reason);
+        log.error("🚨 [Gemini-UNHANDLED-PROMISE]", e.reason);
       }
     });
   }

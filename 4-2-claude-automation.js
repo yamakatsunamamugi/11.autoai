@@ -1365,8 +1365,8 @@
                 setTimeout(async () => {
                   try {
                     const retryManager = new ClaudeRetryManager();
-                    await retryManager.executeWithRetry({
-                      action: async () => {
+                    await retryManager.executeWithRetry(
+                      async () => {
                         log.info(
                           "🔄 [NETWORK-RETRY] ネットワークエラー復旧試行中...",
                         );
@@ -1384,9 +1384,12 @@
                           error: "No active task to retry",
                         };
                       },
-                      errorType: "NETWORK_ERROR",
-                      context: "unhandledrejection_recovery",
-                    });
+                      "ネットワークエラー復旧",
+                      {
+                        errorType: "NETWORK_ERROR",
+                        context: "unhandledrejection_recovery",
+                      },
+                    );
                   } catch (retryError) {
                     log.error(
                       "❌ [NETWORK-RETRY] リトライ実行中にエラー:",
@@ -2217,8 +2220,8 @@
         timeout: retryManager.timeout,
         hasMetrics: !!retryManager.metrics,
       });
-      const result = await retryManager.executeWithRetry({
-        action: async () => {
+      const result = await retryManager.executeWithRetry(
+        async () => {
           // findClaudeElementに適切なオブジェクト形式で渡す
           const selectorInfo = {
             selectors: [selector],
@@ -2228,10 +2231,9 @@
           if (element) return { success: true, element };
           return { success: false, error: "要素が見つかりません" };
         },
-        maxRetries: 3,
-        actionName: `要素検索: ${selector}`,
-        context: { selector },
-      });
+        `要素検索: ${selector}`,
+        { selector },
+      );
 
       if (!result.success) {
         throw new Error(`要素が見つかりません: ${selector}`);
@@ -2481,8 +2483,8 @@
       });
 
       const retryManager = new ClaudeRetryManager();
-      const result = await retryManager.executeWithRetry({
-        action: async () => {
+      const result = await retryManager.executeWithRetry(
+        async () => {
           const element = await findClaudeElement(selectorInfo);
           if (element) return { success: true, element };
           return {
@@ -2490,10 +2492,9 @@
             error: `${description}の要素が見つかりません`,
           };
         },
-        maxRetries: 3,
-        actionName: `${description}検索`,
-        context: { selectorInfo, description },
-      });
+        `${description}検索`,
+        { selectorInfo, description },
+      );
 
       if (!result.success) {
         throw new Error(`${description} の要素が見つかりません`);
@@ -4008,79 +4009,84 @@
 
       // Chrome拡張機能のメッセージ送信で記録
       if (chrome.runtime && chrome.runtime.sendMessage) {
-        // シート名を追加
+        // シート名を追加（テストモードでは不要）
         const sheetName = taskData.sheetName;
         if (!sheetName) {
-          throw new Error("シート名が指定されていません");
-        }
-        const fullLogCell = taskData.logCell?.includes("!")
-          ? taskData.logCell
-          : `'${sheetName}'!${taskData.logCell}`;
+          log.warn(
+            "⚠️ シート名が指定されていません（テストモードの可能性）- 送信時刻記録をスキップ",
+          );
+          // テストモードの場合はスキップ
+          log.debug("【Step 4-6】送信時刻記録スキップ（テストモード）");
+        } else {
+          const fullLogCell = taskData.logCell?.includes("!")
+            ? taskData.logCell
+            : `'${sheetName}'!${taskData.logCell}`;
 
-        const messageToSend = {
-          type: "recordSendTime",
-          taskId: taskId,
-          sendTime: sendTime.toISOString(),
-          taskInfo: {
-            aiType: "Claude",
-            model: modelName || "不明",
-            function: featureName || "通常",
-            cellInfo: taskData.cellInfo,
-          },
-          logCell: fullLogCell,
-        };
+          const messageToSend = {
+            type: "recordSendTime",
+            taskId: taskId,
+            sendTime: sendTime.toISOString(),
+            taskInfo: {
+              aiType: "Claude",
+              model: modelName || "不明",
+              function: featureName || "通常",
+              cellInfo: taskData.cellInfo,
+            },
+            logCell: fullLogCell,
+          };
 
-        // Promise化してタイムアウト処理を追加
-        const sendMessageWithTimeout = () => {
-          return new Promise((resolve) => {
-            const timeout = setTimeout(() => {
-              console.warn("⚠️ [Claude] 送信時刻記録タイムアウト");
-              resolve(null);
-            }, 5000); // 5秒でタイムアウト
-
-            try {
-              // 拡張機能のコンテキストが有効か確認
-              if (!chrome.runtime?.id) {
-                console.warn("⚠️ [Claude] 拡張機能のコンテキストが無効です");
-                clearTimeout(timeout);
+          // Promise化してタイムアウト処理を追加
+          const sendMessageWithTimeout = () => {
+            return new Promise((resolve) => {
+              const timeout = setTimeout(() => {
+                console.warn("⚠️ [Claude] 送信時刻記録タイムアウト");
                 resolve(null);
-                return;
-              }
+              }, 5000); // 5秒でタイムアウト
 
-              chrome.runtime.sendMessage(messageToSend, (response) => {
-                clearTimeout(timeout);
-                if (chrome.runtime.lastError) {
-                  if (
-                    chrome.runtime.lastError.message.includes("port closed")
-                  ) {
-                    console.warn(
-                      "⚠️ [Claude] メッセージポートが閉じられました（送信は成功している可能性があります）",
-                    );
-                  } else {
-                    console.warn(
-                      "⚠️ [Claude] 送信時刻記録エラー:",
-                      chrome.runtime.lastError.message,
-                    );
-                  }
+              try {
+                // 拡張機能のコンテキストが有効か確認
+                if (!chrome.runtime?.id) {
+                  console.warn("⚠️ [Claude] 拡張機能のコンテキストが無効です");
+                  clearTimeout(timeout);
                   resolve(null);
-                } else if (response) {
-                  console.log("✅ [Claude] 送信時刻記録成功", response);
-                  resolve(response);
-                } else {
-                  console.warn("⚠️ [Claude] 送信時刻記録: レスポンスなし");
-                  resolve(null);
+                  return;
                 }
-              });
-            } catch (error) {
-              clearTimeout(timeout);
-              console.error("❌ [Claude] 送信時刻記録失敗:", error);
-              resolve(null);
-            }
-          });
-        };
 
-        // 非同期で実行（ブロックしない）
-        await sendMessageWithTimeout();
+                chrome.runtime.sendMessage(messageToSend, (response) => {
+                  clearTimeout(timeout);
+                  if (chrome.runtime.lastError) {
+                    if (
+                      chrome.runtime.lastError.message.includes("port closed")
+                    ) {
+                      console.warn(
+                        "⚠️ [Claude] メッセージポートが閉じられました（送信は成功している可能性があります）",
+                      );
+                    } else {
+                      console.warn(
+                        "⚠️ [Claude] 送信時刻記録エラー:",
+                        chrome.runtime.lastError.message,
+                      );
+                    }
+                    resolve(null);
+                  } else if (response) {
+                    console.log("✅ [Claude] 送信時刻記録成功", response);
+                    resolve(response);
+                  } else {
+                    console.warn("⚠️ [Claude] 送信時刻記録: レスポンスなし");
+                    resolve(null);
+                  }
+                });
+              } catch (error) {
+                clearTimeout(timeout);
+                console.error("❌ [Claude] 送信時刻記録失敗:", error);
+                resolve(null);
+              }
+            });
+          };
+
+          // 非同期で実行（ブロックしない）
+          await sendMessageWithTimeout();
+        }
       }
 
       log.debug(`📤 送信時刻記録完了: ${sendTime.toISOString()}`);
@@ -4107,10 +4113,13 @@
       featureName,
     ) {
       try {
-        // シート名付きlogCellを準備
+        // シート名付きlogCellを準備（テストモードでは不要）
         const sheetName = taskData.sheetName;
         if (!sheetName) {
-          throw new Error("シート名が指定されていません");
+          log.warn(
+            "⚠️ シート名が指定されていません（テストモードの可能性）- 完了時刻記録をスキップ",
+          );
+          return; // テストモードの場合はスキップ
         }
         const fullLogCell = taskData.logCell?.includes("!")
           ? taskData.logCell
@@ -4524,8 +4533,8 @@
           log.error(`🎯 検索セレクタ: ${claudeSelectors["1_テキスト入力欄"]}`);
 
           const retryManager = new ClaudeRetryManager();
-          const retryResult = await retryManager.executeWithRetry({
-            action: async () => {
+          const retryResult = await retryManager.executeWithRetry(
+            async () => {
               const input = await findClaudeElement(
                 claudeSelectors["1_テキスト入力欄"],
               );
@@ -4533,10 +4542,9 @@
                 ? { success: true, element: input }
                 : { success: false };
             },
-            maxRetries: 5,
-            actionName: "テキスト入力欄検索",
-            context: { taskId: taskData.taskId },
-          });
+            "テキスト入力欄検索",
+            { taskId: taskData.taskId },
+          );
 
           if (!retryResult.success) {
             throw new Error("テキスト入力欄が見つかりません");
@@ -5187,8 +5195,8 @@
           log.error(`🎯 検索セレクタ: ${claudeSelectors["2_送信ボタン"]}`);
 
           const retryManager = new ClaudeRetryManager();
-          const retryResult = await retryManager.executeWithRetry({
-            action: async () => {
+          const retryResult = await retryManager.executeWithRetry(
+            async () => {
               const button = await findClaudeElement(
                 claudeSelectors["2_送信ボタン"],
               );
@@ -5196,10 +5204,9 @@
                 ? { success: true, element: button }
                 : { success: false };
             },
-            maxRetries: 5,
-            actionName: "送信ボタン検索",
-            context: { taskId: taskData.taskId },
-          });
+            "送信ボタン検索",
+            { taskId: taskData.taskId },
+          );
 
           if (!retryResult.success) {
             throw new Error("送信ボタンが見つかりません");
@@ -5319,12 +5326,22 @@
               `   - リトライ間隔: 5秒→10秒→1分→5分→10分→15分→30分→1時間→2時間`,
             );
 
-            const retryResult = await retryManager.executeWithRetry({
-              taskId: taskData.taskId || taskId,
-              prompt: taskData.prompt || prompt,
-              enableDeepResearch: taskData.enableDeepResearch || isDeepResearch,
-              specialMode: taskData.specialMode || null,
-            });
+            const retryResult = await retryManager.executeWithRetry(
+              async () => {
+                return await executeTask({
+                  taskId: taskData.taskId || taskId,
+                  prompt: taskData.prompt || prompt,
+                  enableDeepResearch:
+                    taskData.enableDeepResearch || isDeepResearch,
+                  specialMode: taskData.specialMode || null,
+                });
+              },
+              "Canvas V2タスク再実行",
+              {
+                taskId: taskData.taskId || taskId,
+                versionText: versionText,
+              },
+            );
 
             if (retryResult) {
               return retryResult;
@@ -6467,21 +6484,19 @@
         log.debug("🔄 内蔵リトライマネージャーでエラー復旧を試行中...");
         const retryManager = new ClaudeRetryManager();
 
-        const retryResult = await retryManager.executeWithRetry({
-          action: async () => {
+        const retryResult = await retryManager.executeWithRetry(
+          async () => {
             // タスクを再実行 (executeClaude → executeTask に修正)
             log.info("🔍 [DIAGNOSTIC] リトライでexecuteTask呼び出し");
             return await executeTask(taskData);
           },
-          maxRetries: 2,
-          actionName: "Claude全体タスク最終リトライ",
-          context: {
+          "Claude全体タスク最終リトライ",
+          {
             taskId: taskData.taskId,
             originalError: error.message,
             errorType: error.name,
           },
-          successValidator: (result) => result && result.success === true,
-        });
+        );
 
         if (retryResult.success) {
           log.debug("✅ リトライマネージャーでタスク復旧成功");

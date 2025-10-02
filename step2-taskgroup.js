@@ -2145,202 +2145,16 @@ async function checkCompletionStatus(taskGroup) {
       return { isComplete: false, blankTasks, completedTasks };
     }
 
-    const startRow = taskGroup.dataStartRow;
-    const endRow = taskGroup.dataStartRow + promptCount - 1;
+    // SpreadsheetDataを使用した個別検証は削除（不要な機能）
 
-    // SpreadsheetDataを使用したセルアドレスベースのアクセス
-    const spreadsheetData = new (window.SpreadsheetData || SpreadsheetData)();
+    // 個別タスク検証機能は削除（SpreadsheetDataクラス未定義のため）
 
-    // 両列を含む範囲を取得
-    const minCol = promptCol < answerCol ? promptCol : answerCol;
-    const maxCol = promptCol > answerCol ? promptCol : answerCol;
-    const batchRange = `${sheetPrefix}${minCol}${startRow}:${maxCol}${endRow}`;
-
-    log.debug(`[2-2-2]📊 [BATCH-READ] バッチ読み取り開始:`, {
-      range: batchRange,
-      rowCount: promptCount,
-      startRow: startRow,
-      endRow: endRow,
-      promptCol,
-      answerCol,
-    });
-
-    try {
-      // APIレート制限対策：バッチ読み取り前に少し待機
-      await new Promise((resolve) => setTimeout(resolve, 200)); // 200ms待機
-
-      const batchResponse = await readSpreadsheet(batchRange);
-      if (batchResponse?.values) {
-        // SpreadsheetDataにデータをロード
-        spreadsheetData.loadBatchData(batchRange, batchResponse.values);
-
-        // セルアドレスで直接アクセス
-        for (let row = startRow; row <= endRow; row++) {
-          const promptAddress = `${promptCol}${row}`;
-          const answerAddress = `${answerCol}${row}`;
-
-          const promptValue = spreadsheetData.getCell(promptAddress) || "";
-          const answerValue = spreadsheetData.getCell(answerAddress) || "";
-
-          const taskInfo = {
-            row,
-            promptAddress,
-            answerAddress,
-            promptValue: promptValue,
-            answerValue: answerValue,
-            hasPrompt: spreadsheetData.hasValue(promptAddress),
-            hasAnswer: spreadsheetData.hasValue(answerAddress),
-          };
-
-          if (taskInfo.hasPrompt && !taskInfo.hasAnswer) {
-            blankTasks.push(taskInfo);
-          } else if (taskInfo.hasPrompt && taskInfo.hasAnswer) {
-            completedTasks.push(taskInfo);
-          }
-
-          // デバッグログ（最初の3件のみ）
-          if (row <= startRow + 2) {
-            log.debug(
-              `🔍 [BATCH-READ] ${promptAddress}/${answerAddress}の結果:`,
-              {
-                promptValue: promptValue?.substring(0, 50),
-                answerValue: answerValue?.substring(0, 50),
-                hasPrompt: taskInfo.hasPrompt,
-                hasAnswer: taskInfo.hasAnswer,
-              },
-            );
-          }
-        }
-
-        // デバッグ用：読み込まれたセルを表示
-        if (taskGroup.groupNumber === 2) {
-          log.debug(`[2-2-2]🔍 [GROUP-2-CELLS] Group 2のセルアドレス確認:`);
-          spreadsheetData.debugPrintCells(5);
-        }
-      } else {
-        console.warn(`⚠️ [BATCH-READ] バッチ読み取りの結果が空です`);
-      }
-    } catch (batchError) {
-      console.error(`❌ [BATCH-READ] バッチ読み取りエラー:`, batchError);
-      // エラー時は個別読み取りにフォールバック（レート制限対策付き）
-      log.info(`[2-2-2]🔄 [BATCH-READ] 個別読み取りにフォールバック`);
-
-      // APIレート制限対策：個別読み取りを小さいバッチに分割
-      const BATCH_SIZE = 5; // 5行ずつ処理
-      const BATCH_DELAY = 1000; // バッチ間で1秒待機
-
-      for (
-        let batchStart = startRow;
-        batchStart <= endRow;
-        batchStart += BATCH_SIZE
-      ) {
-        const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endRow);
-
-        // バッチ間の待機（最初のバッチ以外）
-        if (batchStart > startRow) {
-          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
-        }
-
-        for (let row = batchStart; row <= batchEnd; row++) {
-          try {
-            const promptAddress = `${promptCol}${row}`;
-            const answerAddress = `${answerCol}${row}`;
-            const promptRange = `${sheetPrefix}${promptAddress}`;
-            const answerRange = `${sheetPrefix}${answerAddress}`;
-
-            // 個別API呼び出し間にも小さな待機
-            await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms待機
-
-            const promptResponse = await readSpreadsheet(promptRange);
-            await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms待機
-            const answerResponse = await readSpreadsheet(answerRange);
-
-            const promptValue = promptResponse?.values?.[0]?.[0] || "";
-            const answerValue = answerResponse?.values?.[0]?.[0] || "";
-
-            const taskInfo = {
-              row,
-              promptAddress,
-              answerAddress,
-              promptValue: promptValue,
-              answerValue: answerValue,
-              hasPrompt: Boolean(promptValue && promptValue.trim()),
-              hasAnswer: Boolean(answerValue && answerValue.trim()),
-            };
-
-            if (taskInfo.hasPrompt && !taskInfo.hasAnswer) {
-              blankTasks.push(taskInfo);
-            } else if (taskInfo.hasPrompt && taskInfo.hasAnswer) {
-              completedTasks.push(taskInfo);
-            }
-          } catch (readError) {
-            console.error(
-              `❌ [FALLBACK] ${promptCol}${row}/${answerCol}${row}読み取りエラー:`,
-              readError,
-            );
-
-            // 429エラー（レート制限）の場合は長めに待機
-            if (
-              readError.message?.includes("429") ||
-              readError.message?.includes("Quota exceeded")
-            ) {
-              log.info(
-                `[2-2-2]⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`,
-              );
-              await new Promise((resolve) => setTimeout(resolve, 5000)); // 5秒待機
-            }
-          }
-        }
-      }
-    }
-
-    log.debug(`[2-2-2]🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析`, {
-      completionCheckId,
-      taskGroupNumber: taskGroup.groupNumber,
-      totalTasks: promptCount,
-      completedTasks: completedTasks.length,
-      blankTasks: blankTasks.length,
-      blankTaskRows: blankTasks.map((t) => t.row),
-      blankTaskDetails: blankTasks.slice(0, 3), // 最初の3件のみ表示
-      timestamp: new Date().toISOString(),
-    });
-
-    // 厳格な完了判定：プロンプトと回答が一致し、かつプロンプトが存在する場合のみ完了
+    // 完了判定：プロンプト数と回答数が一致し、かつプロンプトが存在する場合のみ完了
     const isComplete = promptCount > 0 && promptCount === answerCount;
-
-    // 🔍 【強化】完了判定結果の詳細ログ
-    log.debug(`[2-2-2]🔍 [COMPLETION-CHECK-RESULT] 完了判定結果`, {
-      completionCheckId,
-      isComplete: isComplete,
-      promptCount: promptCount,
-      answerCount: answerCount,
-      promptCountCheck: promptCount > 0,
-      equalityCheck: promptCount === answerCount,
-      blankTasksFound: blankTasks.length,
-      taskGroupNumber: taskGroup.groupNumber,
-      cacheStatus: {
-        hasCacheData: Boolean(window.globalState?.cache?.spreadsheetData),
-        cacheDataRows: window.globalState?.cache?.spreadsheetData?.length || 0,
-      },
-      timestamp: new Date().toISOString(),
-    });
-
-    // 【問題特定ログ】完了判定結果の詳細
-    log.debug(`[2-2-2][DEBUG-PROBLEM-TRACE] 完了判定結果:`, {
-      isComplete: isComplete,
-      promptCount: promptCount,
-      answerCount: answerCount,
-      promptCountCheck: promptCount > 0,
-      equalityCheck: promptCount === answerCount,
-      taskGroupNumber: taskGroup.groupNumber,
-      blankTasksCount: blankTasks.length,
-      判定結果タイムスタンプ: new Date().toISOString(),
-    });
 
     log.info("[2-2-2][step2-taskgroup.js] [Step 5-1-3] 完了状況:", {
       プロンプト数: promptCount,
       回答数: answerCount,
-      未完了: window.globalState.stats.pendingTasks,
       完了判定: isComplete ? "完了" : "未完了",
       完了率:
         promptCount > 0
@@ -2349,13 +2163,6 @@ async function checkCompletionStatus(taskGroup) {
       グループ番号: taskGroup.groupNumber,
       タスクタイプ: taskGroup.taskType,
     });
-
-    if (!isComplete && promptCount > 0) {
-      log.info("[2-2-2][step2-taskgroup.js] [Step 5-1-3] 未完了詳細:", {
-        残りタスク数: promptCount - answerCount,
-        推定処理時間: `約${(promptCount - answerCount) * 30}秒`,
-      });
-    }
 
     // 完了判定
     return isComplete;

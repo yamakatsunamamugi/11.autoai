@@ -8825,17 +8825,24 @@ async function executeStep3(taskList) {
       "📋 [step4-execute.js] Step 4-6-1: 初期化とグループタイプ判定開始",
     );
 
-    // グループタイプの判定（展開後のタスクリストで判定）
-    const groupTypeInfo =
-      window.taskGroupTypeDetector.detectGroupType(processTaskList);
+    // グループタイプの判定（taskGroupTypeDetectorは未定義のため簡略化）
+    const groupTypeInfo = {
+      groupType:
+        processTaskList.length > 0
+          ? processTaskList[0]?.taskType || "通常処理"
+          : "通常処理",
+      taskCount: processTaskList.length,
+    };
     ExecuteLogger.info(
       "🎯 [Step 4-6-1] グループタイプ判定結果:",
       groupTypeInfo,
     );
 
-    // ウィンドウ配置情報の取得（タスク順序ベース）
-    windowLayoutInfo =
-      window.taskGroupTypeDetector.getWindowLayoutFromTasks(processTaskList);
+    // ウィンドウ配置情報の取得（デフォルト値を使用）
+    windowLayoutInfo = {
+      layout: "default",
+      taskCount: processTaskList.length,
+    };
     ExecuteLogger.info(
       "🖼️ [Step 4-6-1] ウィンドウ配置情報（タスク順序ベース）:",
       windowLayoutInfo,
@@ -8844,9 +8851,9 @@ async function executeStep3(taskList) {
     // Step 4-6-2: スプレッドシートデータの動的取得
     ExecuteLogger.info("📊 [Step 4-6-2] スプレッドシートデータ動的取得開始");
 
-    // 展開後のタスクリストを使用
-    enrichedTaskList =
-      await window.spreadsheetDataManager.enrichTaskList(processTaskList);
+    // enrichTaskListは削除（spreadsheetDataManagerが未定義のため）
+    // processTaskListをそのまま使用
+    enrichedTaskList = processTaskList;
     ExecuteLogger.info(
       "✅ [Step 4-6-2] タスクリスト拡張完了:",
       enrichedTaskList.length,

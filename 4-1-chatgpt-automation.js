@@ -1137,52 +1137,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
   // ChatGPT用固定セレクタ
   const SELECTORS = {
     // モデル関連（テストコードから更新）
-    modelButton: [
-      '[data-testid="model-switcher-dropdown-button"]',
-      'button[aria-label*="モデル セレクター"]',
-      'button[aria-label*="モデル"][aria-haspopup="menu"]',
-      "#radix-\\:r2m\\:",
-      'button.group.flex.cursor-pointer[aria-haspopup="menu"]',
-      'button[data-testid="model-switcher-button"]',
-      'button[aria-label*="Model"]',
-      ".model-selector-button",
-    ],
+    modelButton: ['[data-testid="model-switcher-dropdown-button"]'],
     modelMenu: [
-      '[role="menu"][data-radix-menu-content]',
-      '[role="menu"][data-state="open"]',
-      'div.z-50.max-w-xs.rounded-2xl.popover[role="menu"]',
-      '[aria-labelledby*="radix"][role="menu"]',
-      'div[data-radix-popper-content-wrapper] [role="menu"]',
-      '[data-testid="model-switcher-menu"]',
-      ".model-menu",
-      '[role="menu"]',
+      '[data-side="bottom"][role="menu"][data-radix-menu-content][data-state="open"]',
     ],
     // 機能関連（テストコードから更新）
-    menuButton: [
-      '[data-testid="composer-plus-btn"]',
-      'button[aria-haspopup="menu"]',
-      "#radix-\\:R2eij4im4pact9a4mj5\\:",
-      "button.composer-btn",
-      'div[class*="leading"] button',
-      'button[data-testid="composer-tools-button"]',
-      'button[aria-label="Additional tools"]',
-      ".composer-tools-button",
-    ],
-    mainMenu: [
-      '[role="menu"][data-state="open"]',
-      "[data-radix-menu-content]",
-      'div[data-side="bottom"][role="menu"]',
-      'div.popover[role="menu"]',
-      '[data-testid="composer-tools-menu"]',
-      ".composer-tools-menu",
-      '[role="menu"]',
-    ],
+    menuButton: ['[data-testid="composer-plus-btn"]'],
+    mainMenu: ['[role="menu"][data-radix-menu-content][data-state="open"]'],
     subMenu: [
-      '[role="menu"][data-side="right"]',
-      'div[data-side="right"][role="menu"]',
-      '[data-align="start"][role="menu"]:last-of-type',
-      ".submenu",
-      '[role="menuitem"]',
+      '[data-side="right"][role="menu"][data-radix-menu-content][data-state="open"]',
     ],
     // 入力・送信関連（テストコードから更新）
     textInput: [
@@ -3803,51 +3766,21 @@ async function reportSelectorError(selectorKey, error, selectors) {
     // 動作テストコードから完全コピーしたセレクタ定義
     const DETECTION_SELECTORS = {
       // モデル関連（動作テストコードから）
-      modelButton: [
-        '[data-testid="model-switcher-dropdown-button"]',
-        'button[aria-label*="モデル セレクター"]',
-        'button[aria-label*="モデル"][aria-haspopup="menu"]',
-        "#radix-\\:r2m\\:",
-        'button.group.flex.cursor-pointer[aria-haspopup="menu"]',
-      ],
+      modelButton: ['[data-testid="model-switcher-dropdown-button"]'],
       modelMenu: [
-        '[role="menu"][data-radix-menu-content]',
-        '[role="menu"][data-state="open"]',
-        'div.z-50.max-w-xs.rounded-2xl.popover[role="menu"]',
-        '[aria-labelledby*="radix"][role="menu"]',
-        'div[data-radix-popper-content-wrapper] [role="menu"]',
+        '[data-side="bottom"][role="menu"][data-radix-menu-content][data-state="open"]',
       ],
-      legacyButton: [
-        '[data-testid="レガシーモデル-submenu"]',
-        '[role="menuitem"][data-has-submenu]:contains("レガシーモデル")',
-        'div.__menu-item:contains("レガシーモデル")',
-        '[role="menuitem"][aria-haspopup="menu"]:last-of-type',
-      ],
+      legacyButton: ['[data-testid="レガシーモデル-submenu"]'],
       legacyMenu: [
-        '[role="menu"][data-side="right"]',
-        'div[data-side="right"][role="menu"]',
-        '[role="menu"]:not([data-side="bottom"])',
-        'div.mt-2.max-h-\\[calc\\(100vh-300px\\)\\][role="menu"]',
+        '[data-side="right"][role="menu"][data-radix-menu-content][data-state="open"]',
       ],
       // 機能関連（動作テストコードから）
-      functionMenuButton: [
-        '[data-testid="composer-plus-btn"]',
-        'button[aria-haspopup="menu"]',
-        "#radix-\\:R2eij4im4pact9a4mj5\\:",
-        "button.composer-btn",
-        'div[class*="leading"] button',
-      ],
+      functionMenuButton: ['[data-testid="composer-plus-btn"]'],
       functionMenu: [
-        '[role="menu"][data-state="open"]',
-        "[data-radix-menu-content]",
-        'div[data-side="bottom"][role="menu"]',
-        'div.popover[role="menu"]',
-        '[role="menu"]',
+        '[role="menu"][data-radix-menu-content][data-state="open"]',
       ],
       subMenu: [
-        '[role="menu"][data-side="right"]',
-        'div[data-side="right"][role="menu"]',
-        '[data-align="start"][role="menu"]:last-of-type',
+        '[data-side="right"][role="menu"][data-radix-menu-content][data-state="open"]',
       ],
     };
 
