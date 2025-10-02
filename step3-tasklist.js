@@ -52,7 +52,7 @@ const BATCH_PROCESSING_CONFIG = {
   STOP_CHECK_INTERVAL: 10000, // 回答停止ボタンの消滅継続時間（デフォルト10秒）
 
   // === ウィンドウ初期化タイムアウト設定 ===
-  WINDOW_CREATION_WAIT: 5000, // ウィンドウ作成初期待機: 5秒
+  WINDOW_CREATION_WAIT: 3000, // ウィンドウ作成初期待機: 3秒
   TAB_READY_TIMEOUT: 20000, // タブ準備確認タイムアウト: 20秒
   CONTENT_SCRIPT_WAIT: 3000, // Content Script初期化待機: 3秒
   ELEMENT_RETRY_COUNT: 5, // 要素検出リトライ回数: 5回
