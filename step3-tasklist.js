@@ -258,12 +258,6 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
     return await Promise.allSettled(batchPromises);
   }
 
-  // 独立ウィンドウモードの判定
-  if (BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE) {
-    log.info("[3-0] 🔀 [処理モード切替] 独立ウィンドウモードで実行");
-    return await executeIndependentProcessing(batchPromises, originalTasks);
-  }
-
   log.info("[3-0] 🚀 [非同期バッチ処理] 個別完了処理対応モードで実行開始");
 
   const completedTasks = new Map();
@@ -4336,19 +4330,11 @@ class WindowController {
         // AI種別に応じたURLを取得
         const url = this.getAIUrl(layout.aiType);
 
-        // 🔍 [DEBUG] WindowService呼び出し前の詳細チェック
-        ExecuteLogger.info(`🔍 [DEBUG] ウィンドウ作成前チェック:`, {
-          windowServiceExists: !!this.windowService,
-          methodExists: !!this.windowService?.createWindowWithPosition,
-          windowServiceType: typeof this.windowService,
-          windowServiceName: this.windowService?.constructor?.name,
-          availableMethods: this.windowService
-            ? Object.getOwnPropertyNames(
-                this.windowService.constructor.prototype,
-              )
-            : [],
-          url: url,
+        // 🔍 [DEBUG] WindowService呼び出し前の詳細チェック（簡潔版）
+        ExecuteLogger.debug(`🔍 [DEBUG] ウィンドウ作成前チェック:`, {
+          aiType: layout.aiType,
           position: layout.position,
+          url: url,
         });
 
         // WindowServiceを使用してウィンドウ作成（正しいメソッドを使用）
@@ -4364,15 +4350,8 @@ class WindowController {
         ExecuteLogger.info(`[WindowController] ウィンドウ作成結果`, {
           aiType: layout.aiType,
           position: layout.position,
-          windowInfoReceived: !!windowInfo,
-          windowInfoType: typeof windowInfo,
-          windowInfoKeys: windowInfo ? Object.keys(windowInfo) : null,
           windowId: windowInfo?.id,
-          windowTabs: windowInfo?.tabs,
-          tabCount: windowInfo?.tabs?.length || 0,
-          firstTabId: windowInfo?.tabs?.[0]?.id,
-          conditionWindowInfo: !!windowInfo,
-          conditionWindowId: !!(windowInfo && windowInfo.id),
+          tabId: windowInfo?.tabs?.[0]?.id,
         });
 
         if (windowInfo && windowInfo.id) {
@@ -4400,20 +4379,10 @@ class WindowController {
           const storageKey = `${normalizedAiType}_${layout.position}`;
           this.openedWindows.set(storageKey, windowData);
 
-          ExecuteLogger.info(`[WindowController] ウィンドウ保存完了`, {
+          ExecuteLogger.debug(`[WindowController] ウィンドウ保存完了`, {
             aiType: layout.aiType,
             storageKey: storageKey,
-            uniqueKey: uniqueKey,
             position: layout.position,
-            windowId: windowData.windowId,
-            tabId: windowData.tabId,
-            currentMapSize: this.openedWindows.size,
-          });
-
-          ExecuteLogger.info(`[WindowController] openedWindows.set完了`, {
-            aiType: layout.aiType,
-            afterSize: this.openedWindows.size,
-            allOpenedWindows: Array.from(this.openedWindows.entries()),
           });
 
           ExecuteLogger.info(
@@ -4487,13 +4456,6 @@ class WindowController {
       resultsLength: results.length,
       successfulResults: results.filter((r) => r.success).length,
       failedResults: results.filter((r) => !r.success).length,
-      finalOpenedWindowsSize: this.openedWindows.size,
-      finalOpenedWindowsEntries: Array.from(this.openedWindows.entries()),
-      resultsSummary: results.map((r) => ({
-        aiType: r.aiType,
-        success: r.success,
-        position: r.position,
-      })),
     });
 
     return results;
@@ -5760,7 +5722,7 @@ class WindowLifecycleManager {
           await StepIntegratedWindowService.closeWindow(windowInfo.windowId);
           this.registeredWindows.delete(task.aiType);
 
-          // window.windowController.openedWindows からも削除（独立モード対応）
+          // window.windowController.openedWindows からも削除
           if (task.windowKey && window.windowController?.openedWindows) {
             window.windowController.openedWindows.delete(task.windowKey);
             ExecuteLogger.info(
@@ -6219,7 +6181,7 @@ if (!window.SimpleSheetsClient) {
 
         // 実際に書き込まれたセル位置をログ出力
         const actualRange = result.updatedRange || range;
-        ExecuteLogger.info(
+        ExecuteLogger.debug(
           `📝 [SimpleSheetsClient] 実際の書き込み先: ${actualRange} (${result.updatedCells || 1}セル)`,
         );
 
@@ -9639,29 +9601,6 @@ async function executeStep3(taskList) {
         processedCount += batch.length;
         batchIndex++;
       } // グループ内のwhileループ終了
-
-      // 独立モードの場合、グループ内の全タスク完了を待機
-      if (BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE) {
-        ExecuteLogger.info(
-          `⏳ [独立モード] グループ${groupNumber}の全タスク完了を待機中...`,
-        );
-        let waitCount = 0;
-        while (true) {
-          const inProgressTasks =
-            await statusManager.getInProgressTasks(currentGroupTasks);
-          if (inProgressTasks.length === 0) {
-            ExecuteLogger.info(
-              `✅ [独立モード] グループ${groupNumber}の全タスク完了確認`,
-            );
-            break;
-          }
-          waitCount++;
-          ExecuteLogger.info(
-            `⏳ [独立モード] グループ${groupNumber}: 残り${inProgressTasks.length}タスク実行中... (待機${waitCount}回目)`,
-          );
-          await new Promise((resolve) => setTimeout(resolve, 10000)); // 10秒待機
-        }
-      }
 
       ExecuteLogger.info(`✅ グループ${groupNumber}の処理完了`);
     } // グループごとのforループ終了
