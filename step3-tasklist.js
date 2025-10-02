@@ -355,10 +355,18 @@ async function executeIndependentProcessing(batchPromises, originalTasks = []) {
       log.info("[3-0] ✅ [独立処理] 全ウィンドウのタスク処理が完了");
     });
     // 即座に開始状態を返す
-    return results.map((_, index) => ({
+    const returnValue = results.map((_, index) => ({
       status: "started",
       value: { taskIndex: index, startedAt: Date.now() },
     }));
+
+    log.info("[3-0] 🔍 [仮説検証-Step1] executeIndependentProcessing戻り値:", {
+      returnValueLength: returnValue.length,
+      returnValueSample: returnValue[0],
+      allStatuses: returnValue.map((r) => r.status),
+    });
+
+    return returnValue;
   }
 }
 
@@ -9563,13 +9571,33 @@ async function executeStep3(taskList) {
         let failCount = 0;
         const failedTasks = [];
 
+        ExecuteLogger.info(`🔍 [仮説検証-Step2] batchResults受信:`, {
+          batchResultsLength: batchResults.length,
+          batchResultsSample: batchResults[0],
+          allStatuses: batchResults.map((r) => r.status),
+        });
+
         batchResults.forEach((pr, index) => {
+          ExecuteLogger.info(`🔍 [仮説検証-Step3] タスク[${index}]判定:`, {
+            status: pr.status,
+            hasValue: !!pr.value,
+            valueSuccess: pr.value?.success,
+            valueInProgress: pr.value?.inProgress,
+            hasReason: !!pr.reason,
+          });
+
           if (pr.status === "fulfilled") {
             results.push(pr.value);
             if (pr.value.success) {
               successCount++;
+              ExecuteLogger.info(
+                `✅ [仮説検証-Step3-A] タスク[${index}]: 成功カウント`,
+              );
             } else {
               failCount++;
+              ExecuteLogger.info(
+                `❌ [仮説検証-Step3-B] タスク[${index}]: 失敗カウント (success=${pr.value.success})`,
+              );
               failedTasks.push({
                 taskIndex: index,
                 taskId:
@@ -9582,6 +9610,9 @@ async function executeStep3(taskList) {
             }
           } else {
             failCount++;
+            ExecuteLogger.info(
+              `❌ [仮説検証-Step3-C] タスク[${index}]: Rejectedとして失敗カウント (status=${pr.status})`,
+            );
             failedTasks.push({
               taskIndex: index,
               taskId: `batch_${batchIndex + 1}_task_${index}`,
@@ -9621,8 +9652,22 @@ async function executeStep3(taskList) {
           `🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-E: ウィンドウクローズ`,
         );
 
+        ExecuteLogger.info(`🔍 [仮説検証-Step4] ウィンドウクローズ開始:`, {
+          batchWindowsCount: batchWindows.size,
+          batchWindowsKeys: Array.from(batchWindows.keys()),
+          resultsCount: results.length,
+          failCountBeforeClose: failCount,
+        });
+
         for (const [taskIndex, windowInfo] of batchWindows) {
           try {
+            ExecuteLogger.info(
+              `🔍 [仮説検証-Step4-A] タスク[${taskIndex}]ウィンドウクローズ試行:`,
+              {
+                windowId: windowInfo.windowId,
+                aiType: windowInfo.aiType,
+              },
+            );
             await StepIntegratedWindowService.closeWindow(windowInfo.windowId);
             ExecuteLogger.info(`✅ タスク${taskIndex}ウィンドウクローズ完了`);
 
