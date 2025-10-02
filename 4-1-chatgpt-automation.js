@@ -2585,9 +2585,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // Step 4-0: ページ準備確認
         // ========================================
-        console.log("📋 [ChatGPT] ページ準備状態確認中...");
+        console.log("📋 [Step 4-0] ページ準備状態確認中...");
         await waitForPageReady();
-        console.log("✅ [ChatGPT] ページ準備完了");
+        console.log("✅ [Step 4-0] ページ準備完了");
         // ========================================
         // ステップ1: ページ準備状態チェック（初回実行の問題を解決）
         // ========================================
@@ -2607,7 +2607,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         const isFirstTask = !window.ChatGPTAutomationV2._initialized;
         if (isFirstTask) {
           logWithTimestamp(
-            "初回タスク実行を検知。追加の初期化待機を行います",
+            "【Step 4-1】初回タスク実行を検知。追加の初期化待機を行います",
             "info",
           );
           await sleep(AI_WAIT_CONFIG.LONG_WAIT); // 初回は3秒待機
@@ -2622,7 +2622,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             const element = await findElement(selectors, name, 1);
             if (!element) {
               logWithTimestamp(
-                `${name}が見つかりません。待機中... (${retryCount + 1}/${maxRetries})`,
+                `【Step 4-1】${name}が見つかりません。待機中... (${retryCount + 1}/${maxRetries})`,
                 "warning",
               );
               allElementsReady = false;
@@ -2638,12 +2638,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
         if (!allElementsReady) {
           throw new Error(
-            "ChatGPT UIが完全に初期化されていません。ページをリロードしてください。",
+            "【Step 4-1】ChatGPT UIが完全に初期化されていません。ページをリロードしてください。",
           );
         }
 
         // 1-2. React/DOM の安定化待機
-        logWithTimestamp("1-2. DOM安定化待機中...", "info");
+        logWithTimestamp("【Step 4-1】1-2. DOM安定化待機中...", "info");
         await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT - 500);
 
         // 1-3. 既存の開いているメニューを全て閉じる
@@ -2652,7 +2652,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         );
         if (openMenus.length > 0) {
           logWithTimestamp(
-            `開いているメニュー(${openMenus.length}個)を閉じます`,
+            `【Step 4-1】開いているメニュー(${openMenus.length}個)を閉じます`,
             "info",
           );
           document.dispatchEvent(
@@ -2661,7 +2661,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           await sleep(AI_WAIT_CONFIG.TINY_WAIT);
         }
 
-        logWithTimestamp("ページ初期化チェック完了", "success");
+        logWithTimestamp("【Step 4-1】ページ初期化チェック完了", "success");
 
         // パラメータ準備（スプレッドシートの値をそのまま使用）
         let prompt = taskData.prompt || taskData.text || "";
@@ -2674,9 +2674,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
         ) {
           const cellPosition = `${taskData.cellInfo.column}${taskData.cellInfo.row}`;
           prompt = `【現在${cellPosition}セルを処理中です】\n\n${prompt}`;
-          log.debug(`📍 [ChatGPT] セル位置情報を追加: ${cellPosition}`);
+          log.debug(`📍 [Step 4-1] セル位置情報を追加: ${cellPosition}`);
         } else {
-          log.debug("📍 [ChatGPT] セル位置情報なし:", {
+          log.debug("📍 [Step 4-1] セル位置情報なし:", {
             hasCellInfo: !!(taskData && taskData.cellInfo),
             cellInfo: taskData && taskData.cellInfo,
             taskDataKeys: taskData ? Object.keys(taskData) : [],
@@ -2686,12 +2686,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
         const modelName = taskData.model || "";
         const featureName = taskData.function || null;
 
-        logWithTimestamp(`選択されたモデル: ${modelName}`, "info");
+        logWithTimestamp(`【Step 4-1】選択されたモデル: ${modelName}`, "info");
         logWithTimestamp(
-          `選択された機能: ${featureName || "設定なし"}`,
+          `【Step 4-1】選択された機能: ${featureName || "設定なし"}`,
           "info",
         );
-        logWithTimestamp(`プロンプト: ${prompt.substring(0, 100)}...`, "info");
+        logWithTimestamp(
+          `【Step 4-1】プロンプト: ${prompt.substring(0, 100)}...`,
+          "info",
+        );
 
         // モデル情報を事前取得（テスト済みコードのロジック）
         let selectedModel = null;
@@ -2785,24 +2788,30 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ2: テキスト入力（RetryManager統合版）
         // ========================================
-        console.log("📝 [ChatGPT] テキスト入力開始");
+        console.log("📝 [Step 4-2] テキスト入力開始");
         logWithTimestamp("\n【Step 4-2】テキスト入力", "step");
 
         await inputTextChatGPT(prompt);
-        logWithTimestamp("テキスト入力完了", "success");
+        logWithTimestamp("【Step 4-2】テキスト入力完了", "success");
 
         // ========================================
         // ステップ3: モデル選択（RetryManager統合版）
         // ========================================
         if (modelName && modelName !== "" && modelName !== "設定なし") {
-          console.log("🤖 [ChatGPT] モデル選択処理開始");
+          console.log("🤖 [Step 4-3] モデル選択処理開始");
           logWithTimestamp("\n【Step 4-3】モデル選択", "step");
-          logWithTimestamp(`選択するモデル: ${modelName}`, "info");
+          logWithTimestamp("【Step 4-3】選択するモデル: ${modelName}", "info");
 
           await selectModelChatGPT(modelName);
-          logWithTimestamp(`✅ モデル選択完了: ${modelName}`, "success");
+          logWithTimestamp(
+            "【Step 4-3】✅ モデル選択完了: ${modelName}",
+            "success",
+          );
         } else {
-          logWithTimestamp("モデル選択をスキップ（モデル名未指定）", "info");
+          logWithTimestamp(
+            "【Step 4-3】モデル選択をスキップ（モデル名未指定）",
+            "info",
+          );
         }
 
         // ========================================
@@ -2815,24 +2824,33 @@ async function reportSelectorError(selectorKey, error, selectors) {
           featureName !== "通常" &&
           featureName !== "設定なし"
         ) {
-          console.log("🛠️ [ChatGPT] 機能選択処理開始");
+          console.log("🛠️ [Step 4-4] 機能選択処理開始");
           logWithTimestamp("\n【Step 4-4】機能選択", "step");
-          logWithTimestamp(`選択する機能: ${featureName}`, "info");
+          logWithTimestamp("【Step 4-4】選択する機能: ${featureName}", "info");
 
           await selectFunctionChatGPT(featureName);
-          logWithTimestamp(`✅ 機能選択完了: ${featureName}`, "success");
+          logWithTimestamp(
+            "【Step 4-4】✅ 機能選択完了: ${featureName}",
+            "success",
+          );
         } else {
-          logWithTimestamp("機能選択をスキップ（機能名未指定）", "info");
+          logWithTimestamp(
+            "【Step 4-4】機能選択をスキップ（機能名未指定）",
+            "info",
+          );
         }
 
         // ========================================
         // ステップ5: メッセージ送信（RetryManager統合版）
         // ========================================
-        console.log("📤 [ChatGPT] メッセージ送信準備");
+        console.log("📤 [Step 4-5] メッセージ送信準備");
         logWithTimestamp("\n【Step 4-5】メッセージ送信", "step");
 
         await sendMessageChatGPT();
-        logWithTimestamp("🚀 送信ボタンをクリックしました！", "success");
+        logWithTimestamp(
+          "【Step 4-5】🚀 送信ボタンをクリックしました！",
+          "success",
+        );
 
         // 送信時刻を記録
         const sendTime = new Date();
@@ -2848,7 +2866,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           // シート名を追加（taskDataから取得）
           const sheetName = taskData.sheetName;
           if (!sheetName) {
-            throw new Error("シート名が指定されていません");
+            throw new Error("【Step 4-6】シート名が指定されていません");
           }
           const fullLogCell = taskData.logCell?.includes("!")
             ? taskData.logCell
@@ -2873,23 +2891,23 @@ async function reportSelectorError(selectorKey, error, selectors) {
               if (chrome.runtime.lastError) {
                 // エラーはデバッグログにのみ記録（通常は表示されない）
                 log.debug(
-                  "[ChatGPT] 送信時刻記録エラー（無視可）:",
+                  "[Step 4-6] 送信時刻記録エラー（無視可）:",
                   chrome.runtime.lastError.message,
                 );
               } else {
-                log.debug("✅ [ChatGPT] 送信時刻記録成功", response);
+                log.debug("✅ [Step 4-6] 送信時刻記録成功", response);
               }
             });
           } catch (error) {
             // エラーはデバッグログにのみ記録
-            log.debug("[ChatGPT] 送信時刻記録失敗（無視可）:", error);
+            log.debug("[Step 4-6] 送信時刻記録失敗（無視可）:", error);
           }
         }
 
         // ========================================
         // ステップ6: 応答待機（エラーハンドリング強化版）
         // ========================================
-        console.log("⏳ [ChatGPT] 応答待機開始");
+        console.log("⏳ [Step 4-7] 応答待機開始");
         logWithTimestamp("\n【Step 4-7】応答待機", "step");
 
         // 停止ボタンが表示されるまで待機
@@ -2901,7 +2919,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
             if (stopBtn) {
               logWithTimestamp(
-                "停止ボタンが表示されました（応答生成中）",
+                "【Step 4-7】停止ボタンが表示されました（応答生成中）",
                 "success",
               );
               stopBtnFound = true;
@@ -2909,7 +2927,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
             } else {
             }
           } catch (error) {
-            log.debug(`停止ボタン検索エラー (${i + 1}/30): ${error.message}`);
+            log.debug(
+              `[Step 4-7] 停止ボタン検索エラー (${i + 1}/30): ${error.message}`,
+            );
           }
 
           // 停止ボタンが見つからなくても、アシスタントメッセージがあれば処理を継続
@@ -2920,7 +2940,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             );
             if (assistantMessages.length > 0) {
               logWithTimestamp(
-                "停止ボタンは見つからないが、アシスタントメッセージを検出",
+                "【Step 4-7】停止ボタンは見つからないが、アシスタントメッセージを検出",
                 "warning",
               );
               break;
@@ -2938,7 +2958,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
             AI_WAIT_CONFIG.CHECK_INTERVAL / 1000,
           ); // UI設定秒数連続で停止ボタンが消えたら完了
 
-          logWithTimestamp("応答生成を待機中...", "info");
+          logWithTimestamp("【Step 4-7】応答生成を待機中...", "info");
 
           let consecutiveAbsent = 0; // 停止ボタンが連続で見つからない回数
 
@@ -2954,13 +2974,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
                 consecutiveAbsent++;
 
                 if (consecutiveAbsent <= 10) {
-                  log.debug(`停止ボタン不在: ${consecutiveAbsent}秒連続`);
+                  log.debug(
+                    `[Step 4-7] 停止ボタン不在: ${consecutiveAbsent}秒連続`,
+                  );
                 }
 
                 // 10秒間連続で停止ボタンが見つからなければ完了
                 if (consecutiveAbsent >= CHECK_INTERVAL) {
                   logWithTimestamp(
-                    `✅ 応答生成完了（連続非検出: ${consecutiveAbsent}秒）`,
+                    `【Step 4-7】✅ 応答生成完了（連続非検出: ${consecutiveAbsent}秒）`,
                     "success",
                   );
 
@@ -2972,18 +2994,21 @@ async function reportSelectorError(selectorKey, error, selectors) {
                 // 停止ボタンが見つかったらカウントをリセット
                 if (consecutiveAbsent > 0) {
                   log.debug(
-                    `停止ボタン再検出。カウントリセット (${consecutiveAbsent} → 0)`,
+                    `[Step 4-7] 停止ボタン再検出。カウントリセット (${consecutiveAbsent} → 0)`,
                   );
                 }
                 consecutiveAbsent = 0;
               }
             } catch (error) {
-              log.debug(`停止ボタン再検索エラー: ${error.message}`);
+              log.debug(`[Step 4-7] 停止ボタン再検索エラー: ${error.message}`);
               // エラーが発生しても続行
             }
 
             if (i % 10 === 0 && i > 0) {
-              logWithTimestamp(`応答待機中... (${i}秒経過)`, "info");
+              logWithTimestamp(
+                `【Step 4-7】応答待機中... (${i}秒経過)`,
+                "info",
+              );
             }
 
             await sleep(1000);
@@ -2991,7 +3016,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
         } else if (!stopBtnFound) {
           // 停止ボタンが見つからなかった場合の代替待機
           logWithTimestamp(
-            "停止ボタンが見つからないため、代替待機を実行",
+            "【Step 4-7】停止ボタンが見つからないため、代替待機を実行",
             "warning",
           );
 
@@ -3006,7 +3031,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
               const messageText = lastMessage.textContent || "";
               if (messageText.length > 10) {
                 console.warn();
-                logWithTimestamp("アシスタントの応答を検出しました", "success");
+                logWithTimestamp(
+                  "【Step 4-7】アシスタントの応答を検出しました",
+                  "success",
+                );
                 break;
               }
             }
@@ -3027,33 +3055,53 @@ async function reportSelectorError(selectorKey, error, selectors) {
         let responseText = "";
         try {
           // getResponseTextChatGPT関数を使用（Canvas対応済み）
-          logWithTimestamp("getResponseTextChatGPT関数を呼び出し中...", "info");
+          logWithTimestamp(
+            "【Step 4-8】getResponseTextChatGPT関数を呼び出し中...",
+            "info",
+          );
           responseText = await getResponseTextChatGPT();
 
           if (responseText && responseText.trim().length > 0) {
             logWithTimestamp(
-              `✅ テキスト取得成功: ${responseText.substring(0, 100)}...`,
+              `【Step 4-8】✅ テキスト取得成功: ${responseText.substring(0, 100)}...`,
               "success",
             );
-            logWithTimestamp(`取得文字数: ${responseText.length}文字`, "info");
+            logWithTimestamp(
+              `【Step 4-8】取得文字数: ${responseText.length}文字`,
+              "info",
+            );
 
             // Canvasモードかどうか判定してログ出力
             const canvasElement = document.querySelector(
               "#prosemirror-editor-container .ProseMirror",
             );
             if (canvasElement) {
-              logWithTimestamp("📝 Canvasモードで取得されました", "info");
+              logWithTimestamp(
+                "【Step 4-8】📝 Canvasモードで取得されました",
+                "info",
+              );
             } else {
-              logWithTimestamp("💬 通常モードで取得されました", "info");
+              logWithTimestamp(
+                "【Step 4-8】💬 通常モードで取得されました",
+                "info",
+              );
             }
           } else {
-            throw new Error("テキストが空または取得できませんでした");
+            throw new Error(
+              "【Step 4-8】テキストが空または取得できませんでした",
+            );
           }
         } catch (error) {
-          logWithTimestamp(`❌ テキスト取得エラー: ${error.message}`, "error");
+          logWithTimestamp(
+            `【Step 4-8】❌ テキスト取得エラー: ${error.message}`,
+            "error",
+          );
 
           // フォールバック: 従来の方法で再試行
-          logWithTimestamp("フォールバック: 従来の方法で再試行", "warning");
+          logWithTimestamp(
+            "【Step 4-8】フォールバック: 従来の方法で再試行",
+            "warning",
+          );
           try {
             const assistantMessages = document.querySelectorAll(
               '[data-message-author-role="assistant"]',
@@ -3064,28 +3112,28 @@ async function reportSelectorError(selectorKey, error, selectors) {
               responseText = getCleanText(lastMessage);
               if (responseText && responseText.trim().length > 0) {
                 logWithTimestamp(
-                  `✅ フォールバック成功: ${responseText.substring(0, 100)}...`,
+                  `【Step 4-8】✅ フォールバック成功: ${responseText.substring(0, 100)}...`,
                   "success",
                 );
                 logWithTimestamp(
-                  `フォールバック取得文字数: ${responseText.length}文字`,
+                  `【Step 4-8】フォールバック取得文字数: ${responseText.length}文字`,
                   "info",
                 );
               } else {
                 logWithTimestamp(
-                  "⚠️ フォールバックでもテキストが取得できません",
+                  "【Step 4-8】⚠️ フォールバックでもテキストが取得できません",
                   "warning",
                 );
               }
             } else {
               logWithTimestamp(
-                "⚠️ アシスタントメッセージが見つかりません",
+                "【Step 4-8】⚠️ アシスタントメッセージが見つかりません",
                 "warning",
               );
             }
           } catch (fallbackError) {
             logWithTimestamp(
-              `❌ フォールバックエラー: ${fallbackError.message}`,
+              `【Step 4-8】❌ フォールバックエラー: ${fallbackError.message}`,
               "error",
             );
           }
@@ -3106,7 +3154,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           // シート名付きlogCellを準備（taskDataから取得）
           const sheetName = taskData.sheetName;
           if (!sheetName) {
-            throw new Error("シート名が指定されていません");
+            throw new Error("【Step 4-9】シート名が指定されていません");
           }
           const fullLogCell = taskData.logCell?.includes("!")
             ? taskData.logCell
@@ -3124,10 +3172,16 @@ async function reportSelectorError(selectorKey, error, selectors) {
             },
             logCell: fullLogCell, // シート名付きログセル
           });
-          log.debug("recordCompletionTime送信完了:", taskIdForRecord);
+          log.debug(
+            "[Step 4-9] recordCompletionTime送信完了:",
+            taskIdForRecord,
+          );
         } catch (error) {
           // エラーはデバッグログにのみ記録
-          log.debug("recordCompletionTime送信エラー（無視可）:", error);
+          log.debug(
+            "[Step 4-9] recordCompletionTime送信エラー（無視可）:",
+            error,
+          );
         }
 
         // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
@@ -3148,7 +3202,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
               chrome.runtime.sendMessage(completionMessage, (response) => {
                 if (chrome.runtime.lastError) {
                   console.warn(
-                    "⚠️ [ChatGPT-TaskCompletion] 完了通知エラー:",
+                    "⚠️ [Step 4-9] 完了通知エラー:",
                     chrome.runtime.lastError.message,
                   );
                 } else {
@@ -3158,12 +3212,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
           }
         } catch (completionError) {
           console.warn(
-            "⚠️ [ChatGPT-TaskCompletion] 完了処理エラー:",
+            "⚠️ [Step 4-9] 完了処理エラー:",
             completionError.message,
           );
         }
 
-        logWithTimestamp("✅ タスク完了", "success");
+        logWithTimestamp("【Step 4-9】✅ タスク完了", "success");
         return result;
       } catch (error) {
         // デバッグログ削除済み        return handleTaskError(error, taskData);
