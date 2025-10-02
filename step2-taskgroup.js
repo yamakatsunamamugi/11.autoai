@@ -798,6 +798,8 @@ async function applyColumnControls() {
     const taskGroups = window.globalState.taskGroups;
     let skipCount = 0;
 
+    const skippedGroups = [];
+
     if (controls.onlyProcess.length > 0) {
       // 「この列のみ処理」が優先
       log.debug(
@@ -808,7 +810,7 @@ async function applyColumnControls() {
         if (!controls.onlyProcess.includes(index + 1)) {
           group.skip = true;
           skipCount++;
-          log.debug(`[2-1-3]  - グループ${group.groupNumber}をスキップ設定`);
+          skippedGroups.push(group.groupNumber);
         }
       });
     } else {
@@ -821,9 +823,7 @@ async function applyColumnControls() {
           if (group.groupNumber < controls.startFrom) {
             group.skip = true;
             skipCount++;
-            log.debug(
-              `[2-1-3]  - グループ${group.groupNumber}をスキップ（開始前）`,
-            );
+            skippedGroups.push(group.groupNumber);
           }
         });
       }
@@ -836,12 +836,37 @@ async function applyColumnControls() {
           if (group.groupNumber > controls.stopAfter) {
             group.skip = true;
             skipCount++;
-            log.debug(
-              `[2-1-3]  - グループ${group.groupNumber}をスキップ（終了後）`,
-            );
+            skippedGroups.push(group.groupNumber);
           }
         });
       }
+    }
+
+    // スキップしたグループをサマリー化してログ出力
+    if (skippedGroups.length > 0) {
+      const groupRanges = [];
+      let rangeStart = skippedGroups[0];
+      let rangeEnd = skippedGroups[0];
+
+      for (let i = 1; i <= skippedGroups.length; i++) {
+        if (i < skippedGroups.length && skippedGroups[i] === rangeEnd + 1) {
+          rangeEnd = skippedGroups[i];
+        } else {
+          if (rangeStart === rangeEnd) {
+            groupRanges.push(`${rangeStart}`);
+          } else {
+            groupRanges.push(`${rangeStart}-${rangeEnd}`);
+          }
+          if (i < skippedGroups.length) {
+            rangeStart = skippedGroups[i];
+            rangeEnd = skippedGroups[i];
+          }
+        }
+      }
+
+      log.debug(
+        `[2-1-3]  - グループ${groupRanges.join(", ")}をスキップ設定 (${skippedGroups.length}グループ)`,
+      );
     }
 
     log.debug(
