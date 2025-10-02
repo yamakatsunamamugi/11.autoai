@@ -8136,7 +8136,65 @@ class DynamicTaskSearch {
       const nextGroup = this.determineNextGroup(completedGroup);
 
       if (!nextGroup) {
-        log.info("[3-4] 📋 [DynamicTaskSearch] 次のグループなし - 全体完了");
+        log.info(
+          "[3-4] 📋 [DynamicTaskSearch] 次のグループなし - スプレッドシートURLチェック開始",
+        );
+
+        // UI入力欄から最新のURL一覧を取得
+        const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
+        const currentUrls = [];
+
+        urlInputs.forEach((input) => {
+          const url = input.value.trim();
+          if (url) currentUrls.push(url);
+        });
+
+        // 既存URLと比較して新しいURLを抽出
+        const existingUrls = window.globalState?.spreadsheetUrls || [];
+        const newUrls = currentUrls.filter(
+          (url) => !existingUrls.includes(url),
+        );
+
+        if (newUrls.length > 0) {
+          log.info(
+            `[3-4] 📋 [DynamicTaskSearch] 新しいスプレッドシート${newUrls.length}個を検出 - 処理開始`,
+          );
+
+          // globalStateに追加
+          window.globalState.spreadsheetUrls = [...existingUrls, ...newUrls];
+          window.globalState.totalUrlCount =
+            window.globalState.spreadsheetUrls.length;
+
+          // 最初の新しいURLでstep1-2-3を実行
+          const nextUrl = newUrls[0];
+          const nextIndex = existingUrls.length;
+          window.globalState.currentUrlIndex = nextIndex;
+
+          log.info(
+            `[3-4] 🔄 次のスプレッドシート(${nextIndex + 1}/${window.globalState.spreadsheetUrls.length})へ移行: ${nextUrl.substring(0, 80)}...`,
+          );
+
+          // Step1-2-3を実行
+          try {
+            if (typeof window.executeStep1 === "function") {
+              await window.executeStep1(nextUrl);
+              log.info("[3-4] ✅ Step1完了");
+            }
+
+            if (typeof window.executeStep2 === "function") {
+              await window.executeStep2();
+              log.info("[3-4] ✅ Step2完了");
+            }
+
+            // Step3は現在のループが継続する
+            return false; // ループ継続
+          } catch (error) {
+            log.error("[3-4] ❌ 次のスプレッドシート処理エラー:", error);
+            return true; // エラー時は終了
+          }
+        }
+
+        log.info("[3-4] 🎉 [DynamicTaskSearch] 全スプレッドシート処理完了");
         return true;
       }
 
