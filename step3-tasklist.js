@@ -3643,6 +3643,13 @@ async function generateTaskList(
               group: taskGroup.groupNumber,
               groupType: taskGroup.groupType,
             });
+            // 🔍 スキップ時の詳細ログ（冒頭10文字表示）
+            log.info(`⏭️ [行${row + 1}] 回答済みスキップ:`, {
+              行: row + 1,
+              列: col,
+              冒頭10文字: cellValue.substring(0, 10),
+              文字数: cellValue.length,
+            });
             break;
           } else {
             // 初回実行時は作業中マーカーを削除
@@ -9634,24 +9641,7 @@ async function executeStep3(taskList) {
           `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-D: バッチ${batchIndex + 1}完了 - 成功: ${successCount}, 失敗: ${failCount}`,
         );
 
-        // Step 4-6-6-D2: 作業中マーカーをクリア
-        ExecuteLogger.info(
-          `🧹 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-D2: 作業中マーカークリア`,
-        );
-
-        for (const task of validBatchTasks) {
-          try {
-            await statusManager.clearMarker(task);
-            ExecuteLogger.debug(
-              `🧹 マーカークリア完了: ${task.column}${task.row}`,
-            );
-          } catch (error) {
-            ExecuteLogger.error(
-              `❌ マーカークリアエラー: ${task.column}${task.row}`,
-              error,
-            );
-          }
-        }
+        // 作業中マーカーは削除しない（タスク完了時に回答で自動上書き）
 
         // Step 4-6-6-E: バッチのウィンドウをクローズ
         ExecuteLogger.info(
@@ -9785,6 +9775,29 @@ async function executeStep3(taskList) {
         processedCount += batch.length;
         batchIndex++;
       } // グループ内のwhileループ終了
+
+      // 独立モードの場合、グループ内の全タスク完了を待機
+      if (BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE) {
+        ExecuteLogger.info(
+          `⏳ [独立モード] グループ${groupNumber}の全タスク完了を待機中...`,
+        );
+        let waitCount = 0;
+        while (true) {
+          const inProgressTasks =
+            await statusManager.getInProgressTasks(currentGroupTasks);
+          if (inProgressTasks.length === 0) {
+            ExecuteLogger.info(
+              `✅ [独立モード] グループ${groupNumber}の全タスク完了確認`,
+            );
+            break;
+          }
+          waitCount++;
+          ExecuteLogger.info(
+            `⏳ [独立モード] グループ${groupNumber}: 残り${inProgressTasks.length}タスク実行中... (待機${waitCount}回目)`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 10000)); // 10秒待機
+        }
+      }
 
       ExecuteLogger.info(`✅ グループ${groupNumber}の処理完了`);
     } // グループごとのforループ終了
