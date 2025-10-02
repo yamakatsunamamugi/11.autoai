@@ -4514,28 +4514,22 @@
           log.debug("💬 プロンプトが空です");
         }
 
-        const inputSuccess = await inputText(inputResult, prompt);
-        if (!inputSuccess) {
-          log.error("❌ テキスト入力処理に失敗 - リトライ機能で再試行");
+        // RetryManager統合版テキスト入力
+        const inputRetryManager = new ClaudeRetryManager();
+        const inputRetryResult = await inputRetryManager.executeWithRetry(
+          async () => {
+            const success = await inputText(inputResult, prompt);
+            if (!success) {
+              throw new Error("テキスト入力失敗");
+            }
+            return { success: true };
+          },
+          "Claudeテキスト入力",
+          { taskId: taskData.taskId, promptLength: prompt.length },
+        );
 
-          const retryManager = new ClaudeRetryManager();
-          const retryResult = await retryManager.executeWithRetry({
-            action: async () => {
-              const success = await enterText(
-                inputResult,
-                prompt,
-                "目標プロンプト",
-              );
-              return success ? { success: true } : { success: false };
-            },
-            maxRetries: 3,
-            actionName: "テキスト入力処理",
-            context: { taskId: taskData.taskId, promptLength: prompt.length },
-          });
-
-          if (!retryResult.success) {
-            throw new Error("テキスト入力に失敗しました");
-          }
+        if (!inputRetryResult.success) {
+          throw new Error("テキスト入力に失敗しました");
         }
 
         // Text input complete
@@ -5183,25 +5177,23 @@
           `📏 送信ボタンサイズ: ${Math.round(buttonRect.width)}×${Math.round(buttonRect.height)}px`,
         );
 
+        // RetryManager統合版送信ボタンクリック
         log.debug("📤 送信ボタンをクリック...");
-        const clickSuccess = await clickButton(sendResult, "送信ボタン");
-        if (!clickSuccess) {
-          log.error("❌ 送信ボタンのクリック処理に失敗 - リトライ機能で再試行");
+        const sendRetryManager = new ClaudeRetryManager();
+        const sendRetryResult = await sendRetryManager.executeWithRetry(
+          async () => {
+            const success = await clickButton(sendResult, "送信ボタン");
+            if (!success) {
+              throw new Error("送信ボタンクリック失敗");
+            }
+            return { success: true };
+          },
+          "Claude送信ボタンクリック",
+          { taskId: taskData.taskId },
+        );
 
-          const retryManager = new ClaudeRetryManager();
-          const retryResult = await retryManager.executeWithRetry({
-            action: async () => {
-              const success = await clickButton(sendResult, "送信ボタン");
-              return success ? { success: true } : { success: false };
-            },
-            maxRetries: 3,
-            actionName: "送信ボタンクリック",
-            context: { taskId: taskData.taskId },
-          });
-
-          if (!retryResult.success) {
-            throw new Error("送信ボタンのクリックに失敗しました");
-          }
+        if (!sendRetryResult.success) {
+          throw new Error("送信ボタンのクリックに失敗しました");
         }
 
         // Send button clicked
