@@ -57,6 +57,10 @@ const BATCH_PROCESSING_CONFIG = {
   CONTENT_SCRIPT_WAIT: 3000, // Content Script初期化待機: 3秒
   ELEMENT_RETRY_COUNT: 5, // 要素検出リトライ回数: 5回
   ELEMENT_RETRY_INTERVAL: 2500, // 要素検出リトライ間隔: 2.5秒
+
+  // === タスク失敗時のリトライ設定 ===
+  TASK_RETRY_COUNT: 20, // タスク失敗時の最大リトライ回数: 20回
+  TASK_RETRY_INTERVAL: 5000, // タスクリトライ間隔: 5秒
 };
 
 // Chrome Storageからログレベルを取得（非同期）
@@ -6953,6 +6957,62 @@ async function createTaskListFromGroup(groupData) {
       throw new Error("未対応のグループデータ形式です");
     }
 
+    // Step 4-1-3.5: 行制御・列制御情報を取得してoptionsに追加
+    ExecuteLogger.info(
+      "[createTaskListFromGroup] [Step 4-1-3.5] 行制御・列制御情報を取得中...",
+    );
+
+    let rowControls = [];
+    let columnControls = [];
+
+    try {
+      // 行制御をチェック
+      if (window.Step3TaskList && window.Step3TaskList.getRowControl) {
+        rowControls = window.Step3TaskList.getRowControl(spreadsheetData);
+
+        ExecuteLogger.info(
+          "[createTaskListFromGroup] [Step 4-1-3.5] 行制御情報取得完了:",
+          {
+            制御数: rowControls.length,
+            詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
+          },
+        );
+      }
+
+      // 列制御の再チェック
+      const columnControlRow =
+        window.globalState.setupResult?.columnControlRow || 4;
+      if (window.Step3TaskList && window.Step3TaskList.getColumnControl) {
+        columnControls = window.Step3TaskList.getColumnControl(
+          spreadsheetData,
+          columnControlRow,
+        );
+        ExecuteLogger.info(
+          "[createTaskListFromGroup] [Step 4-1-3.5] 列制御情報取得完了:",
+          {
+            制御数: columnControls.length,
+            制御行: columnControlRow,
+            詳細: columnControls.map((c) => `${c.type}制御: ${c.column}列`),
+          },
+        );
+      }
+
+      // optionsに制御情報を追加
+      options.rowControls = rowControls;
+      options.columnControls = columnControls;
+      options.applyRowControl = true;
+      options.applyColumnControl = true;
+    } catch (error) {
+      ExecuteLogger.error(
+        "[createTaskListFromGroup] [Step 4-1-3.5] 制御情報取得エラー:",
+        {
+          エラーメッセージ: error.message,
+          スタック: error.stack,
+        },
+      );
+      // エラーが発生しても処理を継続（行制御なしで実行）
+    }
+
     // Step 4-1-4: generateTaskListを使用してタスク配列を生成
     const taskList = await generateTaskList(
       taskGroup,
@@ -11005,7 +11065,6 @@ if (typeof window !== "undefined") {
   // タスク実行関連の関数をエクスポート
   window.readSpreadsheet = readSpreadsheet;
   window.readFullSpreadsheet = readFullSpreadsheet;
-  window.createTaskList = createTaskList;
   window.executeTasks = executeTasks;
 
   ExecuteLogger.info("✅ executeStep3 exported to window");
