@@ -420,8 +420,7 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
                   "0",
               ),
             windowId: result.windowId || originalTask.windowId,
-            response:
-              result.response || result.result?.response || result.result?.text,
+            response: result.response,
           };
 
           // 【仮説検証】詳細デバッグログ追加
@@ -774,17 +773,18 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
     );
 
     // スプレッドシート記載に必要な情報を確認
-    if (!result.column || !result.row || !result.response) {
+    const responseText = this.extractResultText(result);
+    if (!result.column || !result.row || !responseText) {
       console.error(
         `❌ [仮説検証] スプレッドシート書き込み失敗 - 記載情報不足[${taskIndex}]:`,
         {
           hasColumn: !!result.column,
           hasRow: !!result.row,
-          hasResponse: !!result.response,
+          hasResponse: !!responseText,
           column: result.column,
           row: result.row,
-          responseLength: result.response ? result.response.length : 0,
-          thisIsTheRootCause: !result.column || !result.row || !result.response,
+          responseLength: responseText ? responseText.length : 0,
+          thisIsTheRootCause: !result.column || !result.row || !responseText,
         },
       );
       return;
@@ -840,7 +840,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
           columnLetter: columnLetter,
           originalColumn: result.column,
           originalRow: result.row,
-          responseLength: result.response.length,
+          responseLength: responseText.length,
           aboutToCallUpdateCell: true,
         },
       );
@@ -848,7 +848,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       const updateResult = await window.simpleSheetsClient.updateCell(
         spreadsheetId,
         cellRef,
-        result.response,
+        responseText,
       );
 
       // 【仮説検証】書き込み成功ログ
@@ -5779,8 +5779,8 @@ class WindowLifecycleManager {
 
     try {
       // 1. 結果が成功している場合のみスプレッドシート書き込み処理
-      if (result?.success && result?.result) {
-        await this.writeResultToSpreadsheet(task, result.result);
+      if (result?.success && result?.response) {
+        await this.writeResultToSpreadsheet(task, result);
       }
 
       // 2. エラーの場合はエラー情報を記録
@@ -5952,10 +5952,9 @@ class WindowLifecycleManager {
   extractResultText(result) {
     if (!result) return "";
 
-    // 様々な結果形式に対応
+    // 統一形式に対応（全AI共通）
     if (typeof result === "string") return result;
     if (result.response) return result.response;
-    if (result.text) return result.text;
     if (result.finalText) return result.finalText;
     if (result.content) return result.content;
 
@@ -9511,11 +9510,7 @@ async function executeStep3(taskList) {
                     ? "false"
                     : "undefined/null",
               resultObjectKeys: result ? Object.keys(result) : null,
-              hasResponse: !!(
-                result.result?.response ||
-                result.result?.text ||
-                result.response
-              ),
+              hasResponse: !!result.response,
               column: task.column,
               row: task.row,
               windowId: task.windowId,
@@ -9529,10 +9524,7 @@ async function executeStep3(taskList) {
               column: task.column, // タスクの列情報を追加
               row: task.row, // タスクの行情報を追加
               windowId: task.windowId, // ウィンドウIDを追加
-              response:
-                result.result?.response ||
-                result.result?.text ||
-                result.response, // レスポンステキストを追加
+              response: result.response,
               specialProcessing: specialInfo.isSpecial,
               isThreeType: isThreeTypeTask,
             };
@@ -10443,6 +10435,41 @@ async function executeStep3(taskList) {
             ExecuteLogger.info(
               `✅ [Content Script] ${automationName} 実行完了`,
             );
+
+            // 🔍 [DEBUG-RECEIVE] Content Scriptから受信した結果の詳細ログ
+            ExecuteLogger.info(
+              "🔍 [DEBUG-RECEIVE] Content Scriptから受信した結果詳細:",
+              {
+                responseSuccess: response.success,
+                hasResponseResult: !!response.result,
+                responseResultType: response.result
+                  ? typeof response.result
+                  : null,
+                responseResultSuccess: response.result?.success,
+                hasResponseResultResponse: !!response.result?.response,
+                responseResultResponseType: response.result?.response
+                  ? typeof response.result?.response
+                  : null,
+                responseResultResponseLength: response.result?.response
+                  ? response.result?.response.length
+                  : 0,
+                responseResultResponsePreview: response.result?.response
+                  ? response.result?.response.substring(0, 100) + "..."
+                  : null,
+                responseResultCellInfo: response.result?.cellInfo,
+                responseResultModel: response.result?.model,
+                responseResultFunction: response.result?.function,
+                responseResultUrl: response.result?.url,
+                responseKeys: Object.keys(response),
+                responseResultKeys: response.result
+                  ? Object.keys(response.result)
+                  : null,
+                taskId: task.id || task.taskId,
+                aiType: task.aiType,
+                timestamp: new Date().toISOString(),
+              },
+            );
+
             resolve(response);
           } else {
             ExecuteLogger.error(
@@ -10610,11 +10637,51 @@ async function executeStep3(taskList) {
   async function processTaskResult(task, result, taskId) {
     ExecuteLogger.info(`📋 [Step 4-6-9] タスク結果処理開始: ${taskId}`);
 
+    // 🔍 [DEBUG-PROCESS] processTaskResult入口ログ - 受け取った引数の詳細
+    ExecuteLogger.info(
+      "🔍 [DEBUG-PROCESS] processTaskResult受け取った引数詳細:",
+      {
+        taskId: taskId,
+        hasTask: !!task,
+        taskKeys: task ? Object.keys(task) : null,
+        taskColumn: task?.column,
+        taskRow: task?.row,
+        taskAiType: task?.aiType,
+        hasResult: !!result,
+        resultKeys: result ? Object.keys(result) : null,
+        resultSuccess: result?.success,
+        resultSuccessType: typeof result?.success,
+        hasResultResponse: !!result?.response,
+        resultResponseType: result?.response ? typeof result?.response : null,
+        resultResponseLength: result?.response ? result?.response.length : 0,
+        resultResponsePreview: result?.response
+          ? result?.response.substring(0, 100) + "..."
+          : null,
+        hasResultResult: !!result?.result,
+        resultResultResponse: result?.result?.response,
+        timestamp: new Date().toISOString(),
+      },
+    );
+
     try {
       // 完了時刻とログ記録
       if (window.detailedLogManager) {
         window.detailedLogManager.recordTaskComplete(taskId, result);
       }
+
+      // 🔍 [DEBUG-PROCESS] スプレッドシート書き込み条件チェック
+      ExecuteLogger.info(
+        "🔍 [DEBUG-PROCESS] スプレッドシート書き込み条件チェック:",
+        {
+          taskId: taskId,
+          resultSuccess: result.success,
+          hasResultResponse: !!result.response,
+          conditionMet: result.success && result.response,
+          willWriteToSpreadsheet: !!(result.success && result.response),
+          hasDetailedLogManager: !!window.detailedLogManager,
+          timestamp: new Date().toISOString(),
+        },
+      );
 
       // 回答をスプレッドシートに記載
       if (result.success && result.response) {
@@ -10649,10 +10716,47 @@ async function executeStep3(taskList) {
             !!fullAnswerCellRef && !fullAnswerCellRef.includes("undefined"),
         });
 
+        // 🔍 [DEBUG-PROCESS] スプレッドシート書き込み実行前ログ
+        ExecuteLogger.info(
+          "🔍 [DEBUG-PROCESS] writeAnswerToSpreadsheet呼び出し前:",
+          {
+            taskId: taskId,
+            fullAnswerCellRef: fullAnswerCellRef,
+            hasDetailedLogManager: !!window.detailedLogManager,
+            responseLength: result.response ? result.response.length : 0,
+            responsePreview: result.response
+              ? result.response.substring(0, 100) + "..."
+              : null,
+            timestamp: new Date().toISOString(),
+          },
+        );
+
         if (window.detailedLogManager) {
           await window.detailedLogManager.writeAnswerToSpreadsheet(
             taskId,
             fullAnswerCellRef,
+          );
+
+          // 🔍 [DEBUG-PROCESS] スプレッドシート書き込み実行後ログ
+          ExecuteLogger.info(
+            "🔍 [DEBUG-PROCESS] writeAnswerToSpreadsheet呼び出し完了:",
+            {
+              taskId: taskId,
+              fullAnswerCellRef: fullAnswerCellRef,
+              success: true,
+              timestamp: new Date().toISOString(),
+            },
+          );
+        } else {
+          // 🔍 [DEBUG-PROCESS] detailedLogManager未定義エラー
+          ExecuteLogger.error(
+            "🔍 [DEBUG-PROCESS] detailedLogManager未定義エラー:",
+            {
+              taskId: taskId,
+              hasGlobalState: !!window.globalState,
+              hasWindowObject: !!window,
+              timestamp: new Date().toISOString(),
+            },
           );
         }
 

@@ -3142,11 +3142,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
           }
         }
 
-        // 結果を返す
+        // 結果を返す（全AI統一形式：シンプルなフラット構造）
         const result = {
           success: true,
-          text: responseText,
-          timestamp: new Date().toISOString(),
+          response: responseText,
+          model: modelName || "不明",
+          function: featureName || "通常",
+          sendTime: sendTime,
+          url: window.location.href,
+          cellInfo: taskData.cellInfo,
         };
 
         // ✅ タスク完了時刻をスプレッドシートに記録（Claude automationと同じロジック）
@@ -3746,7 +3750,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
                     resultKeys: result ? Object.keys(result) : [],
                   },
                 );
-                sendResponse({ success: true, result });
+                // 全AI統一形式で返す（二重構造を解消）
+                sendResponse(result);
               } catch (taskError) {
                 const errorMsg = `executeTask実行エラー: ${taskError.message}`;
                 log.error(

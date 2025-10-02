@@ -1665,12 +1665,8 @@
                           );
                         }
 
-                        sendResponse({
-                          success: true,
-                          result,
-                          messagePortSafe: true,
-                          timestamp: new Date().toISOString(),
-                        });
+                        // 全AI統一形式で返す（二重構造を解消）
+                        sendResponse(result);
                       } catch (sendError) {
                         console.error(
                           "🚨 [MESSAGE-PORT-ERROR] sendResponse でエラー:",
@@ -6160,26 +6156,8 @@
         log.debug(`  ├─ 使用機能: ${featureName || "通常"}`);
         log.debug(`  └─ 送信時刻: ${sendTime.toISOString()}`);
 
-        // URLが変更されるまで少し待つ（/new から /chat/xxx への変更）
-        let currentUrl = window.location.href;
-        if (currentUrl.includes("/new")) {
-          log.debug("⏳ [URL-WAIT] 会話URLへの変更を待機中...");
-
-          // 最大3秒待機
-          for (let i = 0; i < 6; i++) {
-            await delay(500);
-            const newUrl = window.location.href;
-            if (!newUrl.includes("/new") && newUrl.includes("/chat/")) {
-              currentUrl = newUrl;
-              log.debug(`✅ [URL-WAIT] 会話URLを取得: ${currentUrl}`);
-              break;
-            }
-          }
-
-          if (currentUrl.includes("/new")) {
-            log.warn("⚠️ [URL-WAIT] 会話URLへの変更を検出できませんでした");
-          }
-        }
+        // 回答取得完了時点でURLを取得（全AI統一）
+        const currentUrl = window.location.href;
 
         // DetailedLogManagerに受信完了とURLを記録
         // taskId は関数の最初で既に宣言済み
@@ -6212,15 +6190,10 @@
           }
         }
 
+        // 全AI統一形式（シンプルなフラット構造）
         const result = {
           success: true,
-          result: {
-            // ai-task-executor.jsが期待するネスト構造
-            response: finalText,
-            status: "success",
-          },
-          response: finalText, // 後方互換性のため
-          text: finalText,
+          response: finalText,
           model: modelName,
           function: featureName,
           sendTime: sendTime,

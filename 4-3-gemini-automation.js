@@ -1708,12 +1708,12 @@ const log = {
         }
       }
 
+      // 送信時刻を記録（送信前に定義 - ChatGPT/Claudeと統一）
+      const sendTime = new Date();
+
       // 【Step 4-5】メッセージ送信（RetryManager内蔵）
       log.info("【Step 4-5】メッセージ送信");
       await sendMessageGemini();
-
-      // 送信時刻を記録
-      const sendTime = new Date();
 
       // モデルと機能を取得
       const modelName_current = modelName || "不明";
@@ -1862,45 +1862,23 @@ const log = {
       // 【Step 4-9】結果オブジェクト作成
       log.info("【Step 4-9】結果オブジェクト作成");
 
+      // 回答取得完了時点でURLを取得（全AI統一）
+      const conversationUrl = window.location.href;
+
+      // 全AI統一形式（シンプルなフラット構造）
       const result = {
         success: true,
-        content: content,
+        response: content,
         model: modelName,
-        feature: featureName,
+        function: featureName,
+        sendTime: sendTime,
+        url: conversationUrl,
+        cellInfo: taskData.cellInfo,
         partial: isPartialResult,
       };
 
       // ✅ タスク完了時刻をスプレッドシートに記録（Claude/ChatGPTと統一）
       try {
-        // 会話URLの取得を待つ（GeminiではURLが変化する場合がある）
-        let conversationUrl = window.location.href;
-
-        // GeminiでもURLが更新されるまで少し待つ
-        // 例： /app から /app/xxx への変更を待つ
-        const startUrl = conversationUrl;
-        let attempts = 0;
-        const maxAttempts = 10; // 最大5秒待つ（500ms x 10）
-
-        while (attempts < maxAttempts) {
-          await wait(500);
-          conversationUrl = window.location.href;
-
-          // URLが変更されたら終了
-          if (conversationUrl !== startUrl) {
-            log.debug(`【Step 4-9】🔗 URLが更新されました: ${conversationUrl}`);
-            break;
-          }
-
-          attempts++;
-        }
-
-        // URLが変更されなくても現在のURLを使用
-        if (attempts === maxAttempts) {
-          log.debug(
-            `【Step 4-9】ℹ️ URL変更なし、現在のURLを使用: ${conversationUrl}`,
-          );
-        }
-
         // Promise化してエラーハンドリングを改善
         const sendCompletionMessage = () => {
           return new Promise((resolve) => {
@@ -1966,7 +1944,7 @@ const log = {
             {
               taskId: taskData.taskId || taskData.cellInfo,
               cellInfo: taskData.cellInfo,
-              hasResponse: !!result.text,
+              hasResponse: !!result.response,
             },
           );
 
@@ -2061,6 +2039,26 @@ const log = {
       setExecutionState(false);
 
       log.info("✅ 【Step 4-0】Gemini タスク実行完了");
+
+      // 🔍 [DEBUG-RETURN] executeTask関数が返す結果の詳細ログ
+      log.info("🔍 [DEBUG-RETURN] executeTask関数の返却値詳細:", {
+        success: result.success,
+        hasResponse: !!result.response,
+        responseType: typeof result.response,
+        responseLength: result.response ? result.response.length : 0,
+        responsePreview: result.response
+          ? result.response.substring(0, 100) + "..."
+          : null,
+        hasCellInfo: !!result.cellInfo,
+        cellInfo: result.cellInfo,
+        model: result.model,
+        function: result.function,
+        url: result.url,
+        partial: result.partial,
+        taskId: taskData.taskId || taskData.cellInfo,
+        timestamp: new Date().toISOString(),
+      });
+
       return result;
     } catch (error) {
       // エラー時も実行状態を解除
@@ -2185,7 +2183,31 @@ const log = {
               const taskToExecute = request.task || request.taskData;
               try {
                 const result = await executeTask(taskToExecute);
-                sendResponse({ success: true, result });
+
+                // 🔍 [DEBUG-SEND] sendResponseで送信する内容の詳細ログ
+                log.info("🔍 [DEBUG-SEND] sendResponseで送信する内容:", {
+                  resultSuccess: result.success,
+                  hasResult: !!result,
+                  hasResultResponse: !!result.response,
+                  resultResponseType: result.response
+                    ? typeof result.response
+                    : null,
+                  resultResponseLength: result.response
+                    ? result.response.length
+                    : 0,
+                  resultResponsePreview: result.response
+                    ? result.response.substring(0, 100) + "..."
+                    : null,
+                  resultCellInfo: result.cellInfo,
+                  resultModel: result.model,
+                  resultFunction: result.function,
+                  resultUrl: result.url,
+                  taskId: taskToExecute.taskId || taskToExecute.cellInfo,
+                  timestamp: new Date().toISOString(),
+                });
+
+                // 全AI統一形式で返す（二重構造を解消）
+                sendResponse(result);
               } catch (taskError) {
                 log.error(
                   `❌ [Step 4-9] [Gemini] executeTaskエラー [ID:${requestId}]:`,
