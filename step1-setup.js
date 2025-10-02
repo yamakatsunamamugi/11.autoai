@@ -1,6 +1,12 @@
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
+// スプレッドシート範囲設定
+const SPREADSHEET_RANGE_CONFIG = {
+  MAX_COLUMN: "CZ",
+  MAX_ROW: 10000,
+};
+
 // Chrome Storageからログレベルを取得（非同期）
 let CURRENT_LOG_LEVEL = LOG_LEVEL.WARN; // デフォルト値（簡潔な動作確認用）
 
@@ -1001,7 +1007,7 @@ async function findSpecialRows() {
     }
 
     // 1-4-1: 全データ一括取得（初期設定用キャッシュ作成）
-    const range = `'${sheetName}'!A1:CZ100`;
+    const range = `'${sheetName}'!A1:${SPREADSHEET_RANGE_CONFIG.MAX_COLUMN}${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
     const targetUrl = `${window.globalState.sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
     log.debug(`[step1-setup.js] [Step 1-4-1] 全データ取得開始 (${range})`);
 
@@ -1677,8 +1683,8 @@ async function refreshSpreadsheetData() {
     const sheetName =
       window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
 
-    // 全データ再取得 (A1:CZ100) - シート名を含める
-    const range = `'${sheetName}'!A1:CZ100`;
+    // 全データ再取得 - シート名を含める
+    const range = `'${sheetName}'!A1:${SPREADSHEET_RANGE_CONFIG.MAX_COLUMN}${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
     const targetUrl = `${sheetsApiBase}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
     log.debug("[step1-setup.js] データ再取得URL:", targetUrl);
 
