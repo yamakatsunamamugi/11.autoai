@@ -444,14 +444,41 @@ function showCompletionMessage(statistics) {
 }
 
 /**
- * 次のスプレッドシートがあるかチェック
+ * 次のスプレッドシートがあるかチェック（動的URL追加対応）
  * @returns {Object|null} 次のスプレッドシート情報、なければnull
  */
 function checkNextSpreadsheet() {
   const urls = window.globalState?.spreadsheetUrls || [];
   const currentIndex = window.globalState?.currentUrlIndex ?? -1;
 
-  if (currentIndex < 0 || currentIndex >= urls.length - 1) {
+  // UI入力欄から最新のURL一覧を取得
+  const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
+  const currentUrls = [];
+
+  urlInputs.forEach((input) => {
+    const url = input.value.trim();
+    if (url) currentUrls.push(url);
+  });
+
+  // 新しく追加されたURLをチェック（既存URLと重複しないもののみ）
+  const newUrls = currentUrls.filter((url) => !urls.includes(url));
+
+  if (newUrls.length > 0) {
+    // 新しいURLを配列に追加
+    urls.push(...newUrls);
+    window.globalState.spreadsheetUrls = urls;
+    window.globalState.totalUrlCount = urls.length;
+
+    log.info(
+      `📋 [動的追加] ${newUrls.length}個の新しいスプレッドシートを検出し、処理キューに追加しました`,
+    );
+    newUrls.forEach((url, i) => {
+      log.debug(`  ${i + 1}. ${url.substring(0, 80)}...`);
+    });
+  }
+
+  // 次のURLがあるかチェック
+  if (currentIndex >= urls.length - 1) {
     log.debug(
       "[step6-nextgroup.js] 次のスプレッドシートなし（全スプレッドシート処理完了）",
     );
