@@ -1564,7 +1564,7 @@ async function checkCompletionStatus(taskGroup) {
     `[2-2-2]🔍 [COMPLETION-CHECK] グループ${taskGroup.groupNumber}完了チェック開始`,
   );
 
-  LoopLogger.info("[step5-loop.js→Step5-1] 完了状況の確認開始", {
+  log.info("[2-2-2][step2-taskgroup.js→Step5-1] 完了状況の確認開始", {
     completionCheckId,
     groupNumber: taskGroup.groupNumber || "undefined",
     taskType: taskGroup.taskType || "undefined",
@@ -1575,8 +1575,8 @@ async function checkCompletionStatus(taskGroup) {
   // データ検証
   const validationErrors = validateTaskGroupForStep5(taskGroup);
   if (validationErrors.length > 0) {
-    LoopLogger.error(
-      "[step5-loop.js] [Step 5-1] タスクグループ検証エラー:",
+    log.error(
+      "[2-2-2][step2-taskgroup.js] [Step 5-1] タスクグループ検証エラー:",
       validationErrors,
     );
     throw new Error(`タスクグループ検証失敗: ${validationErrors.join(", ")}`);
@@ -1588,7 +1588,7 @@ async function checkCompletionStatus(taskGroup) {
     // ========================================
     const sheetName =
       window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
-    LoopLogger.info(`[step5-loop.js] 対象シート: ${sheetName}`);
+    log.info(`[2-2-2][step2-taskgroup.js] 対象シート: ${sheetName}`);
 
     // ========================================
     // 行制御情報の取得（タスクグループの範囲内）
@@ -1621,34 +1621,34 @@ async function checkCompletionStatus(taskGroup) {
             row: control.row + taskGroup.dataStartRow - 1,
           }));
 
-          LoopLogger.info("[step5-loop.js] 行制御情報取得:", {
+          log.info("[2-2-2][step2-taskgroup.js] 行制御情報取得:", {
             制御数: rowControls.length,
             詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
             オフセット適用: `dataStartRow(${taskGroup.dataStartRow}) - 1`,
           });
         } else {
-          LoopLogger.warn("[step5-loop.js] getRowControl関数が利用不可");
+          log.warn("[2-2-2][step2-taskgroup.js] getRowControl関数が利用不可");
         }
       }
     } catch (error) {
-      LoopLogger.warn("[step5-loop.js] 行制御取得エラー:", error.message);
+      log.warn("[2-2-2][step2-taskgroup.js] 行制御取得エラー:", error.message);
       // エラーがあっても処理は継続（行制御なしで全行対象）
     }
 
     // ========================================
     // Step 5-1-1: プロンプト列の確認
     // ========================================
-    LoopLogger.info("[step5-loop.js→Step5-1-1] プロンプト列を確認中...");
+    log.info("[2-2-2][step2-taskgroup.js→Step5-1-1] プロンプト列を確認中...");
 
     // 必須データの検証
     if (!taskGroup.columns || !taskGroup.columns.prompts) {
       throw new Error(
-        "[step5-loop.js] [Step 5-1-1] エラー: columns.promptsが定義されていません",
+        "[2-2-2][step2-taskgroup.js] [Step 5-1-1] エラー: columns.promptsが定義されていません",
       );
     }
     if (!taskGroup.dataStartRow) {
-      LoopLogger.warn(
-        "[step5-loop.js] [Step 5-1-1] 警告: dataStartRowが未定義。デフォルト値7を使用",
+      log.warn(
+        "[2-2-2][step2-taskgroup.js] [Step 5-1-1] 警告: dataStartRowが未定義。デフォルト値7を使用",
       );
       taskGroup.dataStartRow = 7;
     }
@@ -1658,19 +1658,22 @@ async function checkCompletionStatus(taskGroup) {
     const endCol =
       taskGroup.columns.prompts[taskGroup.columns.prompts.length - 1];
     const promptRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
-    LoopLogger.info(`[step5-loop.js] [Step 5-1-1] 取得範囲: ${promptRange}`, {
-      開始列: taskGroup.columns.prompts[0],
-      終了列: taskGroup.columns.prompts[taskGroup.columns.prompts.length - 1],
-      開始行: taskGroup.dataStartRow,
-      列数: taskGroup.columns.prompts.length,
-    });
+    log.info(
+      `[2-2-2][step2-taskgroup.js] [Step 5-1-1] 取得範囲: ${promptRange}`,
+      {
+        開始列: taskGroup.columns.prompts[0],
+        終了列: taskGroup.columns.prompts[taskGroup.columns.prompts.length - 1],
+        開始行: taskGroup.dataStartRow,
+        列数: taskGroup.columns.prompts.length,
+      },
+    );
 
     let promptValues;
     try {
       promptValues = await readSpreadsheet(promptRange);
     } catch (error) {
-      LoopLogger.error(
-        "[step5-loop.js] [Step 5-1-1] スプレッドシート読み込みエラー:",
+      log.error(
+        "[2-2-2][step2-taskgroup.js] [Step 5-1-1] スプレッドシート読み込みエラー:",
         {
           範囲: promptRange,
           エラー: error.message,
@@ -1683,8 +1686,8 @@ async function checkCompletionStatus(taskGroup) {
     let promptCount = 0;
     let promptDetails = [];
     if (promptValues && promptValues.values) {
-      LoopLogger.info(
-        `[step5-loop.js] [Step 5-1-1] プロンプトデータ取得成功: ${promptValues.values.length}行`,
+      log.info(
+        `[2-2-2][step2-taskgroup.js] [Step 5-1-1] プロンプトデータ取得成功: ${promptValues.values.length}行`,
       );
       for (
         let rowIndex = 0;
@@ -1706,8 +1709,8 @@ async function checkCompletionStatus(taskGroup) {
             if (
               !window.Step3TaskList.shouldProcessRow(actualRow, rowControls)
             ) {
-              LoopLogger.debug(
-                `[step5-loop.js] 行${actualRow}は行制御によりスキップ`,
+              log.debug(
+                `[2-2-2][step2-taskgroup.js] 行${actualRow}は行制御によりスキップ`,
               );
               continue;
             }
@@ -1745,8 +1748,8 @@ async function checkCompletionStatus(taskGroup) {
         }
       }
     } else {
-      LoopLogger.error(
-        "[step5-loop.js] [Step 5-1-1] ❌ プロンプトデータが取得できませんでした",
+      log.error(
+        "[2-2-2][step2-taskgroup.js] [Step 5-1-1] ❌ プロンプトデータが取得できませんでした",
         {
           promptValues: promptValues,
           範囲: promptRange,
@@ -1757,8 +1760,8 @@ async function checkCompletionStatus(taskGroup) {
         },
       );
     }
-    LoopLogger.info(
-      `[step5-loop.js] [Step 5-1-1] プロンプト数: ${promptCount}件`,
+    log.info(
+      `[2-2-2][step2-taskgroup.js] [Step 5-1-1] プロンプト数: ${promptCount}件`,
       {
         詳細: promptDetails.slice(0, 3), // 最初の3件のみ表示
         全件数: promptDetails.length,
@@ -1766,20 +1769,22 @@ async function checkCompletionStatus(taskGroup) {
         prompts列設定: taskGroup.columns.prompts,
       },
     );
-    log.info(`[2-2-2]📊 グループ${taskGroup.groupNumber}: プロンプト=${promptCount}`);
+    log.info(
+      `[2-2-2]📊 グループ${taskGroup.groupNumber}: プロンプト=${promptCount}`,
+    );
 
     // ========================================
     // Step 5-1-2: 回答列の確認
     // ========================================
-    LoopLogger.info("[step5-loop.js→Step5-1-2] 回答列を確認中...");
+    log.info("[2-2-2][step2-taskgroup.js→Step5-1-2] 回答列を確認中...");
 
     let answerRange;
     let answerCount = 0;
 
     if (taskGroup.pattern === "3種類AI") {
       // 3種類AIパターンの場合（行ベースでカウント）
-      LoopLogger.info(
-        "[step5-loop.js] [Step 5-1-2] 3種類AIパターンの回答を確認（行ベース）",
+      log.info(
+        "[2-2-2][step2-taskgroup.js] [Step 5-1-2] 3種類AIパターンの回答を確認（行ベース）",
       );
 
       // 【統一修正】全てオブジェクト形式になったのでチェックを調整
@@ -1788,7 +1793,7 @@ async function checkCompletionStatus(taskGroup) {
         typeof taskGroup.columns.answer !== "object"
       ) {
         throw new Error(
-          "[step5-loop.js] [Step 5-1-2] エラー: answer列がオブジェクト形式ではありません（統一修正後のエラー）",
+          "[2-2-2][step2-taskgroup.js] [Step 5-1-2] エラー: answer列がオブジェクト形式ではありません（統一修正後のエラー）",
         );
       }
 
@@ -1798,7 +1803,7 @@ async function checkCompletionStatus(taskGroup) {
         taskGroup.columns.answer.gemini,
       ];
 
-      LoopLogger.info("[step5-loop.js] [Step 5-1-2] AI回答列:", {
+      log.info("[2-2-2][step2-taskgroup.js] [Step 5-1-2] AI回答列:", {
         ChatGPT列: columns[0] || "undefined",
         Claude列: columns[1] || "undefined",
         Gemini列: columns[2] || "undefined",
@@ -1809,16 +1814,16 @@ async function checkCompletionStatus(taskGroup) {
       const endCol = columns[2]; // Gemini列
       answerRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
 
-      LoopLogger.info(
-        `[step5-loop.js] [Step 5-1-2] 3種類AI回答範囲: ${answerRange}`,
+      log.info(
+        `[2-2-2][step2-taskgroup.js] [Step 5-1-2] 3種類AI回答範囲: ${answerRange}`,
       );
 
       let values;
       try {
         values = await readSpreadsheet(answerRange);
       } catch (error) {
-        LoopLogger.error(
-          "[step5-loop.js] [Step 5-1-2] 3種類AI回答読み込みエラー:",
+        log.error(
+          "[2-2-2][step2-taskgroup.js] [Step 5-1-2] 3種類AI回答読み込みエラー:",
           {
             範囲: answerRange,
             エラー: error.message,
@@ -1872,38 +1877,48 @@ async function checkCompletionStatus(taskGroup) {
       }
 
       // 注意：3種類AIでもプロンプト数を3倍にしない（行ベースで比較）
-      LoopLogger.info(
-        `[step5-loop.js] [Step 5-1-2] 3種類AI回答数（行ベース）: ${answerCount}行`,
+      log.info(
+        `[2-2-2][step2-taskgroup.js] [Step 5-1-2] 3種類AI回答数（行ベース）: ${answerCount}行`,
       );
     } else {
       // 【統一修正】通常パターンもオブジェクト形式に統一
-      LoopLogger.info("[step5-loop.js] [Step 5-1-2] 通常パターンの回答を確認");
+      log.info(
+        "[2-2-2][step2-taskgroup.js] [Step 5-1-2] 通常パターンの回答を確認",
+      );
 
       // 【シンプル化】primary列を使用して範囲を生成
       const answerColumn = taskGroup.columns.answer.primary || "C";
       answerRange = `'${sheetName}'!${answerColumn}${taskGroup.dataStartRow}:${answerColumn}1000`;
-      LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 取得範囲: ${answerRange}`);
+      log.info(
+        `[2-2-2][step2-taskgroup.js] [Step 5-1-2] 取得範囲: ${answerRange}`,
+      );
 
       // 【問題特定ログ】通常パターンでのスプレッドシート読み込み前ログ
-      log.debug(`[2-2-2][DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み開始:`, {
-        answerRange: answerRange,
-        answerColumn: answerColumn,
-        taskGroupNumber: taskGroup.groupNumber,
-        dataStartRow: taskGroup.dataStartRow,
-        読み込み前タイムスタンプ: new Date().toISOString(),
-      });
+      log.debug(
+        `[2-2-2][DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み開始:`,
+        {
+          answerRange: answerRange,
+          answerColumn: answerColumn,
+          taskGroupNumber: taskGroup.groupNumber,
+          dataStartRow: taskGroup.dataStartRow,
+          読み込み前タイムスタンプ: new Date().toISOString(),
+        },
+      );
 
       const answerValues = await readSpreadsheet(answerRange);
 
       // 【問題特定ログ】通常パターンでのスプレッドシート読み込み後ログ
-      log.debug(`[2-2-2][DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み完了:`, {
-        answerRange: answerRange,
-        answerValues存在: !!answerValues,
-        answerValuesValues存在: !!(answerValues && answerValues.values),
-        rawDataLength: answerValues?.values?.length || 0,
-        読み込み後タイムスタンプ: new Date().toISOString(),
-        rawDataプレビュー: answerValues?.values?.slice(0, 5) || "データなし",
-      });
+      log.debug(
+        `[2-2-2][DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み完了:`,
+        {
+          answerRange: answerRange,
+          answerValues存在: !!answerValues,
+          answerValuesValues存在: !!(answerValues && answerValues.values),
+          rawDataLength: answerValues?.values?.length || 0,
+          読み込み後タイムスタンプ: new Date().toISOString(),
+          rawDataプレビュー: answerValues?.values?.slice(0, 5) || "データなし",
+        },
+      );
 
       if (answerValues && answerValues.values) {
         for (
@@ -1980,15 +1995,18 @@ async function checkCompletionStatus(taskGroup) {
 
             // APIキャッシュ問題の疑いがある場合、追加検証
             if (matchingWrite && matchingWrite.isVerified && !cellValue) {
-              log.warn(`[2-2-2]🚨 [CACHE-ISSUE-DETECTED] APIキャッシュ問題の疑い:`, {
-                cellRef: `${answerColumn}${actualRow}`,
-                expectedFromWrite: `${matchingWrite.textLength}文字`,
-                actualFromRead: `${cellValue.length}文字`,
-                writeTime: new Date(matchingWrite.timestamp).toISOString(),
-                readTime: new Date().toISOString(),
-                timeDifference: `${(Date.now() - matchingWrite.timestamp) / 1000}秒`,
-                writeWasVerified: matchingWrite.isVerified,
-              });
+              log.warn(
+                `[2-2-2]🚨 [CACHE-ISSUE-DETECTED] APIキャッシュ問題の疑い:`,
+                {
+                  cellRef: `${answerColumn}${actualRow}`,
+                  expectedFromWrite: `${matchingWrite.textLength}文字`,
+                  actualFromRead: `${cellValue.length}文字`,
+                  writeTime: new Date(matchingWrite.timestamp).toISOString(),
+                  readTime: new Date().toISOString(),
+                  timeDifference: `${(Date.now() - matchingWrite.timestamp) / 1000}秒`,
+                  writeWasVerified: matchingWrite.isVerified,
+                },
+              );
             }
           }
 
@@ -2014,7 +2032,9 @@ async function checkCompletionStatus(taskGroup) {
       }
     }
 
-    LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 回答数: ${answerCount}件`);
+    log.info(
+      `[2-2-2][step2-taskgroup.js] [Step 5-1-2] 回答数: ${answerCount}件`,
+    );
     log.debug(
       `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: 回答検索完了 - answerCount=${answerCount}, 範囲=${answerRange}`,
     );
@@ -2027,7 +2047,7 @@ async function checkCompletionStatus(taskGroup) {
     // ========================================
     // Step 5-1-3: 完了判定
     // ========================================
-    LoopLogger.info("[step5-loop.js→Step5-1-3] 完了判定を実行");
+    log.info("[2-2-2][step2-taskgroup.js→Step5-1-3] 完了判定を実行");
 
     log.debug(
       `[DEBUG-checkCompletionStatus] グループ${taskGroup.groupNumber}: promptCount=${promptCount}, answerCount=${answerCount}`,
@@ -2264,7 +2284,9 @@ async function checkCompletionStatus(taskGroup) {
               readError.message?.includes("429") ||
               readError.message?.includes("Quota exceeded")
             ) {
-              log.info(`[2-2-2]⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`);
+              log.info(
+                `[2-2-2]⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`,
+              );
               await new Promise((resolve) => setTimeout(resolve, 5000)); // 5秒待機
             }
           }
@@ -2315,7 +2337,7 @@ async function checkCompletionStatus(taskGroup) {
       判定結果タイムスタンプ: new Date().toISOString(),
     });
 
-    LoopLogger.info("[step5-loop.js] [Step 5-1-3] 完了状況:", {
+    log.info("[2-2-2][step2-taskgroup.js] [Step 5-1-3] 完了状況:", {
       プロンプト数: promptCount,
       回答数: answerCount,
       未完了: window.globalState.stats.pendingTasks,
@@ -2329,7 +2351,7 @@ async function checkCompletionStatus(taskGroup) {
     });
 
     if (!isComplete && promptCount > 0) {
-      LoopLogger.info("[step5-loop.js] [Step 5-1-3] 未完了詳細:", {
+      log.info("[2-2-2][step2-taskgroup.js] [Step 5-1-3] 未完了詳細:", {
         残りタスク数: promptCount - answerCount,
         推定処理時間: `約${(promptCount - answerCount) * 30}秒`,
       });
@@ -2338,7 +2360,7 @@ async function checkCompletionStatus(taskGroup) {
     // 完了判定
     return isComplete;
   } catch (error) {
-    LoopLogger.error("[step5-loop.js] [Step 5-1] 完了状況確認エラー:", {
+    log.error("[2-2-2][step2-taskgroup.js] [Step 5-1] 完了状況確認エラー:", {
       エラーメッセージ: error.message,
       スタック: error.stack,
       タスクグループ: {

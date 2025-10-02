@@ -666,7 +666,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
 
       if (waitTime > 0) {
         log.info(
-          `⏰ [TASK-FLOW-TRACE] ${waitTime}ms待機開始 - スプレッドシート反映待ち:`,
+          `[3-0] ⏰ [TASK-FLOW-TRACE] ${waitTime}ms待機開始 - スプレッドシート反映待ち:`,
           {
             taskIndex: taskIndex,
             taskId: result.taskId,
@@ -677,7 +677,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
 
         setTimeout(() => {
           log.info(
-            `⏰ [TASK-FLOW-TRACE] ${waitTime}ms待機完了 - 次タスク探索開始:`,
+            `[3-0] ⏰ [TASK-FLOW-TRACE] ${waitTime}ms待機完了 - 次タスク探索開始:`,
             {
               taskIndex: taskIndex,
               taskId: result.taskId,
@@ -687,7 +687,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
 
           startNextTaskIfAvailable(taskIndex).catch((error) => {
             log.error(
-              `❌ [TASK-FLOW-TRACE] 次タスク探索エラー[${taskIndex}]:`,
+              `[3-0] ❌ [TASK-FLOW-TRACE] 次タスク探索エラー[${taskIndex}]:`,
               {
                 error: error.message,
                 stack: error.stack,
@@ -699,7 +699,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
         }, waitTime); // 設定可能な待機時間
       } else {
         log.info(
-          `⚡ [TASK-FLOW-TRACE] スプレッドシート反映待機をスキップ (設定: 0ms)`,
+          `[3-0] ⚡ [TASK-FLOW-TRACE] スプレッドシート反映待機をスキップ (設定: 0ms)`,
         );
         // 待機せずに即座に次タスク探索
         startNextTaskIfAvailable(taskIndex).catch((error) => {
@@ -716,7 +716,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
       }
     } else {
       log.warn(
-        `⚠️ [TASK-FLOW-TRACE] Phase 4スキップ - ENABLE_DYNAMIC_NEXT_TASK無効:`,
+        `[3-0] ⚠️ [TASK-FLOW-TRACE] Phase 4スキップ - ENABLE_DYNAMIC_NEXT_TASK無効:`,
         {
           taskIndex: taskIndex,
           設定値: BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
@@ -747,7 +747,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
 
     // 【仮説検証】詳細な事前チェックログ
     log.debug(
-      `🔍 [仮説検証] スプレッドシート書き込み事前チェック[${taskIndex}]:`,
+      `[3-0] 🔍 [仮説検証] スプレッドシート書き込み事前チェック[${taskIndex}]:`,
       {
         result: {
           taskId: result.taskId,
@@ -811,7 +811,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
 
       if (!spreadsheetId) {
         log.error(
-          `❌ [即座スプレッドシート] spreadsheetId未設定[${taskIndex}]`,
+          `[3-0] ❌ [即座スプレッドシート] spreadsheetId未設定[${taskIndex}]`,
         );
         return;
       }
@@ -826,7 +826,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
         columnLetter = String.fromCharCode(64 + result.column); // 1->A, 2->B, 3->C
       } else {
         log.error(
-          `❌ [即座スプレッドシート] 不正な列型[${taskIndex}]:`,
+          `[3-0] ❌ [即座スプレッドシート] 不正な列型[${taskIndex}]:`,
           typeof result.column,
         );
         return;
@@ -877,7 +877,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
     } else {
       // SimpleSheetsClient利用不可
       log.error(
-        `❌ [即座スプレッドシート] SimpleSheetsClient利用不可[${taskIndex}]`,
+        `[3-0] ❌ [即座スプレッドシート] SimpleSheetsClient利用不可[${taskIndex}]`,
       );
     }
   } catch (error) {
@@ -898,7 +898,7 @@ async function immediateWindowClose(windowId, taskIndex) {
     try {
       await chrome.windows.remove(windowId);
       log.info(
-        `✅ [ウィンドウクローズ完了] タスク[${taskIndex}]: windowId=${windowId}`,
+        `[3-0] ✅ [ウィンドウクローズ完了] タスク[${taskIndex}]: windowId=${windowId}`,
       );
 
       // 追加の待機時間でクローズ確実性を向上
@@ -988,7 +988,7 @@ async function startNextTaskIfAvailable(taskIndex) {
 
     if (nextTask) {
       log.info(
-        `🚀 [TASK-FLOW-TRACE] 次タスク発見 - ウィンドウ開設開始[${taskIndex}]:`,
+        `[3-1] 🚀 [TASK-FLOW-TRACE] 次タスク発見 - ウィンドウ開設開始[${taskIndex}]:`,
         {
           nextTaskId: nextTask.id,
           aiType: nextTask.aiType,
@@ -1025,7 +1025,7 @@ async function startNextTaskIfAvailable(taskIndex) {
         // 【修正】タスク発見時はカウンターをリセット
         groupTransitionState.consecutiveNoTasksCount = 0;
         log.debug(
-          `🔄 [LOOP-PREVENTION] カウンターリセット[${taskIndex}] - タスク発見`,
+          `[3-1] 🔄 [LOOP-PREVENTION] カウンターリセット[${taskIndex}] - タスク発見`,
         );
 
         // 非同期で実行開始
@@ -1070,7 +1070,7 @@ async function startNextTaskIfAvailable(taskIndex) {
       ) {
         // 【修正】利用可能タスクなし - グループ完了チェックと移行処理
         log.info(
-          `🔍 [GROUP-TRANSITION] グループ完了チェック開始[${taskIndex}]:`,
+          `[3-1] 🔍 [GROUP-TRANSITION] グループ完了チェック開始[${taskIndex}]:`,
           {
             taskIndex: taskIndex,
             attemptNumber: groupTransitionState.consecutiveNoTasksCount,
@@ -1084,7 +1084,7 @@ async function startNextTaskIfAvailable(taskIndex) {
         await checkAndHandleGroupCompletion(taskIndex);
       } else {
         log.warn(
-          `⚠️ [LOOP-PREVENTION] 無限ループ防止により処理スキップ[${taskIndex}]:`,
+          `[3-2] ⚠️ [LOOP-PREVENTION] 無限ループ防止により処理スキップ[${taskIndex}]:`,
           {
             taskIndex: taskIndex,
             consecutiveAttempts: groupTransitionState.consecutiveNoTasksCount,
@@ -1318,7 +1318,7 @@ async function executeTaskIndependently(task) {
       return result;
     } else {
       log.warn(
-        "⚠️ [独立タスク実行] window._executeNormalAITask関数が利用不可、簡易実行モードを使用",
+        "[3-3] ⚠️ [独立タスク実行] window._executeNormalAITask関数が利用不可、簡易実行モードを使用",
       );
       // 簡易実行モードで直接タスクを実行
       const result = await executeSimpleTask(task);
@@ -1472,7 +1472,7 @@ async function checkAndHandleGroupCompletion(taskIndex) {
     // グループ完了判定
     if (!window.checkCompletionStatus) {
       log.error(
-        `❌ [GROUP-TRANSITION] checkCompletionStatus未定義[${taskIndex}]`,
+        `[3-4] ❌ [GROUP-TRANSITION] checkCompletionStatus未定義[${taskIndex}]`,
       );
       return;
     }
@@ -1516,35 +1516,35 @@ async function checkAndHandleGroupCompletion(taskIndex) {
 
       if (!step2Result.hasNextGroup) {
         log.info(
-          `🎉 [GROUP-TRANSITION] 全グループ完了 - 処理終了[${taskIndex}]`,
+          `[3-4] 🎉 [GROUP-TRANSITION] 全グループ完了 - 処理終了[${taskIndex}]`,
         );
         return;
       }
 
       log.info(
-        `✅ [GROUP-TRANSITION] 次グループ準備完了: グループ${step2Result.groupNumber}[${taskIndex}]`,
+        `[3-4] ✅ [GROUP-TRANSITION] 次グループ準備完了: グループ${step2Result.groupNumber}[${taskIndex}]`,
       );
 
       // 次のタスクを即座に探して実行
       setTimeout(() => {
         log.info(
-          `🚀 [GROUP-TRANSITION] 新グループでタスク探索開始[${taskIndex}]`,
+          `[3-4] 🚀 [GROUP-TRANSITION] 新グループでタスク探索開始[${taskIndex}]`,
         );
         startNextTaskIfAvailable(taskIndex).catch((error) => {
           log.error(
-            `❌ [GROUP-TRANSITION] 新グループタスク探索エラー[${taskIndex}]:`,
+            `[3-4] ❌ [GROUP-TRANSITION] 新グループタスク探索エラー[${taskIndex}]:`,
             error,
           );
         });
       }, 2000); // 2秒待機してからタスク探索
     } else {
       log.info(
-        `📋 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}未完了 - 他タスクの完了待ち[${taskIndex}]`,
+        `[3-4] 📋 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}未完了 - 他タスクの完了待ち[${taskIndex}]`,
       );
     }
   } catch (error) {
     log.error(
-      `❌ [GROUP-TRANSITION] グループ完了チェックエラー[${taskIndex}]:`,
+      `[3-4] ❌ [GROUP-TRANSITION] グループ完了チェックエラー[${taskIndex}]:`,
       {
         taskIndex: taskIndex,
         error: error.message,
@@ -1602,23 +1602,23 @@ async function transitionToNextGroup(completedGroup, taskIndex) {
         // 移行後、新しいグループでタスクを開始
         setTimeout(() => {
           log.info(
-            `🚀 [GROUP-TRANSITION] 新グループでタスク探索開始[${taskIndex}]`,
+            `[3-4] 🚀 [GROUP-TRANSITION] 新グループでタスク探索開始[${taskIndex}]`,
           );
           startNextTaskIfAvailable(taskIndex).catch((error) => {
             log.error(
-              `❌ [GROUP-TRANSITION] 新グループタスク探索エラー[${taskIndex}]:`,
+              `[3-4] ❌ [GROUP-TRANSITION] 新グループタスク探索エラー[${taskIndex}]:`,
               error,
             );
           });
         }, 2000); // 2秒待機してからタスク探索
       } else {
         log.info(
-          `🏁 [GROUP-TRANSITION] 全てのグループ完了[${taskIndex}] - 処理終了`,
+          `[3-4] 🏁 [GROUP-TRANSITION] 全てのグループ完了[${taskIndex}] - 処理終了`,
         );
       }
     } else {
       log.error(
-        `❌ [GROUP-TRANSITION] step6-nextgroup.js機能利用不可[${taskIndex}]`,
+        `[3-4] ❌ [GROUP-TRANSITION] step6-nextgroup.js機能利用不可[${taskIndex}]`,
       );
     }
   } catch (error) {
@@ -1657,14 +1657,14 @@ async function transitionToNextGroupFallback(taskIndex) {
         setTimeout(() => {
           startNextTaskIfAvailable(taskIndex).catch((error) => {
             log.error(
-              `❌ [GROUP-TRANSITION] フォールバック後タスク探索エラー[${taskIndex}]:`,
+              `[3-4] ❌ [GROUP-TRANSITION] フォールバック後タスク探索エラー[${taskIndex}]:`,
               error,
             );
           });
         }, 2000);
       } else {
         log.info(
-          `🏁 [GROUP-TRANSITION] フォールバック: 全グループ完了[${taskIndex}]`,
+          `[3-4] 🏁 [GROUP-TRANSITION] フォールバック: 全グループ完了[${taskIndex}]`,
         );
       }
     } else {
@@ -1672,7 +1672,7 @@ async function transitionToNextGroupFallback(taskIndex) {
     }
   } catch (error) {
     log.error(
-      `❌ [GROUP-TRANSITION] フォールバック移行エラー[${taskIndex}]:`,
+      `[3-4] ❌ [GROUP-TRANSITION] フォールバック移行エラー[${taskIndex}]:`,
       error,
     );
   }
@@ -1757,7 +1757,7 @@ async function openAIWindowForTask(task) {
           StableWindowManager.positionToWindow.entries(),
         );
         log.info(
-          `🔍 [競合チェック] StableWindowManager.positionToWindow:`,
+          `[3-4] 🔍 [競合チェック] StableWindowManager.positionToWindow:`,
           positionMap,
         );
       }
@@ -1903,7 +1903,9 @@ async function executeSimpleRetry({
   while (retryCount < maxRetries) {
     try {
       if (retryCount === maxRetries - 1) {
-        log.debug(`[Retry] ${actionName} 最終試行 ${retryCount}/${maxRetries}`);
+        log.debug(
+          `[3-4] [Retry] ${actionName} 最終試行 ${retryCount}/${maxRetries}`,
+        );
       }
       lastResult = await action();
       if (isSuccess(lastResult)) {
@@ -1913,7 +1915,7 @@ async function executeSimpleRetry({
     } catch (error) {
       lastError = error;
       if (retryCount === maxRetries - 1) {
-        log.error(`[Retry] ${actionName} 失敗: ${error.message}`);
+        log.error(`[3-4] [Retry] ${actionName} 失敗: ${error.message}`);
       }
     }
     retryCount++;
@@ -1955,7 +1957,7 @@ class UnifiedWindowManager {
       lastCheck: Date.now(),
       checkResult: null,
     });
-    log.debug(`[WindowManager] ウィンドウ追加: ${windowId} (${aiType})`);
+    log.debug(`[3-4] [WindowManager] ウィンドウ追加: ${windowId} (${aiType})`);
   }
 
   /**
@@ -1993,7 +1995,7 @@ class UnifiedWindowManager {
           }
         } catch (error) {
           // タブが存在しない場合はマップから削除
-          log.debug(`[WindowManager] 無効タブ削除: ${info.tabId}`);
+          log.debug(`[3-4] [WindowManager] 無効タブ削除: ${info.tabId}`);
           this.windows.delete(windowId);
         }
       }
@@ -2006,16 +2008,16 @@ class UnifiedWindowManager {
    */
   async findFirstWorkingWindow(aiType) {
     const candidates = await this.findWindowsByAiType(aiType);
-    log.debug(`[WindowManager] ${aiType}候補: ${candidates.length}個`);
+    log.debug(`[3-4] [WindowManager] ${aiType}候補: ${candidates.length}個`);
 
     for (const window of candidates) {
       const isWorking = await this.quickCheck(window.tabId);
       if (isWorking) {
-        log.debug(`[FirstWin] ${aiType}動作確認`);
+        log.debug(`[3-4] [FirstWin] ${aiType}動作確認`);
         return window;
       }
     }
-    log.debug(`[FirstWin] ${aiType}動作ウィンドウなし`);
+    log.debug(`[3-4] [FirstWin] ${aiType}動作ウィンドウなし`);
     return null;
   }
 
@@ -2057,7 +2059,7 @@ class SafeMessenger {
    */
   static async sendSafeMessage(tabId, message, timeout = 8000) {
     log.debug(
-      `[SafeMessenger] 送信開始: tabId=${tabId}, action=${message.action}`,
+      `[3-4] [SafeMessenger] 送信開始: tabId=${tabId}, action=${message.action}`,
     );
 
     // 🔍 [DEBUG] SafeMessenger詳細ログ
@@ -2104,7 +2106,7 @@ class SafeMessenger {
     try {
       const result = await promise;
       log.debug(
-        `[SafeMessenger] 送信完了: tabId=${tabId}, success=${result.success}`,
+        `[3-4] [SafeMessenger] 送信完了: tabId=${tabId}, success=${result.success}`,
       );
       // 🔍 [DEBUG] SafeMessenger結果詳細ログ
       log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] 送信完了詳細:", {
@@ -2196,7 +2198,7 @@ class SafeMessenger {
           attempt < maxRetries - 1
         ) {
           log.debug(
-            `🔁 [SafeMessenger] 接続エラー、リトライ ${attempt + 1}/${maxRetries}`,
+            `[3-4] 🔁 [SafeMessenger] 接続エラー、リトライ ${attempt + 1}/${maxRetries}`,
           );
           // 指数バックオフ
           await new Promise((resolve) =>
@@ -2206,7 +2208,7 @@ class SafeMessenger {
         }
 
         // その他のエラーまたは最終リトライ
-        log.debug(`[SafeMessenger] エラー: ${errorMessage}`);
+        log.debug(`[3-4] [SafeMessenger] エラー: ${errorMessage}`);
         // 🔍 [DEBUG] エラー詳細ログ
         log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
           tabId: tabId,
@@ -2389,7 +2391,7 @@ class StableWindowManager {
             this.cleanupClosedWindow(existingWindowId);
           } catch (error) {
             log.warn(
-              `[StableWindowManager] 既存ウィンドウ削除エラー:`,
+              `[3-4] [StableWindowManager] 既存ウィンドウ削除エラー:`,
               error.message,
             );
           }
@@ -2400,7 +2402,7 @@ class StableWindowManager {
 
         // 🔍 [段階1] ウィンドウ作成結果の詳細ログ
         log.warn(
-          `🔍 [段階1-ウィンドウ作成] chrome.windows.create結果の詳細分析:`,
+          `[3-4] 🔍 [段階1-ウィンドウ作成] chrome.windows.create結果の詳細分析:`,
           {
             requestedUrl: url,
             windowOptions: windowOptions,
@@ -2481,7 +2483,7 @@ class StepIntegratedWindowService {
       };
     } catch (error) {
       log.warn(
-        "[StepIntegratedWindowService] スクリーン情報取得エラー、フォールバック使用:",
+        "[3-4] [StepIntegratedWindowService] スクリーン情報取得エラー、フォールバック使用:",
         error,
       );
       return {
@@ -2543,7 +2545,7 @@ class StepIntegratedWindowService {
   static async createWindowWithPosition(url, position, options = {}) {
     try {
       log.debug(
-        `🪟 [StepIntegratedWindowService] ウィンドウ作成開始: position=${position}, url=${url}`,
+        `[3-4] 🪟 [StepIntegratedWindowService] ウィンドウ作成開始: position=${position}, url=${url}`,
       );
 
       // 既存ウィンドウが使用中の場合は閉じる
@@ -2566,7 +2568,7 @@ class StepIntegratedWindowService {
 
           if (isInUse) {
             log.info(
-              `⏳ [ウィンドウ完了待機] windowId=${existingWindowId}の処理完了を待機します（position=${position}）`,
+              `[3-4] ⏳ [ウィンドウ完了待機] windowId=${existingWindowId}の処理完了を待機します（position=${position}）`,
             );
 
             // ウィンドウの処理完了を待機（最大60秒）
@@ -2586,14 +2588,14 @@ class StepIntegratedWindowService {
 
                 if (!stillInUse) {
                   log.info(
-                    `✅ [ウィンドウ解放] windowId=${existingWindowId}の処理が完了しました（${waitCount}秒待機）`,
+                    `[3-4] ✅ [ウィンドウ解放] windowId=${existingWindowId}の処理が完了しました（${waitCount}秒待機）`,
                   );
                   windowBecameAvailable = true;
                 }
               } catch (error) {
                 // ウィンドウが閉じられた場合
                 log.info(
-                  `✅ [ウィンドウ閉鎖] windowId=${existingWindowId}が閉じられました（${waitCount}秒待機）`,
+                  `[3-4] ✅ [ウィンドウ閉鎖] windowId=${existingWindowId}が閉じられました（${waitCount}秒待機）`,
                 );
                 this.windowPositions.delete(position);
                 windowBecameAvailable = true;
@@ -2602,7 +2604,7 @@ class StepIntegratedWindowService {
 
             if (!windowBecameAvailable) {
               log.warn(
-                `⚠️ [待機タイムアウト] windowId=${existingWindowId}の処理完了を${maxWaitTime}秒待機しましたが完了しませんでした。別のpositionを使用します。`,
+                `[3-4] ⚠️ [待機タイムアウト] windowId=${existingWindowId}の処理完了を${maxWaitTime}秒待機しましたが完了しませんでした。別のpositionを使用します。`,
               );
               // タイムアウト時は別のpositionを探す
               for (let altPosition = 0; altPosition < 4; altPosition++) {
@@ -2627,7 +2629,7 @@ class StepIntegratedWindowService {
             }
           } else {
             log.info(
-              `🔄 [ウィンドウ削除] position=${position}の未使用ウィンドウ${existingWindowId}を削除`,
+              `[3-4] 🔄 [ウィンドウ削除] position=${position}の未使用ウィンドウ${existingWindowId}を削除`,
             );
 
             try {
@@ -2657,7 +2659,7 @@ class StepIntegratedWindowService {
       };
 
       log.debug(
-        `📐 [StepIntegratedWindowService] ウィンドウ作成オプション:`,
+        `[3-4] 📐 [StepIntegratedWindowService] ウィンドウ作成オプション:`,
         createOptions,
       );
 
@@ -2720,7 +2722,7 @@ class StepIntegratedWindowService {
         const firstTab = window.tabs[0];
         if (firstTab.url && firstTab.url.startsWith("chrome-extension://")) {
           log.warn(
-            `⚠️ [StepIntegratedWindowService] タブURLが拡張機能ページです。正しいURLへのナビゲーションを待機します...`,
+            `[3-4] ⚠️ [StepIntegratedWindowService] タブURLが拡張機能ページです。正しいURLへのナビゲーションを待機します...`,
           );
 
           // タブが正しいURLにナビゲートされるまで待機（最大5秒）
@@ -2733,7 +2735,7 @@ class StepIntegratedWindowService {
             try {
               const updatedTab = await chrome.tabs.get(firstTab.id);
               log.debug(
-                `🔄 [StepIntegratedWindowService] タブ状態確認 (試行 ${retryCount + 1}):`,
+                `[3-4] 🔄 [StepIntegratedWindowService] タブ状態確認 (試行 ${retryCount + 1}):`,
                 {
                   tabId: updatedTab.id,
                   url: updatedTab.url,
@@ -2748,7 +2750,7 @@ class StepIntegratedWindowService {
               ) {
                 correctTab = updatedTab;
                 log.info(
-                  `✅ [StepIntegratedWindowService] タブが正しいURLにナビゲートされました: ${updatedTab.url}`,
+                  `[3-4] ✅ [StepIntegratedWindowService] タブが正しいURLにナビゲートされました: ${updatedTab.url}`,
                 );
                 break;
               }
@@ -2768,7 +2770,7 @@ class StepIntegratedWindowService {
       }
 
       log.debug(
-        `✅ [StepIntegratedWindowService] ウィンドウ作成完了: windowId=${window.id}, position=${position}`,
+        `[3-4] ✅ [StepIntegratedWindowService] ウィンドウ作成完了: windowId=${window.id}, position=${position}`,
       );
 
       // デバッグログ：戻り値の詳細
@@ -2788,7 +2790,7 @@ class StepIntegratedWindowService {
       };
     } catch (error) {
       log.error(
-        `❌ [StepIntegratedWindowService] ウィンドウ作成エラー:`,
+        `[3-4] ❌ [StepIntegratedWindowService] ウィンドウ作成エラー:`,
         error,
       );
       throw error;
@@ -2812,7 +2814,7 @@ class StepIntegratedWindowService {
 
       // タブでContent Scriptが動作中かチェック
       const tabs = await chrome.tabs.query({ windowId });
-      log.debug(`[使用中チェック] タブ数: ${tabs.length}`);
+      log.debug(`[3-4] [使用中チェック] タブ数: ${tabs.length}`);
 
       for (const tab of tabs) {
         try {
@@ -2827,7 +2829,7 @@ class StepIntegratedWindowService {
             (response.action === "pong" || response.status === "ready")
           ) {
             log.info(
-              `✅ [使用中チェック] タブ${tab.id}でContent Script動作中、windowId=${windowId}は使用中`,
+              `[3-4] ✅ [使用中チェック] タブ${tab.id}でContent Script動作中、windowId=${windowId}は使用中`,
             );
             return true;
           }
@@ -2860,11 +2862,11 @@ class StepIntegratedWindowService {
       }
 
       log.debug(
-        `✅ [StepIntegratedWindowService] ウィンドウ閉じる完了: windowId=${windowId}`,
+        `[3-4] ✅ [StepIntegratedWindowService] ウィンドウ閉じる完了: windowId=${windowId}`,
       );
     } catch (error) {
       log.debug(
-        `[StepIntegratedWindowService] ウィンドウ閉じるエラー: windowId=${windowId}`,
+        `[3-4] [StepIntegratedWindowService] ウィンドウ閉じるエラー: windowId=${windowId}`,
         error,
       );
     }
@@ -2951,7 +2953,7 @@ async function executeAutoColumnSetup(
   const addedColumns = [];
 
   if (!spreadsheetData[menuRowIndex] || !spreadsheetData[aiRowIndex]) {
-    log.debug("[step3-tasklist] メニュー行またはAI行が見つかりません");
+    log.debug("[3-4] [step3-tasklist] メニュー行またはAI行が見つかりません");
     return { hasAdditions: false, addedColumns: [] };
   }
 
@@ -2963,7 +2965,7 @@ async function executeAutoColumnSetup(
     );
 
     if (promptGroups.length === 0) {
-      log.debug("[step3-tasklist] プロンプト列が見つかりません");
+      log.debug("[3-4] [step3-tasklist] プロンプト列が見つかりません");
       return { hasAdditions: false, addedColumns: [] };
     }
 
@@ -3005,7 +3007,7 @@ async function executeAutoColumnSetup(
       addedColumns: addedColumns,
     };
   } catch (error) {
-    log.error("[step3-tasklist] 自動列追加エラー:", error);
+    log.error("[3-4] [step3-tasklist] 自動列追加エラー:", error);
     return { hasAdditions: false, addedColumns: [], error: error.message };
   }
 }
@@ -3296,18 +3298,18 @@ async function insertColumnAndSetHeader(
 
     if (response.ok) {
       log.debug(
-        `[step3-tasklist] 列追加成功: ${indexToColumn(columnIndex)}列 (${headerText})`,
+        `[3-4] [step3-tasklist] 列追加成功: ${indexToColumn(columnIndex)}列 (${headerText})`,
       );
       return true;
     } else {
       log.error(
-        `[step3-tasklist] 列追加失敗: ${headerText}`,
+        `[3-4] [step3-tasklist] 列追加失敗: ${headerText}`,
         await response.text(),
       );
       return false;
     }
   } catch (error) {
-    log.error(`[step3-tasklist] 列追加エラー: ${headerText}`, error);
+    log.error(`[3-4] [step3-tasklist] 列追加エラー: ${headerText}`, error);
     return false;
   }
 }
@@ -3347,14 +3349,16 @@ async function deleteColumn(spreadsheetId, sheetId, columnIndex) {
     });
 
     if (response.ok) {
-      log.debug(`[step3-tasklist] 列削除成功: ${indexToColumn(columnIndex)}列`);
+      log.debug(
+        `[3-4] [step3-tasklist] 列削除成功: ${indexToColumn(columnIndex)}列`,
+      );
       return true;
     } else {
-      log.error("[step3-tasklist] 列削除失敗", await response.text());
+      log.error("[3-4] [step3-tasklist] 列削除失敗", await response.text());
       return false;
     }
   } catch (error) {
-    log.error("[step3-tasklist] 列削除エラー", error);
+    log.error("[3-4] [step3-tasklist] 列削除エラー", error);
     return false;
   }
 }
@@ -3381,7 +3385,7 @@ function getAnswerCell(taskGroup, aiType, row) {
 
     return getSimpleCell(column, row);
   } catch (error) {
-    log.error("[step3-tasklist.js] getAnswerCell エラー:", error);
+    log.error("[3-4] [step3-tasklist.js] getAnswerCell エラー:", error);
     return getSimpleCell("C", row); // デフォルト
   }
 }
@@ -3453,7 +3457,7 @@ async function generateTaskList(
 
     // 必要に応じて自動列追加を実行
     if (options.enableAutoColumnSetup && options.spreadsheetId) {
-      log.debug("[step3-tasklist] 自動列追加を実行中...");
+      log.debug("[3-4] [step3-tasklist] 自動列追加を実行中...");
       const setupResult = await executeAutoColumnSetup(
         options.spreadsheetId,
         options.gid,
@@ -3463,7 +3467,7 @@ async function generateTaskList(
 
       if (setupResult.hasAdditions) {
         log.debug(
-          `[step3-tasklist] ${setupResult.addedColumns.length}列を追加しました`,
+          `[3-4] [step3-tasklist] ${setupResult.addedColumns.length}列を追加しました`,
         );
         // 列追加後はスプレッドシートデータを再読み込み
         if (setupResult.addedColumns && setupResult.addedColumns.length > 0) {
@@ -3492,12 +3496,12 @@ async function generateTaskList(
                   ...data.values,
                 );
                 log.debug(
-                  "[step3-tasklist] スプレッドシートデータを再読み込みしました",
+                  "[3-4] [step3-tasklist] スプレッドシートデータを再読み込みしました",
                 );
               }
             }
           } catch (error) {
-            log.error("[step3-tasklist] データ再読み込みエラー:", error);
+            log.error("[3-4] [step3-tasklist] データ再読み込みエラー:", error);
           }
         }
       }
@@ -3519,10 +3523,10 @@ async function generateTaskList(
           // 最初の数個だけ詳細出力
           if (data) {
             logBuffer.push(`${message}: ${JSON.stringify(data)}`);
-            log.debug(`[step3-tasklist] ${message}:`, data);
+            log.debug(`[3-4] [step3-tasklist] ${message}:`, data);
           } else {
             logBuffer.push(message);
-            log.debug(`[step3-tasklist] ${message}`);
+            log.debug(`[3-4] [step3-tasklist] ${message}`);
           }
         }
         return;
@@ -3531,10 +3535,10 @@ async function generateTaskList(
       // 通常のログ処理
       if (data) {
         logBuffer.push(`${message}: ${JSON.stringify(data)}`);
-        log.debug(`[step3-tasklist] ${message}:`, data);
+        log.debug(`[3-4] [step3-tasklist] ${message}:`, data);
       } else {
         logBuffer.push(message);
-        log.debug(`[step3-tasklist] ${message}`);
+        log.debug(`[3-4] [step3-tasklist] ${message}`);
       }
     };
 
@@ -3572,13 +3576,13 @@ async function generateTaskList(
 
     // デバッグ: タスク生成範囲を明示
     log.debug(
-      `[step3-tasklist.js] タスク生成範囲: ${dataStartRow} ~ ${lastPromptRow}`,
+      `[3-4] [step3-tasklist.js] タスク生成範囲: ${dataStartRow} ~ ${lastPromptRow}`,
     );
     log.debug(
-      `[step3-tasklist.js] グループ${taskGroup.groupNumber}のプロンプト列: ${promptColumns}`,
+      `[3-4] [step3-tasklist.js] グループ${taskGroup.groupNumber}のプロンプト列: ${promptColumns}`,
     );
     log.debug(
-      `[step3-tasklist.js] グループ${taskGroup.groupNumber}の回答列: ${answerColumns}`,
+      `[3-4] [step3-tasklist.js] グループ${taskGroup.groupNumber}の回答列: ${answerColumns}`,
     );
 
     for (let row = dataStartRow; row <= lastPromptRow; row++) {
@@ -3587,7 +3591,7 @@ async function generateTaskList(
       // デバッグ: 各行の処理状況を出力
       if (row <= dataStartRow + 2) {
         // 最初の数行だけデバッグ出力
-        log.debug(`[step3-tasklist.js] 行${row}を処理中...`);
+        log.debug(`[3-4] [step3-tasklist.js] 行${row}を処理中...`);
       }
 
       if (!rowData) continue;
@@ -3996,7 +4000,7 @@ async function generateTaskList(
         });
 
         log.debug(
-          `[DEBUG] タスク追加: 行${row}, AI=${aiType}, hasAnswer状態不明`,
+          `[3-4] [DEBUG] タスク追加: 行${row}, AI=${aiType}, hasAnswer状態不明`,
         );
         validTasks.push(task);
         tasksCreated++; // タスク作成数をインクリメント
@@ -4041,7 +4045,7 @@ async function generateTaskList(
     }
 
     log.debug(
-      `[TaskList] 処理結果サマリー: 全${totalRows}行中、処理対象${processedRows}行、スキップ${skippedCount}行`,
+      `[3-4] [TaskList] 処理結果サマリー: 全${totalRows}行中、処理対象${processedRows}行、スキップ${skippedCount}行`,
     );
 
     // 3-3: 3タスクずつのバッチ作成
@@ -4053,7 +4057,7 @@ async function generateTaskList(
     return batch;
   } catch (error) {
     log.error(
-      "[step3-tasklist.js] [Step 3-Error] generateTaskList内でエラー発生:",
+      "[3-4] [step3-tasklist.js] [Step 3-Error] generateTaskList内でエラー発生:",
       {
         エラー: error.message,
         スタック: error.stack,
@@ -4143,7 +4147,7 @@ function getColumnControl(data, controlRow) {
     return controls;
   } catch (error) {
     log.error(
-      `[step3-tasklist.js] [Step 3-5-Error] ❌ 列制御取得エラー:`,
+      `[3-4] [step3-tasklist.js] [Step 3-5-Error] ❌ 列制御取得エラー:`,
       error,
     );
     throw error;
@@ -4220,7 +4224,7 @@ async function initializeGoogleServices() {
     // Google Servicesが既にグローバルに存在するかチェック
     if (typeof window !== "undefined" && window.googleServices) {
       await window.googleServices.initialize();
-      log.debug("[step3-tasklist] Google Services初期化完了");
+      log.debug("[3-4] [step3-tasklist] Google Services初期化完了");
       return true;
     }
 
@@ -4230,13 +4234,13 @@ async function initializeGoogleServices() {
         chrome.identity.getAuthToken({ interactive: false }, (token) => {
           if (chrome.runtime.lastError) {
             log.warn(
-              "[step3-tasklist] 認証トークン取得失敗:",
+              "[3-4] [step3-tasklist] 認証トークン取得失敗:",
               chrome.runtime.lastError,
             );
             resolve(false);
           } else {
             log.debug(
-              "[step3-tasklist] 認証トークン確認完了:",
+              "[3-4] [step3-tasklist] 認証トークン確認完了:",
               token ? "✓" : "✗",
             );
             resolve(true);
@@ -4245,10 +4249,10 @@ async function initializeGoogleServices() {
       });
     }
 
-    log.warn("[step3-tasklist] Google Services初期化環境が不明");
+    log.warn("[3-4] [step3-tasklist] Google Services初期化環境が不明");
     return false;
   } catch (error) {
-    log.error("[step3-tasklist] Google Services初期化エラー:", error);
+    log.error("[3-4] [step3-tasklist] Google Services初期化エラー:", error);
     return false;
   }
 }
@@ -4274,7 +4278,7 @@ if (typeof window !== "undefined") {
     // 関数の定義確認
     if (typeof initializeGoogleServices === "undefined") {
       log.error(
-        "[step3-tasklist] initializeGoogleServices関数が定義されていません",
+        "[3-4] [step3-tasklist] initializeGoogleServices関数が定義されていません",
       );
     }
 
@@ -4302,7 +4306,7 @@ if (typeof window !== "undefined") {
     }
   } catch (error) {
     log.error(
-      "❌ [step3-tasklist.js] window.Step3TaskList初期化エラー:",
+      "[3-4] ❌ [step3-tasklist.js] window.Step3TaskList初期化エラー:",
       error,
     );
     window.Step3TaskList = {
@@ -4323,10 +4327,11 @@ if (typeof window !== "undefined") {
 // ExecuteLogger configuration
 // ========================================
 const ExecuteLogger = {
-  info: (...args) => log.debug(`[step3-tasklist.js]`, ...args),
-  debug: (...args) => log.debug(`[step3-tasklist.js] [DEBUG]`, ...args),
-  warn: (...args) => log.warn(`[step3-tasklist.js]`, ...args),
-  error: (...args) => log.error(`[step3-tasklist.js]`, ...args),
+  info: (...args) => log.debug(`[3-4] [step3-tasklist.js]`, ...args),
+  debug: (...args) =>
+    log.debug(`[3-4] [step3-tasklist.js] [3-4] [DEBUG]`, ...args),
+  warn: (...args) => log.warn(`[3-4] [step3-tasklist.js]`, ...args),
+  error: (...args) => log.error(`[3-4] [step3-tasklist.js]`, ...args),
 };
 
 // ========================================
@@ -5065,7 +5070,7 @@ class WindowController {
 
             if (!targetExists) {
               log.warn(
-                `⚠️ [Tab Check] タブ ${tabId} は削除済みのため新しいタブを作成します`,
+                `[3-4] ⚠️ [Tab Check] タブ ${tabId} は削除済みのため新しいタブを作成します`,
               );
               // タブが閉じられている場合は新しいタブを作成して復旧
               return null; // nullを返して呼び出し側で新しいタブを作成させる
@@ -5079,7 +5084,7 @@ class WindowController {
             });
 
             log.warn(
-              `⚠️ [Tab Check] タブ ${tabId} の存在確認に失敗 - 復旧を試行: ${queryError.message}`,
+              `[3-4] ⚠️ [Tab Check] タブ ${tabId} の存在確認に失敗 - 復旧を試行: ${queryError.message}`,
             );
             // タブ検証エラーの場合は null を返して呼び出し側で新しいタブを作成
             return null;
@@ -5132,7 +5137,7 @@ class WindowController {
    * ファーストウィン戦略による高速ウィンドウチェック
    */
   async checkWindowsOptimized(aiType) {
-    log.debug(`[FastCheck] ${aiType}の高速チェック開始`);
+    log.debug(`[3-4] [FastCheck] ${aiType}の高速チェック開始`);
 
     // Step 1: UnifiedWindowManagerで最初に動作するウィンドウを見つける
     const workingWindow =
@@ -5142,7 +5147,7 @@ class WindowController {
 
     if (workingWindow) {
       log.debug(
-        `✅ [FastCheck] ${aiType}の動作ウィンドウ発見: ${workingWindow.tabId}`,
+        `[3-4] ✅ [FastCheck] ${aiType}の動作ウィンドウ発見: ${workingWindow.tabId}`,
       );
 
       // UI要素の詳細チェック
@@ -5172,7 +5177,7 @@ class WindowController {
    * 従来の全ウィンドウチェック（フォールバック用）
    */
   async performFullWindowCheck(aiType) {
-    log.debug(`[FullCheck] ${aiType}の全ウィンドウチェック開始`);
+    log.debug(`[3-4] [FullCheck] ${aiType}の全ウィンドウチェック開始`);
 
     // 従来のロジックを保持
     const baseAiType = aiType.replace(/_task.*/, "");
@@ -5202,7 +5207,7 @@ class WindowController {
         );
         if (checkResult.success) {
           log.debug(
-            `✅ [FullCheck] ${aiType}成功ウィンドウ: ${windowInfo.tabId}`,
+            `[3-4] ✅ [FullCheck] ${aiType}成功ウィンドウ: ${windowInfo.tabId}`,
           );
           return {
             success: true,
@@ -5228,7 +5233,7 @@ class WindowController {
    */
   async performWindowCheck(aiType, tabId) {
     log.debug(
-      `[DEBUG-performWindowCheck] 開始: aiType=${aiType}, tabId=${tabId}`,
+      `[3-4] [DEBUG-performWindowCheck] 開始: aiType=${aiType}, tabId=${tabId}`,
     );
 
     return await executeSimpleRetry({
@@ -5241,14 +5246,14 @@ class WindowController {
 
         // タブの準備完了を待機
         log.debug(
-          `[DEBUG-performWindowCheck] タブ準備完了待機開始: tabId=${tabId}`,
+          `[3-4] [DEBUG-performWindowCheck] タブ準備完了待機開始: tabId=${tabId}`,
         );
         const tab = await this.waitForTabReady(
           tabId,
           BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_COUNT,
           BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_INTERVAL,
         );
-        log.debug(`[DEBUG-performWindowCheck] タブ準備完了:`, {
+        log.debug(`[3-4] [DEBUG-performWindowCheck] タブ準備完了:`, {
           tabId,
           url: tab?.url,
           status: tab?.status,
@@ -5256,13 +5261,16 @@ class WindowController {
 
         // SafeMessengerを使用してContent scriptにチェック要求を送信
         log.debug(
-          `[DEBUG-performWindowCheck] SafeMessenger送信開始: tabId=${tabId}, aiType=${aiType}`,
+          `[3-4] [DEBUG-performWindowCheck] SafeMessenger送信開始: tabId=${tabId}, aiType=${aiType}`,
         );
         const result = await SafeMessenger.sendSafeMessage(tabId, {
           action: "CHECK_UI_ELEMENTS",
           aiType: aiType,
         });
-        log.debug(`[DEBUG-performWindowCheck] SafeMessenger完了:`, result);
+        log.debug(
+          `[3-4] [DEBUG-performWindowCheck] SafeMessenger完了:`,
+          result,
+        );
 
         let response = null;
         if (result.success) {
@@ -5277,7 +5285,7 @@ class WindowController {
 
         const allChecksPass = Object.values(checks).every((check) => check);
         log.debug(
-          `[DEBUG-performWindowCheck] チェック結果: allChecksPass=${allChecksPass}`,
+          `[3-4] [DEBUG-performWindowCheck] チェック結果: allChecksPass=${allChecksPass}`,
           checks,
         );
 
@@ -7155,7 +7163,7 @@ async function createTaskListFromGroup(groupData) {
 // ========================================
 
 // ========================================
-// executeStep4 Function - Moved from step5-execute.js
+// executeStep3 Function - Moved from step5-execute.js
 // ========================================
 class DynamicTaskSearch {
   constructor() {
@@ -7180,7 +7188,7 @@ class DynamicTaskSearch {
     if (window.addCurrentGroupListener) {
       const listener = (changeEvent) => {
         log.warn(
-          "🔄 [DynamicTaskSearch] currentGroup変更:",
+          "[3-4] 🔄 [DynamicTaskSearch] currentGroup変更:",
           changeEvent.currentGroup?.groupNumber,
         );
 
@@ -7288,7 +7296,7 @@ class DynamicTaskSearch {
         this.cache.lastFetchTime = now;
 
         log.info(
-          `✅ データ取得成功: ${values.length}行 (試行: ${retryCount + 1})`,
+          `[3-4] ✅ データ取得成功: ${values.length}行 (試行: ${retryCount + 1})`,
         );
         return values;
       } catch (error) {
@@ -7298,7 +7306,7 @@ class DynamicTaskSearch {
           throw error;
         }
         log.warn(
-          `⚠️ データ取得失敗、リトライ中... (${retryCount}/${maxRetries}):`,
+          `[3-4] ⚠️ データ取得失敗、リトライ中... (${retryCount}/${maxRetries}):`,
           error.message,
         );
       }
@@ -7406,7 +7414,7 @@ class DynamicTaskSearch {
 
       if (isGroupCompleted) {
         log.info(
-          `🏁 グループ${currentGroup.groupNumber}完了 - step3メインループに制御移譲`,
+          `[3-4] 🏁 グループ${currentGroup.groupNumber}完了 - step3メインループに制御移譲`,
         );
 
         // 【修正】統一移行協調システムを使用
@@ -7492,7 +7500,7 @@ class DynamicTaskSearch {
           // 【無限ループ防止】チェック数制限
           if (tasksChecked > maxTasksToCheck) {
             log.warn(
-              `⚠️ タスクチェック制限に達しました (${maxTasksToCheck}個)`,
+              `[3-4] ⚠️ タスクチェック制限に達しました (${maxTasksToCheck}個)`,
             );
             return null;
           }
@@ -8036,7 +8044,7 @@ class DynamicTaskSearch {
       // 統一移行協調システムが利用可能かチェック
       if (!window.executeGroupTransition) {
         log.warn(
-          "⚠️ [DynamicTaskSearch] グループ移行協調システム未利用可能 - 従来通知のみ",
+          "[3-4] ⚠️ [DynamicTaskSearch] グループ移行協調システム未利用可能 - 従来通知のみ",
         );
         return false;
       }
@@ -8094,7 +8102,7 @@ class DynamicTaskSearch {
 
       if (currentIndex === -1) {
         log.warn(
-          "⚠️ [DynamicTaskSearch] 現在のグループがtaskGroups内に見つからない",
+          "[3-4] ⚠️ [DynamicTaskSearch] 現在のグループがtaskGroups内に見つからない",
         );
         return null;
       }
@@ -8103,7 +8111,7 @@ class DynamicTaskSearch {
       const nextIndex = currentIndex + 1;
       if (nextIndex >= taskGroups.length) {
         log.info(
-          "📋 [DynamicTaskSearch] 最後のグループ完了 - 次のグループなし",
+          "[3-4] 📋 [DynamicTaskSearch] 最後のグループ完了 - 次のグループなし",
         );
         return null;
       }
@@ -8124,7 +8132,7 @@ class DynamicTaskSearch {
   notifyGroupCompletionToStep3(completedGroup) {
     try {
       log.info(
-        `📡 step3メインループに制御移譲通知送信: グループ${completedGroup.groupNumber}`,
+        `[3-4] 📡 step3メインループに制御移譲通知送信: グループ${completedGroup.groupNumber}`,
       );
 
       // 【方法1】カスタムイベントによる通知
@@ -8286,14 +8294,14 @@ function getDynamicTaskSearchInstance() {
   // 必要な依存関係がそろっているかチェック
   if (!window.fetchWithTokenRefresh) {
     log.warn(
-      "⚠️ fetchWithTokenRefresh が未初期化のため、DynamicTaskSearchを作成できません",
+      "[3-4] ⚠️ fetchWithTokenRefresh が未初期化のため、DynamicTaskSearchを作成できません",
     );
     return null;
   }
 
   if (!window.globalState) {
     log.warn(
-      "⚠️ globalState が未初期化のため、DynamicTaskSearchを作成できません",
+      "[3-4] ⚠️ globalState が未初期化のため、DynamicTaskSearchを作成できません",
     );
     return null;
   }
@@ -8342,7 +8350,7 @@ if (typeof window !== "undefined") {
 
     if (!instance) {
       log.error(
-        `❌ [TASK-FLOW-TRACE] DynamicTaskSearchインスタンス初期化失敗:`,
+        `[3-4] ❌ [TASK-FLOW-TRACE] DynamicTaskSearchインスタンス初期化失敗:`,
         {
           taskId: taskId,
           globalStateExists: !!window.globalState,
@@ -8563,8 +8571,8 @@ class SpecialTaskProcessor {
 // グローバルインスタンス作成
 window.specialTaskProcessor = new SpecialTaskProcessor();
 
-async function executeStep4(taskList) {
-  // executeStep4関数定義開始
+async function executeStep3(taskList) {
+  // executeStep3関数定義開始
 
   // 🔧 [FIX] 引数なしで呼ばれた場合、window.globalState.taskGroupsを使用
   if (taskList === undefined || taskList === null) {
@@ -8581,7 +8589,7 @@ async function executeStep4(taskList) {
     if (taskList.length === 0) {
       ExecuteLogger.warn("⚠️ [DATA-SOURCE] タスクグループが見つかりません");
       throw new Error(
-        "executeStep4: タスクグループが見つかりません。Step2を先に実行してください。",
+        "executeStep3: タスクグループが見つかりません。Step2を先に実行してください。",
       );
     }
   }
@@ -8621,7 +8629,7 @@ async function executeStep4(taskList) {
           "❌ [DATA-CONVERSION] グループオブジェクト変換エラー:",
           error,
         );
-        throw new Error(`executeStep4: 入力データ変換失敗 - ${error.message}`);
+        throw new Error(`executeStep3: 入力データ変換失敗 - ${error.message}`);
       }
     } else {
       ExecuteLogger.error("❌ [DATA-CONVERSION] 無効な入力データ:", {
@@ -8629,7 +8637,7 @@ async function executeStep4(taskList) {
         type: typeof taskList,
       });
       throw new Error(
-        "executeStep4: taskListは配列またはグループオブジェクトである必要があります",
+        "executeStep3: taskListは配列またはグループオブジェクトである必要があります",
       );
     }
   }
@@ -8657,7 +8665,7 @@ async function executeStep4(taskList) {
         const groupTaskList = await createTaskListFromGroup(group);
 
         // 各グループのタスクリストを処理
-        // ここで再帰的にexecuteStep4を呼び出すのではなく、
+        // ここで再帰的にexecuteStep3を呼び出すのではなく、
         // 全てのタスクを1つの配列にまとめる
         allResults.push(...groupTaskList);
       } catch (error) {
@@ -8679,7 +8687,7 @@ async function executeStep4(taskList) {
 
   // 🔍 [DEBUG] タスクリスト詳細検証ログ
   ExecuteLogger.info(
-    "🔍 [DEBUG-TASK-VALIDATION] executeStep4受信タスクリスト詳細検証:",
+    "🔍 [DEBUG-TASK-VALIDATION] executeStep3受信タスクリスト詳細検証:",
     {
       taskListReceived: !!taskList,
       taskListType: typeof taskList,
@@ -8742,7 +8750,7 @@ async function executeStep4(taskList) {
   );
 
   // 内部関数の存在確認（実行時チェック）
-  ExecuteLogger.info("🔍 [executeStep4] 内部関数の定義状態確認:", {
+  ExecuteLogger.info("🔍 [executeStep3] 内部関数の定義状態確認:", {
     executeNormalAITask: typeof executeNormalAITask,
     processTaskResult: typeof processTaskResult,
     shouldPerformWindowCleanup: typeof shouldPerformWindowCleanup,
@@ -9012,7 +9020,7 @@ async function executeStep4(taskList) {
       }
 
       ExecuteLogger.info(
-        "📦 [executeStep4] DynamicTaskSearch用グローバル変数設定完了",
+        "📦 [executeStep3] DynamicTaskSearch用グローバル変数設定完了",
       );
     }
 
@@ -9699,7 +9707,7 @@ async function executeStep4(taskList) {
     currentGroup: window.globalState?.currentGroupIndex + 1 || "不明",
     統一管理: "step3メインループ",
     step4自動移行: "削除済み",
-    データフロー: "step3 → processIncompleteTasks → executeStep4",
+    データフロー: "step3 → processIncompleteTasks → executeStep3",
   });
 
   // ========================================
@@ -10643,42 +10651,42 @@ async function executeStep4(taskList) {
     return errorRate < 0.5; // エラー率50%未満の場合はクリーンアップ
   }
 
-  // executeStep4関数定義完了
+  // executeStep3関数定義完了
   return results;
 }
 
 // ステップ4実行関数をグローバルに公開
 try {
-  ExecuteLogger.info("🔧 [DEBUG] executeStep4関数グローバル公開開始:", {
-    executeStep4Type: typeof executeStep4,
-    executeStep4Exists: typeof executeStep4 === "function",
-    executeStep4Name: executeStep4?.name,
+  ExecuteLogger.info("🔧 [DEBUG] executeStep3関数グローバル公開開始:", {
+    executeStep3Type: typeof executeStep3,
+    executeStep3Exists: typeof executeStep3 === "function",
+    executeStep3Name: executeStep3?.name,
     windowAvailable: typeof window !== "undefined",
   });
 
-  if (typeof window !== "undefined" && typeof executeStep4 === "function") {
-    window.executeStep4 = executeStep4;
+  if (typeof window !== "undefined" && typeof executeStep3 === "function") {
+    window.executeStep3 = executeStep3;
 
     // 即座に検証
     ExecuteLogger.info(
-      "✅ [DEBUG] window.executeStep4エクスポート完了・検証:",
+      "✅ [DEBUG] window.executeStep3エクスポート完了・検証:",
       {
-        windowExecuteStep4Type: typeof window.executeStep4,
-        windowExecuteStep4Exists: typeof window.executeStep4 === "function",
-        windowExecuteStep4Name: window.executeStep4?.name,
+        windowExecuteStep4Type: typeof window.executeStep3,
+        windowExecuteStep4Exists: typeof window.executeStep3 === "function",
+        windowExecuteStep4Name: window.executeStep3?.name,
         canCallFunction: !!(
-          window.executeStep4 && typeof window.executeStep4 === "function"
+          window.executeStep3 && typeof window.executeStep3 === "function"
         ),
-        globalAccess: typeof globalThis?.executeStep4 === "function",
+        globalAccess: typeof globalThis?.executeStep3 === "function",
       },
     );
   } else {
     throw new Error(
-      `関数公開失敗: executeStep4=${typeof executeStep4}, window=${typeof window}`,
+      `関数公開失敗: executeStep3=${typeof executeStep3}, window=${typeof window}`,
     );
   }
 } catch (error) {
-  log.error("[3-4] ❌ [step3-tasklist.js] executeStep4関数公開エラー:", error);
+  log.error("[3-4] ❌ [step3-tasklist.js] executeStep3関数公開エラー:", error);
   if (typeof window !== "undefined") {
     window.step4FileError = error.message;
   }
@@ -11049,16 +11057,16 @@ async function executeTasks(tasks, taskGroup) {
   // DEBUG: executeTasks関数に入りました
 
   try {
-    // step4-execute.jsのexecuteStep4関数を利用
-    // DEBUG: executeStep4チェック開始
-    // DEBUG: executeStep4呼び出し前チェック
+    // step4-execute.jsのexecuteStep3関数を利用
+    // DEBUG: executeStep3チェック開始
+    // DEBUG: executeStep3呼び出し前チェック
 
-    if (!window.executeStep4) {
-      log.error("[3-4] executeStep4が見つかりません！");
-      throw new Error("executeStep4関数が利用できません");
+    if (!window.executeStep3) {
+      log.error("[3-4] executeStep3が見つかりません！");
+      throw new Error("executeStep3関数が利用できません");
     }
 
-    // DEBUG: executeStep4が見つかりました
+    // DEBUG: executeStep3が見つかりました
 
     if (!tasks || tasks.length === 0) {
       LoopLogger.warn("[Helper] 実行するタスクがありません");
@@ -11086,7 +11094,7 @@ async function executeTasks(tasks, taskGroup) {
         } else {
           aiType = "Claude"; // デフォルト
         }
-        log.debug(`[DEBUG] aiType推測: ${columnLetter}列 → ${aiType}`);
+        log.debug(`[3-4] [DEBUG] aiType推測: ${columnLetter}列 → ${aiType}`);
       }
 
       // それでも取得できない場合はデフォルト値
@@ -11170,38 +11178,38 @@ async function executeTasks(tasks, taskGroup) {
     LoopLogger.info("[Helper] Step4実行中...");
 
     // 🔧 [UNIFICATION] タスク配列生成確認ログ
-    LoopLogger.info("📋 [UNIFICATION] processIncompleteTasks → executeStep4:", {
+    LoopLogger.info("📋 [UNIFICATION] processIncompleteTasks → executeStep3:", {
       データ形式: "タスク配列",
       タスク数: formattedTasks.length,
       グループ番号: formattedTasks[0]?.groupNumber || "不明",
       最初のタスクID: formattedTasks[0]?.id || "不明",
       プロンプトプレビュー:
         formattedTasks[0]?.prompt?.substring(0, 50) + "..." || "なし",
-      executeStep4呼び出し: "step3経由（統一フロー）",
+      executeStep3呼び出し: "step3経由（統一フロー）",
       生成方法: "generateTaskList経由",
     });
 
-    // DEBUG: executeStep4呼び出し直前の詳細ログ
-    // DEBUG: executeStep4を呼び出す直前
+    // DEBUG: executeStep3呼び出し直前の詳細ログ
+    // DEBUG: executeStep3を呼び出す直前
 
     // 🎯 [DEBUG] 最終チェック - より詳細な情報
-    // DEBUG: executeStep4呼び出し直前の最終チェック
+    // DEBUG: executeStep3呼び出し直前の最終チェック
 
     try {
-      // DEBUG: executeStep4を呼び出し
+      // DEBUG: executeStep3を呼び出し
       log.debug(
-        "🔍 [STEP3-EXEC] executeStep4呼び出し前のSimpleSheetsClient状態:",
+        "[3-4] 🔍 [STEP3-EXEC] executeStep3呼び出し前のSimpleSheetsClient状態:",
         !!window.simpleSheetsClient,
       );
-      const results = await window.executeStep4(formattedTasks);
-      // DEBUG: executeStep4完了
+      const results = await window.executeStep3(formattedTasks);
+      // DEBUG: executeStep3完了
       log.debug(
-        "✅ [STEP3-EXEC] executeStep4実行完了後のSimpleSheetsClient状態:",
+        "[3-4] ✅ [STEP3-EXEC] executeStep3実行完了後のSimpleSheetsClient状態:",
         !!window.simpleSheetsClient,
       );
       return results || [];
     } catch (step4Error) {
-      log.error("[3-4] executeStep4でエラーが発生:", step4Error.message);
+      log.error("[3-4] executeStep3でエラーが発生:", step4Error.message);
       throw step4Error;
     }
   } catch (error) {
@@ -11220,7 +11228,7 @@ async function executeTasks(tasks, taskGroup) {
         番号: taskGroup?.groupNumber,
         タイプ: taskGroup?.taskType,
       },
-      "window.executeStep4存在": !!window.executeStep4,
+      "window.executeStep3存在": !!window.executeStep3,
     });
     throw error;
   }
@@ -11230,7 +11238,7 @@ async function executeTasks(tasks, taskGroup) {
 // Export to window for global access
 // ========================================
 if (typeof window !== "undefined") {
-  window.executeStep4 = executeStep4;
+  window.executeStep3 = executeStep3;
 
   // WindowControllerクラスを常にエクスポート（完全版を確実に使用）
   window.WindowController = WindowController;
@@ -11272,7 +11280,7 @@ if (typeof window !== "undefined") {
   window.createTaskList = createTaskList;
   window.executeTasks = executeTasks;
 
-  ExecuteLogger.info("✅ executeStep4 exported to window");
+  ExecuteLogger.info("✅ executeStep3 exported to window");
   ExecuteLogger.info(
     `✅ WindowController status: ${window.windowController ? "initialized" : "not initialized"}`,
   );
@@ -11286,8 +11294,8 @@ if (typeof window !== "undefined") {
 // ========================================
 try {
   log.debug("[3-4] ✅ [step3-tasklist.js] ファイル読み込み完了", {
-    executeStep4Defined: typeof executeStep4,
-    windowExecuteStep4: typeof window.executeStep4,
+    executeStep3Defined: typeof executeStep3,
+    windowExecuteStep4: typeof window.executeStep3,
     timestamp: new Date().toISOString(),
     windowObject: !!window,
     chromeApis: {
