@@ -3927,13 +3927,8 @@ async function generateTaskList(
       `[3-4] [TaskList] 処理結果サマリー: 全${totalRows}行中、処理対象${processedRows}行、スキップ${skippedCount}行`,
     );
 
-    // 3-3: 3タスクずつのバッチ作成
-    const batchSize = options.batchSize || 3;
-    const batch = validTasks.slice(0, batchSize);
-
-    // 「既に回答あり」ログのサマリー出力（統合済み上記に含む）
-
-    return batch;
+    // 全タスクを返す（バッチ処理はexecuteStep3のメインループで行う）
+    return validTasks;
   } catch (error) {
     log.error(
       "[3-4] [step3-tasklist.js] [Step 3-Error] generateTaskList内でエラー発生:",
