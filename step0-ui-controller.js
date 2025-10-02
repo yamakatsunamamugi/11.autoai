@@ -60,7 +60,6 @@ window.scriptLoadTracker = {
       "step3-loop.js",
       "step4-tasklist.js",
       "step5-execute.js",
-      "step6-nextgroup.js",
     ],
   },
   addScript: function (scriptName) {

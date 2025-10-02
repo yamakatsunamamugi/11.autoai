@@ -1193,27 +1193,25 @@ async function checkAndHandleGroupCompletion(taskIndex) {
 
     if (isGroupCompleted) {
       log.info(
-        `🏁 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}完了 - step3でタスクグループ再作成[${taskIndex}]`,
+        `🏁 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}完了 - step2でタスクグループ再作成[${taskIndex}]`,
       );
 
-      // step3を呼び出して次のグループを準備
-      if (!window.executeStep3PrepareNextGroup) {
-        log.error(
-          `❌ [GROUP-TRANSITION] executeStep3PrepareNextGroup未定義[${taskIndex}]`,
-        );
+      // step2を呼び出して次のグループを準備（タスクグループ作成+未完了グループ選択）
+      if (!window.executeStep2) {
+        log.error(`❌ [GROUP-TRANSITION] executeStep2未定義[${taskIndex}]`);
         return;
       }
 
-      const step3Result = await window.executeStep3PrepareNextGroup();
+      const step2Result = await window.executeStep2();
 
-      if (!step3Result.success) {
-        log.error(`❌ [GROUP-TRANSITION] step3実行エラー[${taskIndex}]:`, {
-          error: step3Result.error,
+      if (!step2Result.success) {
+        log.error(`❌ [GROUP-TRANSITION] step2実行エラー[${taskIndex}]:`, {
+          error: step2Result.error,
         });
         return;
       }
 
-      if (!step3Result.hasNextGroup) {
+      if (!step2Result.hasNextGroup) {
         log.info(
           `🎉 [GROUP-TRANSITION] 全グループ完了 - 処理終了[${taskIndex}]`,
         );
@@ -1221,7 +1219,7 @@ async function checkAndHandleGroupCompletion(taskIndex) {
       }
 
       log.info(
-        `✅ [GROUP-TRANSITION] 次グループ準備完了: グループ${step3Result.groupNumber}[${taskIndex}]`,
+        `✅ [GROUP-TRANSITION] 次グループ準備完了: グループ${step2Result.groupNumber}[${taskIndex}]`,
       );
 
       // 次のタスクを即座に探して実行
