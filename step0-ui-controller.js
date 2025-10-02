@@ -954,6 +954,16 @@ document.addEventListener("DOMContentLoaded", () => {
         if (response && response.success) {
           log.info("✅ AI統合テストウィンドウを作成しました");
           showFeedback("AI統合テストを開始しました", "success");
+
+          // ドロップダウンを更新
+          updateTestConfigDropdowns();
+
+          // UI表の更新を待機（AI情報がUI表に反映されるまで待つ）
+          log.info("⏳ UI表の更新を待機中...");
+          await waitForAIDataComplete();
+
+          // スプレッドシートへ自動保存
+          await saveAIDataToSpreadsheet();
         } else {
           throw new Error(response?.error || "ウィンドウ作成に失敗しました");
         }
@@ -966,54 +976,6 @@ document.addEventListener("DOMContentLoaded", () => {
           aiTestAllBtn.disabled = false;
           aiTestAllBtn.classList.remove("processing");
           aiTestAllBtn.innerHTML = originalText;
-        }, 2000);
-      }
-    });
-  }
-
-  // AIモデル・機能更新ボタンのイベントリスナー
-  const aiDiscoverBtn = document.getElementById("aiDiscoverBtn");
-  if (aiDiscoverBtn) {
-    aiDiscoverBtn.addEventListener("click", async () => {
-      log.info("🔍 AIモデル・機能更新開始");
-
-      // ボタンを無効化
-      aiDiscoverBtn.disabled = true;
-      aiDiscoverBtn.classList.add("processing");
-      const originalText = aiDiscoverBtn.innerHTML;
-      aiDiscoverBtn.innerHTML = '<span class="btn-icon">⏳</span> 探索中...';
-
-      try {
-        // background.jsにメッセージを送信
-        const response = await chrome.runtime.sendMessage({
-          action: "DISCOVER_AI_FEATURES_ONLY",
-        });
-
-        if (response && response.success) {
-          log.info("✅ AIモデル・機能探索完了");
-          showFeedback("AIモデル・機能情報を更新しました", "success");
-
-          // ドロップダウンを更新
-          updateTestConfigDropdowns();
-
-          // UI表の更新を待機（AI情報がUI表に反映されるまで待つ）
-          log.info("⏳ UI表の更新を待機中...");
-          await waitForAIDataComplete();
-
-          // スプレッドシートへ自動保存
-          await saveAIDataToSpreadsheet();
-        } else {
-          throw new Error(response?.error || "探索に失敗しました");
-        }
-      } catch (error) {
-        log.error("❌ AIモデル・機能探索エラー:", error);
-        showFeedback(`探索エラー: ${error.message}`, "error");
-      } finally {
-        // ボタンを復元
-        setTimeout(() => {
-          aiDiscoverBtn.disabled = false;
-          aiDiscoverBtn.classList.remove("processing");
-          aiDiscoverBtn.innerHTML = originalText;
         }, 2000);
       }
     });

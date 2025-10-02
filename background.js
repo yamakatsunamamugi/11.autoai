@@ -1617,13 +1617,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const controller = new AITestController();
-        const result = await controller.executeTest(request.data);
 
+        // ウィンドウ作成と探索まで待つ
+        const screenInfo = await controller.getScreenInfo();
+        await controller.createTestWindows(screenInfo);
+        await controller.waitForContentScripts(); // 探索もここで完了
+
+        // UIにレスポンスを返す（探索完了）
         sendResponse({
-          success: result.success,
-          results: result.results,
-          error: result.error,
+          success: true,
+          message: "ウィンドウ作成と探索が完了しました",
         });
+
+        // バックグラウンドでテスト実行を続ける
+        await controller.sendTestTasks(request.data);
+        await controller.waitForResults();
+
+        log.info("✅ AI統合テスト完了", controller.testResults);
       } catch (error) {
         console.error("❌ [BG] AI統合テストエラー:", error);
         sendResponse({

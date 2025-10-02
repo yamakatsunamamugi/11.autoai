@@ -3617,9 +3617,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
                 );
 
                 if (funcMenu) {
-                  // メイン機能を取得
-                  const menuItems =
-                    funcMenu.querySelectorAll('[role="menuitem"]');
+                  // メイン機能を取得（menuitemとmenuitemradio両方）
+                  const menuItems = funcMenu.querySelectorAll(
+                    '[role="menuitem"], [role="menuitemradio"]',
+                  );
                   menuItems.forEach((item) => {
                     const funcName = getCleanText(item);
                     if (funcName && !funcName.includes("さらに表示")) {
@@ -3646,8 +3647,9 @@ async function reportSelectorError(selectorKey, error, selectors) {
                     );
 
                     if (subMenu) {
-                      const subMenuItems =
-                        subMenu.querySelectorAll('[role="menuitem"]');
+                      const subMenuItems = subMenu.querySelectorAll(
+                        '[role="menuitem"], [role="menuitemradio"]',
+                      );
                       subMenuItems.forEach((item) => {
                         const funcName = getCleanText(item);
                         if (funcName) {

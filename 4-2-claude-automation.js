@@ -1773,6 +1773,7 @@
                       data: {
                         models: result.models || [],
                         functions: result.functions || [],
+                        functionsWithDetails: result.functionsWithDetails || [],
                         timestamp: new Date().toISOString(),
                       },
                     });
@@ -4708,6 +4709,24 @@
                       ? `(${func.secretStatus})`
                       : "";
                   });
+
+                  // Deep Researchが含まれていない場合は追加
+                  const hasDeepResearch = detectedFunctions.some(
+                    (f) =>
+                      f.name === "Deep Research" ||
+                      f.name === "DeepResearch" ||
+                      f.name === "リサーチ",
+                  );
+                  if (!hasDeepResearch) {
+                    detectedFunctions.push({
+                      name: "Deep Research",
+                      description: "",
+                      secretStatus: "",
+                      isEnabled: true,
+                      isToggleable: false,
+                      isToggled: false,
+                    });
+                  }
                 } else {
                 }
               } catch (functionError) {
@@ -7352,11 +7371,12 @@
       const models = await detectClaudeModels();
 
       // Claudeで利用可能な機能を検出（Deep Research含む）
-      const functions = await detectClaudeFunctions();
+      const functionData = await detectClaudeFunctions();
 
       const result = {
         models: models,
-        functions: functions,
+        functions: functionData.functions,
+        functionsWithDetails: functionData.functionsWithDetails,
         timestamp: new Date().toISOString(),
         source: "dynamic_detection",
       };
@@ -7416,24 +7436,57 @@
             )
             .filter(Boolean);
 
-          // Deep Researchが含まれていない場合は追加
+          // Deep Researchが含まれていない場合は追加（文字列配列）
           if (!functionNames.includes("Deep Research")) {
             functionNames.push("Deep Research");
           }
 
-          return functionNames;
+          // オブジェクト配列にもDeep Researchを追加
+          const functionsWithDetails = [...detectedFunctions];
+          const hasDeepResearch = functionsWithDetails.some((f) => {
+            const name = typeof f === "object" ? f.name || f.functionName : f;
+            return (
+              name === "Deep Research" ||
+              name === "DeepResearch" ||
+              name === "リサーチ"
+            );
+          });
+          if (!hasDeepResearch) {
+            functionsWithDetails.push({
+              name: "Deep Research",
+              description: "",
+              secretStatus: "",
+              isEnabled: true,
+              isToggleable: false,
+              isToggled: false,
+            });
+          }
+
+          return {
+            functions: functionNames,
+            functionsWithDetails: functionsWithDetails,
+          };
         } else {
-          return [];
+          return {
+            functions: [],
+            functionsWithDetails: [],
+          };
         }
       } else {
         console.error(
           "❌ [Claude] detectClaudeFunctionsFromOpenMenu関数が定義されていません",
         );
-        return [];
+        return {
+          functions: [],
+          functionsWithDetails: [],
+        };
       }
     } catch (error) {
       console.error("❌ [Claude] UI検出エラー:", error);
-      return [];
+      return {
+        functions: [],
+        functionsWithDetails: [],
+      };
     }
   }
 })(); // 即時実行関数の終了
