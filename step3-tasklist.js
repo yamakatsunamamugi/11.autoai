@@ -354,16 +354,22 @@ async function executeIndependentProcessing(batchPromises, originalTasks = []) {
     Promise.all(results).then(() => {
       log.info("[3-0] ✅ [独立処理] 全ウィンドウのタスク処理が完了");
     });
-    // 即座に開始状態を返す
+    // Promise.allSettled互換形式で返す（success: true, inProgress: trueで実行中を示す）
     const returnValue = results.map((_, index) => ({
-      status: "started",
-      value: { taskIndex: index, startedAt: Date.now() },
+      status: "fulfilled",
+      value: {
+        success: true,
+        inProgress: true,
+        taskIndex: index,
+        startedAt: Date.now(),
+      },
     }));
 
     log.info("[3-0] 🔍 [仮説検証-Step1] executeIndependentProcessing戻り値:", {
       returnValueLength: returnValue.length,
       returnValueSample: returnValue[0],
       allStatuses: returnValue.map((r) => r.status),
+      allInProgress: returnValue.map((r) => r.value.inProgress),
     });
 
     return returnValue;
@@ -9661,6 +9667,20 @@ async function executeStep3(taskList) {
 
         for (const [taskIndex, windowInfo] of batchWindows) {
           try {
+            // inProgressフラグがtrueの場合はウィンドウを保持（即座実行モード対応）
+            const taskResult = batchResults.find((r, idx) => idx === taskIndex);
+            if (taskResult?.value?.inProgress) {
+              ExecuteLogger.info(
+                `💤 [仮説検証-Step4-B] タスク[${taskIndex}]実行中 - ウィンドウ保持:`,
+                {
+                  windowId: windowInfo.windowId,
+                  aiType: windowInfo.aiType,
+                  inProgress: true,
+                },
+              );
+              continue;
+            }
+
             ExecuteLogger.info(
               `🔍 [仮説検証-Step4-A] タスク[${taskIndex}]ウィンドウクローズ試行:`,
               {
