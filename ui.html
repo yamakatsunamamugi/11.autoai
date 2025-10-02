@@ -571,10 +571,6 @@
               <span class="btn-icon">🚀</span>
               AI統合テスト実行
             </button>
-            <button id="aiDiscoverBtn" class="btn btn-discover btn-large" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-              <span class="btn-icon">🔍</span>
-              AIモデル・機能更新
-            </button>
           </div>
           <div id="spreadsheetSavedMessage" style="margin-top: 15px; padding: 12px; background: #e7f5ff; border-left: 4px solid #1971c2; border-radius: 4px; display: none;">
             <p style="margin: 0; font-size: 14px; color: #1971c2;">
@@ -718,9 +714,10 @@
   <script type="module" src="step8-selector-timeline-manager.js"></script>
 
   <!-- Stepファイル -->
-  <!-- 正しい順序で読み込み: Step1→2→3 -->
+  <!-- 正しい順序で読み込み: Step1→2→6→3 -->
   <script type="module" src="step1-setup.js"></script>
   <script type="module" src="step2-taskgroup.js"></script>
+  <script type="module" src="step6-nextgroup.js"></script>
   <script type="module" src="step3-tasklist.js"></script>
 </body>
 </html>
