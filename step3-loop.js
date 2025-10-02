@@ -122,337 +122,6 @@ if (!window.globalState) {
 }
 
 // ========================================
-// DynamicSearch協調システム
-// ========================================
-
-/**
- * DynamicSearchからの制御移譲シグナルを初期化・監視
- * 【追加】ハイブリッド協調モデル: step3-loop.jsでの受信機能
- */
-function initializeDynamicSearchCoordination() {
-  log.debug("🔗 [step3-loop.js] DynamicSearch協調システムを初期化中...");
-
-  // 【方法1】カスタムイベントリスナーを設定
-  if (typeof window !== "undefined" && window.addEventListener) {
-    // 既存のリスナーを削除（重複登録防止）
-    window.removeEventListener(
-      "dynamicSearchGroupCompleted",
-      handleDynamicSearchCompletion,
-    );
-
-    // 新しいリスナーを登録
-    window.addEventListener(
-      "dynamicSearchGroupCompleted",
-      handleDynamicSearchCompletion,
-    );
-    log.debug(
-      "✅ [step3-loop.js] カスタムイベントリスナー登録完了: dynamicSearchGroupCompleted",
-    );
-  }
-
-  // 【方法2】直接コールバック関数を設定
-  window.onDynamicSearchGroupCompleted = function (data) {
-    log.info("📡 [step3-loop.js] DynamicSearch直接コールバック受信:", {
-      groupNumber: data.groupNumber,
-      groupData: data.groupData,
-      timestamp: new Date().toISOString(),
-    });
-
-    handleDynamicSearchCompletionData({
-      detail: {
-        groupNumber: data.groupNumber,
-        transferControl: true,
-        timestamp: new Date().toISOString(),
-        source: "DirectCallback",
-      },
-    });
-  };
-
-  // 【方法3】globalState監視用のポーリング開始
-  initializeGlobalStateMonitoring();
-
-  log.info("🔗 [step3-loop.js] DynamicSearch協調システム初期化完了");
-}
-
-/**
- * DynamicSearchからの制御移譲イベントハンドラー
- * 【追加】ハイブリッド協調モデル: イベント受信時の処理
- */
-function handleDynamicSearchCompletion(event) {
-  log.info("📡 [step3-loop.js] DynamicSearchから制御移譲イベント受信:", {
-    groupNumber: event.detail?.groupNumber,
-    groupType: event.detail?.groupType,
-    source: event.detail?.source,
-    timestamp: event.detail?.timestamp,
-  });
-
-  handleDynamicSearchCompletionData(event);
-}
-
-/**
- * DynamicSearch完了データの共通処理
- * 【追加】ハイブリッド協調モデル: 完了通知の統一処理
- */
-function handleDynamicSearchCompletionData(event) {
-  try {
-    const { groupNumber, transferControl, timestamp, source } =
-      event.detail || {};
-
-    if (!transferControl) {
-      log.debug("🔄 [step3-loop.js] 制御移譲不要 - 処理継続");
-      return;
-    }
-
-    log.info("🎯 [step3-loop.js] DynamicSearch制御移譲を受信:", {
-      completedGroup: groupNumber,
-      source: source || "Unknown",
-      currentGroup: window.globalState.currentGroup?.groupNumber,
-      timestamp,
-    });
-
-    // グループ完了をglobalStateに記録
-    if (window.globalState) {
-      if (!window.globalState.completedGroupsByDynamicSearch) {
-        window.globalState.completedGroupsByDynamicSearch = new Set();
-      }
-
-      // 🛡️ 【安全装置】グループを完了済みにマークする前に実際に完了しているか確認
-      const targetGroup = window.globalState?.taskGroups?.find(
-        (g) => g.groupNumber === groupNumber,
-      );
-      if (targetGroup) {
-        checkCompletionStatus(targetGroup)
-          .then((isActuallyCompleted) => {
-            if (isActuallyCompleted) {
-              window.globalState.completedGroupsByDynamicSearch.add(
-                groupNumber,
-              );
-              log.info(
-                "✅ [SAFETY-CHECK] グループ完了確認済み - 完了リストに追加:",
-                {
-                  groupNumber,
-                  verificationPassed: true,
-                },
-              );
-            } else {
-              log.error(
-                "🚨 [SAFETY-CHECK] 完了マーキング阻止 - グループに未処理タスクあり:",
-                {
-                  groupNumber,
-                  reason: "DynamicSearchからの完了通知だが実際は未完了",
-                  action: "完了リストに追加せず",
-                },
-              );
-            }
-          })
-          .catch((error) => {
-            log.error(
-              "❌ [SAFETY-CHECK] 完了確認エラー - 安全のため完了マーキング拒否:",
-              {
-                groupNumber,
-                error: error.message,
-              },
-            );
-          });
-      } else {
-        // フォールバック: グループが見つからない場合はマークしない
-        log.warn(
-          "⚠️ [SAFETY-CHECK] 対象グループ未発見 - 完了マーキングスキップ:",
-          {
-            groupNumber,
-            availableGroups: window.globalState?.taskGroups?.map(
-              (g) => g.groupNumber,
-            ),
-          },
-        );
-      }
-
-      // 協調フラグを設定
-      window.globalState.dynamicSearchCoordination = {
-        lastCompletedGroup: groupNumber,
-        transferReceived: true,
-        processedAt: new Date().toISOString(),
-        shouldSkipProcessing: true,
-        source: source,
-      };
-
-      log.debug("✅ [step3-loop.js] globalState協調情報更新完了");
-    }
-
-    // 現在処理中のグループが完了したグループと一致する場合
-    if (window.globalState.currentGroup?.groupNumber === groupNumber) {
-      log.info(
-        "🏁 [step3-loop.js] 現在のグループがDynamicSearchで完了 - 次グループへ移行準備",
-      );
-
-      // 完了フラグを設定（processIncompleteTasks内のループを終了させる）
-      window.globalState.currentGroup.dynamicSearchCompleted = true;
-    }
-  } catch (error) {
-    log.error("❌ [step3-loop.js] DynamicSearch制御移譲処理エラー:", error);
-  }
-}
-
-/**
- * globalState監視によるDynamicSearch通知検出
- * 【追加】ハイブリッド協調モデル: ポーリングベースの監視
- */
-function initializeGlobalStateMonitoring() {
-  // ポーリング間隔（1秒）
-  const POLLING_INTERVAL = 1000;
-  let lastCheckedTimestamp = null;
-
-  const checkGlobalStateNotifications = () => {
-    try {
-      const notification = window.globalState?.dynamicSearchNotification;
-
-      if (
-        notification &&
-        notification.type === "GROUP_COMPLETED" &&
-        notification.requestControlTransfer &&
-        notification.timestamp !== lastCheckedTimestamp
-      ) {
-        log.info("📊 [step3-loop.js] globalState経由でDynamicSearch通知検出:", {
-          groupNumber: notification.groupNumber,
-          timestamp: notification.timestamp,
-        });
-
-        // イベントデータ形式に変換してハンドラーに渡す
-        handleDynamicSearchCompletionData({
-          detail: {
-            groupNumber: notification.groupNumber,
-            transferControl: true,
-            timestamp: notification.timestamp,
-            source: "GlobalStatePolling",
-          },
-        });
-
-        lastCheckedTimestamp = notification.timestamp;
-      }
-    } catch (error) {
-      log.debug(
-        "🔍 [step3-loop.js] globalState監視エラー（継続）:",
-        error.message,
-      );
-    }
-  };
-
-  // ポーリング開始
-  if (typeof window !== "undefined") {
-    window.dynamicSearchPollingInterval = setInterval(
-      checkGlobalStateNotifications,
-      POLLING_INTERVAL,
-    );
-    log.debug("🔄 [step3-loop.js] globalState監視ポーリング開始");
-  }
-}
-
-/**
- * DynamicSearchとの協調状態をチェック
- * 【追加】ハイブリッド協調モデル: グループスキップ判定
- */
-async function shouldSkipGroupProcessing(taskGroup) {
-  try {
-    // 🚨 【詳細デバッグ】スキップ判定の全状態をログ出力
-    const completedGroups = window.globalState?.completedGroupsByDynamicSearch;
-    const coordination = window.globalState?.dynamicSearchCoordination;
-
-    log.info("🔍 [SKIP-DEBUG] shouldSkipGroupProcessing詳細調査:", {
-      groupNumber: taskGroup.groupNumber,
-      groupType: taskGroup.type || taskGroup.taskType,
-      columnRange: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
-      completedGroups: {
-        exists: !!completedGroups,
-        type: typeof completedGroups,
-        size: completedGroups?.size || 0,
-        hasThisGroup: completedGroups?.has(taskGroup.groupNumber),
-        allGroups: completedGroups ? Array.from(completedGroups) : null,
-      },
-      coordination: {
-        exists: !!coordination,
-        shouldSkipProcessing: coordination?.shouldSkipProcessing,
-        lastCompletedGroup: coordination?.lastCompletedGroup,
-        matchesThisGroup:
-          coordination?.lastCompletedGroup === taskGroup.groupNumber,
-      },
-      globalState: {
-        exists: !!window.globalState,
-        hasCompletedGroups:
-          !!window.globalState?.completedGroupsByDynamicSearch,
-        hasCoordination: !!window.globalState?.dynamicSearchCoordination,
-      },
-      timestamp: new Date().toISOString(),
-    });
-
-    // DynamicSearchで完了済みのグループかチェック
-    if (completedGroups && completedGroups.has(taskGroup.groupNumber)) {
-      log.error("🚨 [SKIP-REASON] DynamicSearchで完了済みと判定:", {
-        groupNumber: taskGroup.groupNumber,
-        reason: "DynamicSearch completed",
-        completedGroupsContent: Array.from(completedGroups),
-        skipDecision: true,
-      });
-      return true;
-    }
-
-    // 協調フラグによるスキップ判定
-    if (
-      coordination?.shouldSkipProcessing &&
-      coordination.lastCompletedGroup === taskGroup.groupNumber
-    ) {
-      log.error("🚨 [SKIP-REASON] 協調フラグによりスキップ:", {
-        groupNumber: taskGroup.groupNumber,
-        reason: "Coordination flag",
-        shouldSkipProcessing: coordination.shouldSkipProcessing,
-        lastCompletedGroup: coordination.lastCompletedGroup,
-        skipDecision: true,
-      });
-
-      // スキップフラグをリセット（1回のみ有効）
-      coordination.shouldSkipProcessing = false;
-      return true;
-    }
-
-    // 【新規追加】実際の完了状態チェック
-    // DynamicSearch状態に関係なく、実際のデータで完了状態を確認
-    try {
-      const actualCompletion = await checkCompletionStatus(taskGroup);
-      if (actualCompletion) {
-        log.info("🔍 [SKIP-DEBUG] 実際の完了状態によりスキップ:", {
-          groupNumber: taskGroup.groupNumber,
-          reason: "Actually completed (checkCompletionStatus)",
-          skipDecision: true,
-        });
-        return true;
-      }
-    } catch (completionError) {
-      log.warn("⚠️ [SKIP-DEBUG] 完了状態チェックエラー:", {
-        groupNumber: taskGroup.groupNumber,
-        error: completionError.message,
-        reason: "Completion check failed, continuing with processing",
-      });
-    }
-
-    // スキップしない場合もログ出力
-    log.info("✅ [SKIP-DEBUG] グループ処理継続:", {
-      groupNumber: taskGroup.groupNumber,
-      reason: "No skip conditions met",
-      skipDecision: false,
-    });
-
-    return false;
-  } catch (error) {
-    log.error("❌ [step3-loop.js] スキップ判定エラー:", {
-      error: error.message,
-      stack: error.stack,
-      groupNumber: taskGroup?.groupNumber,
-      timestamp: new Date().toISOString(),
-    });
-    return false;
-  }
-}
-
-// ========================================
 // globalState.currentGroup 一元管理システム
 // ========================================
 
@@ -2000,20 +1669,6 @@ async function processIncompleteTasks(taskGroup) {
       },
     );
 
-    // 【追加】DynamicSearchによるグループ完了チェック
-    if (window.globalState.currentGroup?.dynamicSearchCompleted) {
-      log.info(
-        "🎯 [step5-loop.js] DynamicSearchによりグループ完了 - ループ終了",
-        {
-          groupNumber: taskGroup.groupNumber,
-          iteration: iteration,
-          reason: "DynamicSearch completed flag",
-        },
-      );
-      isComplete = true;
-      break;
-    }
-
     if (iteration > maxIterations) {
       LoopLogger.error(
         "[step5-loop.js] [Step 5-2-3] 最大繰り返し回数超過 - 処理を中止",
@@ -2189,239 +1844,127 @@ async function processIncompleteTasks(taskGroup) {
 }
 
 /**
- * 全グループを処理するメイン関数
- * Step 3が全体のループ制御を担当
+ * タスクグループ作成と未完了グループ設定（step4に処理を委譲）
  * @returns {Promise<Object>} 処理結果
  */
-async function executeStep3AllGroups() {
+async function executeStep3PrepareNextGroup() {
   const executionFlowId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  log.info(`🚀 [EXECUTION-FLOW] 全グループ処理開始`, {
+  log.info(`🚀 [step3-loop.js] タスクグループ準備開始`, {
     executionFlowId,
     timestamp: new Date().toISOString(),
-    phase: "START_ALL_GROUPS",
-    totalGroups: window.globalState?.taskGroups?.length || 0,
   });
 
-  log.debug("========================================");
-  log.debug("🚀 [step3-loop.js] 全グループ処理開始");
-  log.debug("========================================");
-
-  // 【追加】DynamicSearch協調システムを初期化
-  try {
-    initializeDynamicSearchCoordination();
-    log.debug("✅ [step3-loop.js] DynamicSearch協調システム初期化完了");
-  } catch (error) {
-    log.warn(
-      "⚠️ [step3-loop.js] DynamicSearch協調システム初期化エラー:",
-      error.message,
-    );
+  // 1. スプレッドシートデータを再取得
+  log.info("[step3-loop.js] 🔄 スプレッドシートデータ再取得中...");
+  if (window.refreshSpreadsheetData) {
+    try {
+      await window.refreshSpreadsheetData();
+      log.info("[step3-loop.js] ✅ データ再取得完了");
+    } catch (error) {
+      log.error("[step3-loop.js] ❌ データ再取得エラー:", error.message);
+    }
   }
 
-  log.debug(
-    `📊 処理対象: ${window.globalState?.taskGroups?.length || 0}グループ`,
-  );
-
-  let completedGroups = 0;
-
-  // currentGroupIndexの初期化（未定義の場合は0から開始）
-  if (
-    window.globalState &&
-    typeof window.globalState.currentGroupIndex !== "number"
-  ) {
-    window.globalState.currentGroupIndex = 0;
-    log.debug(
-      "[step3-loop.js] currentGroupIndexを0で初期化（シンプル再生成対応）",
-    );
-  }
-
-  // 🔧 【初回のみ】step6で未処理グループ1つに絞り込み
-  if (window.executeStep6 && window.globalState?.taskGroups?.length > 1) {
-    log.info(
-      `[step3-loop.js] 🔄 初回起動: 全${window.globalState.taskGroups.length}グループから未処理グループ1つに絞り込み中...`,
-    );
-    const initialTaskGroups = window.globalState.taskGroups;
-    const step6Result = await window.executeStep6(initialTaskGroups, -1);
-
-    if (!step6Result.hasNext) {
-      log.info(`[step3-loop.js] 🎉 未処理グループなし、処理終了`);
+  // 2. タスクグループを作成（step2）
+  log.info("[step3-loop.js] 🔄 タスクグループ作成中...");
+  if (window.executeStep2) {
+    try {
+      await window.executeStep2();
+      log.info("[step3-loop.js] ✅ タスクグループ作成完了");
+    } catch (error) {
+      log.error("[step3-loop.js] ❌ タスクグループ作成エラー:", error.message);
       return {
-        success: true,
-        completedGroups: 0,
-        totalGroups: 0,
+        success: false,
+        error: error.message,
+        hasNextGroup: false,
       };
     }
-
-    log.info(
-      `[step3-loop.js] ✅ 初回絞り込み完了: ${window.globalState.taskGroups.length}グループを処理`,
-    );
+  } else {
+    log.error("[step3-loop.js] ❌ executeStep2が定義されていません");
+    return {
+      success: false,
+      error: "executeStep2未定義",
+      hasNextGroup: false,
+    };
   }
 
-  // 各グループを順番に処理（動的タスクグループ再生成対応のためwhileループ使用）
-  while (
-    window.globalState?.currentGroupIndex <
-    (window.globalState?.taskGroups?.length || 0)
-  ) {
-    const i = window.globalState.currentGroupIndex;
-    const taskGroups = window.globalState?.taskGroups || [];
-    const taskGroup = taskGroups[i];
+  // 3. 全タスクグループから最も左の未完了グループを検索
+  log.info("[step3-loop.js] 🔍 最も左の未完了グループを検索中...");
+  const allGroups = window.globalState?.allTaskGroups || [];
+  let leftmostIncompleteGroup = null;
 
-    log.debug(
-      `\n====== グループ ${i + 1}/${taskGroups.length} 処理開始 ======`,
-    );
+  for (const group of allGroups) {
+    // スキップ設定されているグループは除外
+    if (group.skip) {
+      log.debug(
+        `[step3-loop.js] ⏭️ グループ${group.groupNumber}はスキップ設定済み`,
+      );
+      continue;
+    }
 
-    // 【診断ログ】Step2とStep3の整合性確認
-    log.info("🔍 [STEP2-STEP3-CONSISTENCY] グループ情報整合性確認:", {
-      step3GroupNumber: taskGroup.groupNumber,
-      step3GroupId: taskGroup.id,
-      step3GroupName: taskGroup.name,
-      step3ColumnRange: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
-      step3SkipReason: taskGroup.skipReason,
-      step3ProcessingStatus: taskGroup.processingStatus,
-      step3CellRange: `${taskGroup.startColumn}:${taskGroup.endColumn}`,
-      timestamp: new Date().toISOString(),
-    });
-
-    // 【追加】DynamicSearchとの協調チェック：スキップ判定
-    log.info("🔍 [STEP-BY-STEP] グループスキップ判定開始:", {
-      groupNumber: taskGroup.groupNumber,
-      groupType: taskGroup.type || taskGroup.taskType,
-      columnRange: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
-      timestamp: new Date().toISOString(),
-    });
-
-    const skipDecision = await shouldSkipGroupProcessing(taskGroup);
-
-    log.info("🔍 [STEP-BY-STEP] スキップ判定結果:", {
-      groupNumber: taskGroup.groupNumber,
-      skipDecision: skipDecision,
-      nextAction: skipDecision ? "二重チェック実行" : "処理継続",
-      timestamp: new Date().toISOString(),
-    });
-
-    if (skipDecision) {
-      // 🛡️ 【安全装置】スキップ前に未処理タスクがないか二重チェック
-      const completionCheck = await checkCompletionStatus(taskGroup);
-
-      log.info("🔍 [STEP-BY-STEP] 二重チェック結果:", {
-        groupNumber: taskGroup.groupNumber,
-        shouldSkipResult: skipDecision,
-        completionCheckResult: completionCheck,
-        finalDecision: completionCheck
-          ? "スキップ実行"
-          : "処理継続（安全装置作動）",
-        timestamp: new Date().toISOString(),
-      });
-
-      if (!completionCheck) {
+    // 完了状況を確認
+    try {
+      const isComplete = await checkCompletionStatus(group);
+      if (!isComplete) {
+        leftmostIncompleteGroup = group;
         log.info(
-          "🛡️ [SAFETY-CHECK] スキップ阻止 - グループに未処理タスクあり",
-          {
-            groupNumber: taskGroup.groupNumber,
-            reason:
-              "shouldSkipGroupProcessingがtrueでもcheckCompletionStatusがfalse",
-            action: "強制的に処理継続",
-          },
+          `[step3-loop.js] ✅ 未完了グループ発見: グループ${group.groupNumber}`,
         );
+        break; // 最初の未完了グループ（最も左）を見つけたら終了
       } else {
-        log.info("⏭️ [step3-loop.js] グループスキップ - 完了確認済み", {
-          groupNumber: taskGroup.groupNumber,
-          currentIndex: i + 1,
-          totalGroups: taskGroups.length,
-          safetyCheckPassed: true,
-        });
-        completedGroups++;
-
-        // スキップ時もstep6を呼び出して次の未処理グループを取得
-        if (window.executeStep6) {
-          log.debug(`🔄 [step3-loop.js] スキップ後のStep 6呼び出し`);
-          const step6Result = await window.executeStep6(taskGroups, i);
-
-          if (!step6Result.hasNext) {
-            log.debug(`🏁 [step3-loop.js] 全グループ処理完了`);
-            break;
-          }
-          // step6が次の未処理グループ1つを設定し、currentGroupIndex=0にリセット
-        } else {
-          // step6が存在しない場合は手動でインクリメント（フォールバック）
-          window.globalState.currentGroupIndex = i + 1;
-        }
-
-        continue;
+        log.debug(`[step3-loop.js] ⏭️ グループ${group.groupNumber}は完了済み`);
       }
-    }
-
-    // 🔧 [UNIFICATION] グループ統一化確認ログ
-    LoopLogger.info("📋 [UNIFICATION] step3メインループでグループ処理:", {
-      グループ番号: i + 1,
-      総グループ数: taskGroups.length,
-      統一フロー: "step3 → processIncompleteTasks → executeStep4",
-      step4自動移行: "無効化済み",
-      データ形式: "タスク配列（全グループ統一）",
-      プロンプト生成: "統一済み",
-      DynamicSearch協調: "有効",
-    });
-
-    log.debug(`📋 グループ詳細:`, {
-      番号: taskGroup.groupNumber,
-      タイプ: taskGroup.taskType || taskGroup.type,
-      列範囲: `${taskGroup.columns?.prompts?.[0]} 〜 ${taskGroup.columns?.answer?.primary || taskGroup.columns?.answer?.claude}`,
-    });
-
-    // 現在のグループを処理
-    const isComplete = await executeStep3SingleGroup(taskGroup);
-
-    if (isComplete) {
-      completedGroups++;
-      log.debug(`✅ グループ ${i + 1} 完了`);
-    }
-
-    // Step 6: 次グループへの移行判定
-    if (window.executeStep6) {
-      log.debug(`🔄 [step3-loop.js] Step 6 を呼び出し中...`);
-      const step6Result = await window.executeStep6(taskGroups, i);
-
-      if (!step6Result.hasNext) {
-        log.debug(`🏁 [step3-loop.js] 全グループ処理完了`);
-        break;
-      }
-
-      // step6がcurrentGroupIndexを更新している可能性があるため、
-      // ここではインクリメントせず、次のループでglobalState.currentGroupIndexを参照
-    } else {
-      // step6が存在しない場合は手動でインクリメント
-      window.globalState.currentGroupIndex = i + 1;
+    } catch (error) {
+      log.warn(
+        `[step3-loop.js] ⚠️ グループ${group.groupNumber}の完了チェックエラー:`,
+        error.message,
+      );
+      // エラーの場合は未完了として扱う
+      leftmostIncompleteGroup = group;
+      break;
     }
   }
 
-  // 【追加】DynamicSearch協調システムのクリーンアップ
-  try {
-    if (window.dynamicSearchPollingInterval) {
-      clearInterval(window.dynamicSearchPollingInterval);
-      window.dynamicSearchPollingInterval = null;
-      log.debug("🧹 [step3-loop.js] DynamicSearchポーリング停止完了");
-    }
-  } catch (error) {
-    log.warn(
-      "⚠️ [step3-loop.js] DynamicSearchクリーンアップエラー:",
-      error.message,
-    );
+  // 4. 未完了グループがなければ終了
+  if (!leftmostIncompleteGroup) {
+    log.info("🎉 [step3-loop.js] 全グループ完了 - 処理終了");
+    return {
+      success: true,
+      hasNextGroup: false,
+      message: "全グループ完了",
+    };
   }
 
-  // 最終的なグループ数を取得
-  const finalTaskGroups = window.globalState?.taskGroups || [];
-
-  log.debug(`\n========================================`);
-  log.debug(
-    `📊 処理結果: ${completedGroups}/${finalTaskGroups.length} グループ完了`,
+  // 5. グループをglobalStateに設定（step4がこれを使う）
+  log.info(
+    `📋 [step3-loop.js] グループ${leftmostIncompleteGroup.groupNumber}を設定`,
   );
-  log.debug(`========================================\n`);
+  log.debug(`📋 グループ詳細:`, {
+    番号: leftmostIncompleteGroup.groupNumber,
+    タイプ: leftmostIncompleteGroup.taskType || leftmostIncompleteGroup.type,
+    列範囲: `${leftmostIncompleteGroup.columns?.prompts?.[0]} 〜 ${leftmostIncompleteGroup.columns?.answer?.primary || leftmostIncompleteGroup.columns?.answer?.claude}`,
+  });
+
+  await setCurrentGroup(leftmostIncompleteGroup, "step3-loop");
 
   return {
     success: true,
-    completedGroups,
-    totalGroups: finalTaskGroups.length,
+    hasNextGroup: true,
+    group: leftmostIncompleteGroup,
+    groupNumber: leftmostIncompleteGroup.groupNumber,
   };
+}
+
+/**
+ * 旧executeStep3AllGroups（後方互換性のため残す）
+ * 新しいシンプル構造では使用しない
+ */
+async function executeStep3AllGroups() {
+  log.warn(
+    "⚠️ [step3-loop.js] executeStep3AllGroups()は非推奨です。executeStep3PrepareNextGroup()を使用してください",
+  );
+  return executeStep3PrepareNextGroup();
 }
 
 /**
@@ -3047,33 +2590,21 @@ async function executeTasks(tasks, taskGroup) {
 if (typeof window !== "undefined") {
   try {
     // Step 3 として関数をエクスポート
-    window.executeStep3 = executeStep3AllGroups; // メインエントリーポイント
+    window.executeStep3 = executeStep3AllGroups; // メインエントリーポイント（後方互換）
     window.executeStep3AllGroups = executeStep3AllGroups; // 明示的な名前でもエクスポート
-    window.executeStep3SingleGroup = executeStep3SingleGroup; // 単一グループ処理
+    window.executeStep3PrepareNextGroup = executeStep3PrepareNextGroup; // 新しいシンプル版
 
     // 互換性のため旧名称でもエクスポート
     window.executeStep5 = executeStep3AllGroups;
-    window.executeStep5SingleGroup = executeStep3SingleGroup;
 
     window.checkCompletionStatus = checkCompletionStatus;
-    window.processIncompleteTasks = processIncompleteTasks;
     window.readFullSpreadsheet = readFullSpreadsheet;
-
-    // 【追加】DynamicSearch協調機能のエクスポート
-    window.initializeDynamicSearchCoordination =
-      initializeDynamicSearchCoordination;
-    window.shouldSkipGroupProcessing = shouldSkipGroupProcessing;
-    window.handleDynamicSearchCompletion = handleDynamicSearchCompletion;
 
     // 【追加】currentGroup一元管理システムのエクスポート
     window.setCurrentGroup = setCurrentGroup;
     window.getCurrentGroup = getCurrentGroup;
     window.addCurrentGroupListener = addCurrentGroupListener;
     window.removeCurrentGroupListener = removeCurrentGroupListener;
-
-    // 【追加】グループ移行協調システムのエクスポート
-    window.executeGroupTransition = executeGroupTransition;
-    window.getTransitionDiagnostics = getTransitionDiagnostics;
 
     // DEBUG: グローバルエクスポート成功
   } catch (exportError) {
@@ -3087,9 +2618,8 @@ if (typeof window !== "undefined") {
 if (typeof module !== "undefined" && module.exports) {
   try {
     module.exports = {
-      executeStep5,
+      executeStep3PrepareNextGroup,
       checkCompletionStatus,
-      processIncompleteTasks,
       readFullSpreadsheet,
       globalState: window.globalState,
     };

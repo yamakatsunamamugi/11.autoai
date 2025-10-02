@@ -1497,239 +1497,230 @@ const log = {
           logCell: fullLogCell, // シート名付きログセル
         };
 
-            // Promise化してタイムアウト処理を追加
-            const sendMessageWithTimeout = () => {
-              return new Promise((resolve) => {
-                const timeout = setTimeout(() => {
-                  console.warn("⚠️ [Gemini] 送信時刻記録タイムアウト");
-                  resolve(null);
-                }, 5000); // 5秒でタイムアウト
+        // Promise化してタイムアウト処理を追加
+        const sendMessageWithTimeout = () => {
+          return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              console.warn("⚠️ [Gemini] 送信時刻記録タイムアウト");
+              resolve(null);
+            }, 5000); // 5秒でタイムアウト
 
-                try {
-                  // 拡張機能のコンテキストが有効か確認
-                  if (!chrome.runtime?.id) {
+            try {
+              // 拡張機能のコンテキストが有効か確認
+              if (!chrome.runtime?.id) {
+                console.warn("⚠️ [Gemini] 拡張機能のコンテキストが無効です");
+                clearTimeout(timeout);
+                resolve(null);
+                return;
+              }
+
+              chrome.runtime.sendMessage(messageToSend, (response) => {
+                clearTimeout(timeout);
+                // エラーチェックを先に行う
+                if (chrome.runtime.lastError) {
+                  // ポートが閉じられたエラーは警告レベルに留める
+                  if (
+                    chrome.runtime.lastError.message.includes("port closed")
+                  ) {
                     console.warn(
-                      "⚠️ [Gemini] 拡張機能のコンテキストが無効です",
+                      "⚠️ [Gemini] メッセージポートが閉じられました（送信は成功している可能性があります）",
                     );
-                    clearTimeout(timeout);
-                    resolve(null);
-                    return;
+                  } else {
+                    console.warn(
+                      "⚠️ [Gemini] 送信時刻記録エラー:",
+                      chrome.runtime.lastError.message,
+                    );
                   }
-
-                  chrome.runtime.sendMessage(messageToSend, (response) => {
-                    clearTimeout(timeout);
-                    // エラーチェックを先に行う
-                    if (chrome.runtime.lastError) {
-                      // ポートが閉じられたエラーは警告レベルに留める
-                      if (
-                        chrome.runtime.lastError.message.includes("port closed")
-                      ) {
-                        console.warn(
-                          "⚠️ [Gemini] メッセージポートが閉じられました（送信は成功している可能性があります）",
-                        );
-                      } else {
-                        console.warn(
-                          "⚠️ [Gemini] 送信時刻記録エラー:",
-                          chrome.runtime.lastError.message,
-                        );
-                      }
-                      resolve(null);
-                    } else if (response) {
-                      console.log("✅ [Gemini] 送信時刻記録成功", response);
-                      resolve(response);
-                    } else {
-                      // レスポンスがnullの場合
-                      console.warn("⚠️ [Gemini] 送信時刻記録: レスポンスなし");
-                      resolve(null);
-                    }
-                  });
-                } catch (error) {
-                  clearTimeout(timeout);
-                  console.error("❌ [Gemini] 送信時刻記録失敗:", error);
+                  resolve(null);
+                } else if (response) {
+                  console.log("✅ [Gemini] 送信時刻記録成功", response);
+                  resolve(response);
+                } else {
+                  // レスポンスがnullの場合
+                  console.warn("⚠️ [Gemini] 送信時刻記録: レスポンスなし");
                   resolve(null);
                 }
               });
-            };
-
-            // 非同期で実行（ブロックしない）
-            sendMessageWithTimeout();
-          }
-        } catch (sendError) {
-          console.error(`❌ [Gemini Step 5] メッセージ送信エラー:`, sendError);
-          throw sendError;
-        }
-        const startTime = Date.now();
-
-        // 【Step 4-3-6】応答待機（Deep Research判定）
-        let responseResult;
-        let isPartialResult = false;
-
-        try {
-          if (featureName === "Deep Research") {
-            responseResult = await waitForDeepResearch(startTime);
-          } else {
-            responseResult = await waitForResponseGemini();
-          }
-
-          // 結果の形式を確認
-          if (responseResult && typeof responseResult === "object") {
-            isPartialResult = responseResult.partial || false;
-            if (responseResult.timeout && responseResult.partial) {
-              log.warn(
-                `⚠️ [Gemini] タイムアウトしましたが、部分的な結果を処理します`,
-              );
+            } catch (error) {
+              clearTimeout(timeout);
+              console.error("❌ [Gemini] 送信時刻記録失敗:", error);
+              resolve(null);
             }
-          }
-        } catch (waitError) {
-          console.error(`❌ [Gemini Step 6] 応答待機エラー:`, waitError);
-          throw waitError;
-        }
-
-        // 【Step 4-3-7】テキスト取得
-        let content;
-        try {
-          content = await getResponseTextGemini();
-        } catch (getTextError) {
-          // 部分的な結果の場合はエラーを許容
-          if (isPartialResult) {
-            console.warn(
-              `⚠️ [Gemini Step 7] 部分的な結果の取得を試みます:`,
-              getTextError,
-            );
-            content = "[タイムアウトによる部分的な応答]";
-          } else {
-            console.error(
-              `❌ [Gemini Step 7] テキスト取得エラー:`,
-              getTextError,
-            );
-            throw getTextError;
-          }
-        }
-
-        // 【Step 4-3-8】結果オブジェクト作成
-
-        const result = {
-          success: true,
-          content: content,
-          model: modelName,
-          feature: featureName,
-          partial: isPartialResult,
+          });
         };
 
-        // ✅ タスク完了時刻をスプレッドシートに記録（Claude/ChatGPTと統一）
-        try {
-          // 会話URLの取得を待つ（GeminiではURLが変化する場合がある）
-          let conversationUrl = window.location.href;
+        // 非同期で実行（ブロックしない）
+        sendMessageWithTimeout();
+      }
+      const startTime = Date.now();
 
-          // GeminiでもURLが更新されるまで少し待つ
-          // 例： /app から /app/xxx への変更を待つ
-          const startUrl = conversationUrl;
-          let attempts = 0;
-          const maxAttempts = 10; // 最大5秒待つ（500ms x 10）
+      // 【Step 4-3-6】応答待機（Deep Research判定）
+      let responseResult;
+      let isPartialResult = false;
 
-          while (attempts < maxAttempts) {
-            await wait(500);
-            conversationUrl = window.location.href;
+      try {
+        if (featureName === "Deep Research") {
+          responseResult = await waitForDeepResearch(startTime);
+        } else {
+          responseResult = await waitForResponseGemini();
+        }
 
-            // URLが変更されたら終了
-            if (conversationUrl !== startUrl) {
-              log.debug(`🔗 [Gemini] URLが更新されました: ${conversationUrl}`);
-              break;
-            }
-
-            attempts++;
-          }
-
-          // URLが変更されなくても現在のURLを使用
-          if (attempts === maxAttempts) {
-            log.debug(
-              `ℹ️ [Gemini] URL変更なし、現在のURLを使用: ${conversationUrl}`,
+        // 結果の形式を確認
+        if (responseResult && typeof responseResult === "object") {
+          isPartialResult = responseResult.partial || false;
+          if (responseResult.timeout && responseResult.partial) {
+            log.warn(
+              `⚠️ [Gemini] タイムアウトしましたが、部分的な結果を処理します`,
             );
           }
+        }
+      } catch (waitError) {
+        console.error(`❌ [Gemini Step 6] 応答待機エラー:`, waitError);
+        throw waitError;
+      }
 
-          // Promise化してエラーハンドリングを改善
-          const sendCompletionMessage = () => {
-            return new Promise((resolve) => {
-              const timeout = setTimeout(() => {
-                log.warn("⚠️ recordCompletionTime送信タイムアウト");
-                resolve(null);
-              }, 5000);
+      // 【Step 4-3-7】テキスト取得
+      let content;
+      try {
+        content = await getResponseTextGemini();
+      } catch (getTextError) {
+        // 部分的な結果の場合はエラーを許容
+        if (isPartialResult) {
+          console.warn(
+            `⚠️ [Gemini Step 7] 部分的な結果の取得を試みます:`,
+            getTextError,
+          );
+          content = "[タイムアウトによる部分的な応答]";
+        } else {
+          console.error(`❌ [Gemini Step 7] テキスト取得エラー:`, getTextError);
+          throw getTextError;
+        }
+      }
 
-              // シート名付きlogCellを準備（taskDataから取得）
-              const sheetName = taskData.sheetName;
-              if (!sheetName) {
-                throw new Error("シート名が指定されていません");
-              }
-              const fullLogCell = taskData.logCell?.includes("!")
-                ? taskData.logCell
-                : `'${sheetName}'!${taskData.logCell}`;
+      // 【Step 4-3-8】結果オブジェクト作成
 
-              chrome.runtime.sendMessage(
-                {
-                  type: "recordCompletionTime",
-                  taskId: taskId,
-                  completionTime: new Date().toISOString(),
-                  taskInfo: {
-                    aiType: "Gemini",
-                    model: modelName,
-                    function: featureName,
-                    url: conversationUrl, // 取得した会話URLを使用
-                  },
-                  logCell: fullLogCell, // シート名付きログセル
-                },
-                (response) => {
-                  clearTimeout(timeout);
-                  if (!chrome.runtime.lastError) {
-                    log.debug(
-                      "✅ recordCompletionTime送信完了:",
-                      taskId,
-                      "URL:",
-                      conversationUrl,
-                    );
-                  }
-                  resolve(response);
-                },
-              );
-            });
-          };
+      const result = {
+        success: true,
+        content: content,
+        model: modelName,
+        feature: featureName,
+        partial: isPartialResult,
+      };
 
-          await sendCompletionMessage();
-        } catch (error) {
-          log.warn("⚠️ recordCompletionTime送信エラー:", error);
+      // ✅ タスク完了時刻をスプレッドシートに記録（Claude/ChatGPTと統一）
+      try {
+        // 会話URLの取得を待つ（GeminiではURLが変化する場合がある）
+        let conversationUrl = window.location.href;
+
+        // GeminiでもURLが更新されるまで少し待つ
+        // 例： /app から /app/xxx への変更を待つ
+        const startUrl = conversationUrl;
+        let attempts = 0;
+        const maxAttempts = 10; // 最大5秒待つ（500ms x 10）
+
+        while (attempts < maxAttempts) {
+          await wait(500);
+          conversationUrl = window.location.href;
+
+          // URLが変更されたら終了
+          if (conversationUrl !== startUrl) {
+            log.debug(`🔗 [Gemini] URLが更新されました: ${conversationUrl}`);
+            break;
+          }
+
+          attempts++;
         }
 
-        // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
-        // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
-        try {
-          if (result.success && taskData.cellInfo) {
-            // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
-            if (chrome.runtime && chrome.runtime.sendMessage) {
-              const completionMessage = {
-                type: "TASK_COMPLETION_CONFIRMED",
-                taskId: taskData.taskId || taskData.cellInfo,
-                cellInfo: taskData.cellInfo,
-                success: true,
-                timestamp: new Date().toISOString(),
-                spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
-              };
-
-              chrome.runtime.sendMessage(completionMessage, (response) => {
-                if (chrome.runtime.lastError) {
-                  console.warn(
-                    "⚠️ [Gemini-TaskCompletion] 完了通知エラー:",
-                    chrome.runtime.lastError.message,
-                  );
-                } else {
-                }
-              });
-            }
-          }
-        } catch (completionError) {
-          console.warn(
-            "⚠️ [Gemini-TaskCompletion] 完了処理エラー:",
-            completionError.message,
+        // URLが変更されなくても現在のURLを使用
+        if (attempts === maxAttempts) {
+          log.debug(
+            `ℹ️ [Gemini] URL変更なし、現在のURLを使用: ${conversationUrl}`,
           );
         }
+
+        // Promise化してエラーハンドリングを改善
+        const sendCompletionMessage = () => {
+          return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              log.warn("⚠️ recordCompletionTime送信タイムアウト");
+              resolve(null);
+            }, 5000);
+
+            // シート名付きlogCellを準備（taskDataから取得）
+            const sheetName = taskData.sheetName;
+            if (!sheetName) {
+              throw new Error("シート名が指定されていません");
+            }
+            const fullLogCell = taskData.logCell?.includes("!")
+              ? taskData.logCell
+              : `'${sheetName}'!${taskData.logCell}`;
+
+            chrome.runtime.sendMessage(
+              {
+                type: "recordCompletionTime",
+                taskId: taskId,
+                completionTime: new Date().toISOString(),
+                taskInfo: {
+                  aiType: "Gemini",
+                  model: modelName,
+                  function: featureName,
+                  url: conversationUrl, // 取得した会話URLを使用
+                },
+                logCell: fullLogCell, // シート名付きログセル
+              },
+              (response) => {
+                clearTimeout(timeout);
+                if (!chrome.runtime.lastError) {
+                  log.debug(
+                    "✅ recordCompletionTime送信完了:",
+                    taskId,
+                    "URL:",
+                    conversationUrl,
+                  );
+                }
+                resolve(response);
+              },
+            );
+          });
+        };
+
+        await sendCompletionMessage();
+      } catch (error) {
+        log.warn("⚠️ recordCompletionTime送信エラー:", error);
+      }
+
+      // 【修正】タスク完了時のスプレッドシート書き込み確認と通知処理を追加
+      // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
+      try {
+        if (result.success && taskData.cellInfo) {
+          // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
+          if (chrome.runtime && chrome.runtime.sendMessage) {
+            const completionMessage = {
+              type: "TASK_COMPLETION_CONFIRMED",
+              taskId: taskData.taskId || taskData.cellInfo,
+              cellInfo: taskData.cellInfo,
+              success: true,
+              timestamp: new Date().toISOString(),
+              spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
+            };
+
+            chrome.runtime.sendMessage(completionMessage, (response) => {
+              if (chrome.runtime.lastError) {
+                console.warn(
+                  "⚠️ [Gemini-TaskCompletion] 完了通知エラー:",
+                  chrome.runtime.lastError.message,
+                );
+              } else {
+              }
+            });
+          }
+        }
+      } catch (completionError) {
+        console.warn(
+          "⚠️ [Gemini-TaskCompletion] 完了処理エラー:",
+          completionError.message,
+        );
+      }
 
       return result;
     } catch (error) {

@@ -1157,8 +1157,8 @@ async function findNextAvailableTask() {
 }
 
 /**
- * グループ完了チェックと次のグループへの移行処理
- * 【追加】タスクがない場合のグループ移行を処理
+ * グループ完了チェックと次のグループへの移行処理（シンプル版）
+ * step3を呼び出して次のグループを準備
  */
 async function checkAndHandleGroupCompletion(taskIndex) {
   try {
@@ -1168,52 +1168,78 @@ async function checkAndHandleGroupCompletion(taskIndex) {
       開始時刻: new Date().toISOString(),
     });
 
-    // DynamicTaskSearchからグループ完了状態を確認
-    if (
-      window.DynamicTaskSearch &&
-      typeof window.DynamicTaskSearch.checkAndRecordGroupCompletion ===
-        "function"
-    ) {
-      const currentGroup = window.globalState?.currentGroup;
-      if (!currentGroup) {
-        log.warn(`⚠️ [GROUP-TRANSITION] 現在のグループ情報なし[${taskIndex}]`);
+    const currentGroup = window.globalState?.currentGroup;
+    if (!currentGroup) {
+      log.warn(`⚠️ [GROUP-TRANSITION] 現在のグループ情報なし[${taskIndex}]`);
+      return;
+    }
+
+    // グループ完了判定
+    if (!window.checkCompletionStatus) {
+      log.error(
+        `❌ [GROUP-TRANSITION] checkCompletionStatus未定義[${taskIndex}]`,
+      );
+      return;
+    }
+
+    const isGroupCompleted = await window.checkCompletionStatus(currentGroup);
+
+    log.info(`📊 [GROUP-TRANSITION] グループ完了判定結果[${taskIndex}]:`, {
+      taskIndex: taskIndex,
+      groupNumber: currentGroup.groupNumber,
+      isCompleted: isGroupCompleted,
+      判定時刻: new Date().toISOString(),
+    });
+
+    if (isGroupCompleted) {
+      log.info(
+        `🏁 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}完了 - step3でタスクグループ再作成[${taskIndex}]`,
+      );
+
+      // step3を呼び出して次のグループを準備
+      if (!window.executeStep3PrepareNextGroup) {
+        log.error(
+          `❌ [GROUP-TRANSITION] executeStep3PrepareNextGroup未定義[${taskIndex}]`,
+        );
         return;
       }
 
-      // 最新のスプレッドシートデータを取得
-      const spreadsheetData =
-        await window.DynamicTaskSearch.fetchLatestSpreadsheetData(true);
+      const step3Result = await window.executeStep3PrepareNextGroup();
 
-      // グループ完了判定
-      const isGroupCompleted =
-        await window.DynamicTaskSearch.checkAndRecordGroupCompletion(
-          currentGroup,
-          spreadsheetData,
-        );
-
-      log.info(`📊 [GROUP-TRANSITION] グループ完了判定結果[${taskIndex}]:`, {
-        taskIndex: taskIndex,
-        groupNumber: currentGroup.groupNumber,
-        isCompleted: isGroupCompleted,
-        判定時刻: new Date().toISOString(),
-      });
-
-      if (isGroupCompleted) {
-        log.info(
-          `🏁 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}完了 - 次グループ移行開始[${taskIndex}]`,
-        );
-        await transitionToNextGroup(currentGroup, taskIndex);
-      } else {
-        log.info(
-          `📋 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}未完了 - 他タスクの完了待ち[${taskIndex}]`,
-        );
+      if (!step3Result.success) {
+        log.error(`❌ [GROUP-TRANSITION] step3実行エラー[${taskIndex}]:`, {
+          error: step3Result.error,
+        });
+        return;
       }
-    } else {
-      log.warn(
-        `⚠️ [GROUP-TRANSITION] DynamicTaskSearch利用不可[${taskIndex}] - step6直接呼び出し`,
+
+      if (!step3Result.hasNextGroup) {
+        log.info(
+          `🎉 [GROUP-TRANSITION] 全グループ完了 - 処理終了[${taskIndex}]`,
+        );
+        return;
+      }
+
+      log.info(
+        `✅ [GROUP-TRANSITION] 次グループ準備完了: グループ${step3Result.groupNumber}[${taskIndex}]`,
       );
-      // フォールバック: step6-nextgroup.jsを直接呼び出し
-      await transitionToNextGroupFallback(taskIndex);
+
+      // 次のタスクを即座に探して実行
+      setTimeout(() => {
+        log.info(
+          `🚀 [GROUP-TRANSITION] 新グループでタスク探索開始[${taskIndex}]`,
+        );
+        startNextTaskIfAvailable(taskIndex).catch((error) => {
+          log.error(
+            `❌ [GROUP-TRANSITION] 新グループタスク探索エラー[${taskIndex}]:`,
+            error,
+          );
+        });
+      }, 2000); // 2秒待機してからタスク探索
+    } else {
+      log.info(
+        `📋 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}未完了 - 他タスクの完了待ち[${taskIndex}]`,
+      );
     }
   } catch (error) {
     log.error(
