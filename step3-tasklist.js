@@ -32,7 +32,7 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 // バッチ処理改善設定（個別完了処理を有効化）
 const BATCH_PROCESSING_CONFIG = {
   ENABLE_ASYNC_BATCH: true, // 非同期バッチ処理を有効化
-  ENABLE_INDIVIDUAL_COMPLETION: true, // 個別タスク完了時の即座処理
+  ENABLE_INDIVIDUAL_COMPLETION: false, // 個別タスク完了時の即座処理（processTaskResultと重複するため無効化）
   ENABLE_IMMEDIATE_SPREADSHEET: true, // 即座スプレッドシート記載
   ENABLE_IMMEDIATE_WINDOW_CLOSE: true, // 即座ウィンドウクローズ
   ENABLE_DYNAMIC_NEXT_TASK: true, // 動的次タスク開始を再有効化
@@ -81,9 +81,6 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       // Chrome Storageの設定でBATCH_PROCESSING_CONFIGを上書き
       Object.assign(BATCH_PROCESSING_CONFIG, result.batchProcessingConfig);
 
-      // 🚨 CRITICAL FIX: タスク完了を適切に待機するため強制設定
-      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
-
       console.log(
         "📋 [step3-tasklist] Chrome Storageから設定を読み込みました:",
         {
@@ -112,9 +109,6 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       // Chrome Storageの設定で回答待機時間設定を上書き
       Object.assign(BATCH_PROCESSING_CONFIG, result.responseWaitConfig);
 
-      // 🚨 CRITICAL FIX: タスク完了を適切に待機するため強制設定
-      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
-
       console.log("⏱️ [step3-tasklist] 回答待機時間設定を読み込みました:", {
         MAX_RESPONSE_WAIT_TIME:
           BATCH_PROCESSING_CONFIG.MAX_RESPONSE_WAIT_TIME / 60000 + "分",
@@ -133,9 +127,6 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     if (result.windowInitConfig) {
       // Chrome Storageの設定でウィンドウ初期化設定を上書き
       Object.assign(BATCH_PROCESSING_CONFIG, result.windowInitConfig);
-
-      // 🚨 CRITICAL FIX: タスク完了を適切に待機するため強制設定
-      BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
 
       console.log("🪟 [step3-tasklist] ウィンドウ初期化設定を読み込みました:", {
         WINDOW_CREATION_WAIT:
@@ -10664,131 +10655,7 @@ async function executeStep3(taskList) {
     );
 
     try {
-      // 完了時刻とログ記録
-      if (window.detailedLogManager) {
-        window.detailedLogManager.recordTaskComplete(taskId, result);
-      }
-
-      // 🔍 [DEBUG-PROCESS] スプレッドシート書き込み条件チェック
-      ExecuteLogger.info(
-        "🔍 [DEBUG-PROCESS] スプレッドシート書き込み条件チェック:",
-        {
-          taskId: taskId,
-          resultSuccess: result.success,
-          hasResultResponse: !!result.response,
-          conditionMet: result.success && result.response,
-          willWriteToSpreadsheet: !!(result.success && result.response),
-          hasDetailedLogManager: !!window.detailedLogManager,
-          timestamp: new Date().toISOString(),
-        },
-      );
-
-      // 回答をスプレッドシートに記載
-      if (result.success && result.response) {
-        // デバッグログ追加：answerCellRef の値を確認
-        ExecuteLogger.info(`📝 [DEBUG-answerCell] answerCellRef決定処理:`, {
-          taskId: taskId,
-          answerCellRef: task.answerCellRef,
-          cellRef: task.cellRef,
-          column: task.column,
-          row: task.row,
-          answerCell: task.answerCell,
-          columnPlusRow: task.column
-            ? `${task.column}${task.row}`
-            : "undefined",
-        });
-
-        const answerCellRef =
-          task.answerCellRef || task.cellRef || task.answerCell;
-
-        // シート名を追加
-        const sheetName =
-          window.globalState?.sheetName ||
-          `シート${window.globalState?.gid || "0"}`;
-        const fullAnswerCellRef = answerCellRef.includes("!")
-          ? answerCellRef
-          : `'${sheetName}'!${answerCellRef}`;
-
-        ExecuteLogger.info(`📝 [DEBUG-answerCell] 最終的なanswerCellRef:`, {
-          taskId: taskId,
-          answerCellRef: fullAnswerCellRef,
-          isValid:
-            !!fullAnswerCellRef && !fullAnswerCellRef.includes("undefined"),
-        });
-
-        // 🔍 [DEBUG-PROCESS] スプレッドシート書き込み実行前ログ
-        ExecuteLogger.info(
-          "🔍 [DEBUG-PROCESS] writeAnswerToSpreadsheet呼び出し前:",
-          {
-            taskId: taskId,
-            fullAnswerCellRef: fullAnswerCellRef,
-            hasDetailedLogManager: !!window.detailedLogManager,
-            responseLength: result.response ? result.response.length : 0,
-            responsePreview: result.response
-              ? result.response.substring(0, 100) + "..."
-              : null,
-            timestamp: new Date().toISOString(),
-          },
-        );
-
-        if (window.detailedLogManager) {
-          await window.detailedLogManager.writeAnswerToSpreadsheet(
-            taskId,
-            fullAnswerCellRef,
-          );
-
-          // 🔍 [DEBUG-PROCESS] スプレッドシート書き込み実行後ログ
-          ExecuteLogger.info(
-            "🔍 [DEBUG-PROCESS] writeAnswerToSpreadsheet呼び出し完了:",
-            {
-              taskId: taskId,
-              fullAnswerCellRef: fullAnswerCellRef,
-              success: true,
-              timestamp: new Date().toISOString(),
-            },
-          );
-        } else {
-          // 🔍 [DEBUG-PROCESS] detailedLogManager未定義エラー
-          ExecuteLogger.error(
-            "🔍 [DEBUG-PROCESS] detailedLogManager未定義エラー:",
-            {
-              taskId: taskId,
-              hasGlobalState: !!window.globalState,
-              hasWindowObject: !!window,
-              timestamp: new Date().toISOString(),
-            },
-          );
-        }
-
-        // 【新規追加】スプレッドシート書き込み後にグループ完了状態をチェック
-        if (task.groupNumber && statusManager) {
-          ExecuteLogger.info(
-            `📊 [Step 4-6-9] グループ${task.groupNumber}の完了状態をチェック`,
-          );
-          await statusManager.checkGroupCompletionAfterWrite(
-            task.groupNumber,
-            enrichedTaskList,
-          );
-        }
-      }
-
-      // ログをスプレッドシートに記載
-      const logCellRef = task.logCellRef || calculateLogCellRef(task);
-      if (logCellRef && window.detailedLogManager) {
-        // シート名を追加
-        const sheetName =
-          window.globalState?.sheetName ||
-          `シート${window.globalState?.gid || "0"}`;
-        const fullLogCellRef = logCellRef.includes("!")
-          ? logCellRef
-          : `'${sheetName}'!${logCellRef}`;
-
-        await window.detailedLogManager.writeLogToSpreadsheet(
-          taskId,
-          fullLogCellRef,
-        );
-      }
-
+      // スプレッドシート書き込みはWindowLifecycleManager.handleTaskCompletionで実行される
       // ライフサイクル完了処理
       await window.windowLifecycleManager.handleTaskCompletion(task, result);
 
