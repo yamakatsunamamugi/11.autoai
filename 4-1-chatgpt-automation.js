@@ -2077,12 +2077,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
         await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
         return { success: true };
       },
-      "ChatGPTテキスト入力",
+      "【Step 4-2】ChatGPTテキスト入力",
       { textLength: text?.length || 0 },
     );
 
     if (!result.success) {
-      throw new Error(result.error?.message || "テキスト入力失敗");
+      throw new Error(result.error?.message || "【Step 4-2】テキスト入力失敗");
     }
 
     return true;
@@ -2111,7 +2111,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
       return null;
     } catch (error) {
-      log.error("[ChatGPT-getCurrentModel] エラー:", error);
+      log.error("[Step 4-3-getCurrentModel] エラー:", error);
       return null;
     }
   }
@@ -2124,7 +2124,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
    */
   async function openModelMenu(modelButton) {
     if (!modelButton) {
-      log.error("[ChatGPT-openModelMenu] モデルボタンが見つかりません");
+      log.error("[Step 4-3-openModelMenu] モデルボタンが見つかりません");
       return false;
     }
 
@@ -2145,14 +2145,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
         1,
       );
       if (menuContainer) {
-        log.debug("[ChatGPT-openModelMenu] ✅ モデルメニュー開放成功");
+        log.debug("[Step 4-3-openModelMenu] ✅ モデルメニュー開放成功");
         return true;
       } else {
-        log.warn("[ChatGPT-openModelMenu] ⚠️ メニュー開放したがDOM確認できず");
+        log.warn("[Step 4-3-openModelMenu] ⚠️ メニュー開放したがDOM確認できず");
         return false;
       }
     } catch (error) {
-      log.error("[ChatGPT-openModelMenu] ❌ エラー:", error);
+      log.error("[Step 4-3-openModelMenu] ❌ エラー:", error);
       return false;
     }
   }
@@ -2192,14 +2192,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
           }
         }
 
-        throw new Error(`モデル '${modelName}' が見つかりません`);
+        throw new Error(`【Step 4-3】モデル '${modelName}' が見つかりません`);
       },
-      "ChatGPTモデル選択",
+      "【Step 4-3】ChatGPTモデル選択",
       { modelName },
     );
 
     if (!result.success) {
-      throw new Error(result.error?.message || "モデル選択失敗");
+      throw new Error(result.error?.message || "【Step 4-3】モデル選択失敗");
     }
 
     return true;
@@ -2230,7 +2230,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       }
       return null;
     } catch (error) {
-      log.error("[ChatGPT-getCurrentFunction] エラー:", error);
+      log.error("[Step 4-4-getCurrentFunction] エラー:", error);
       return null;
     }
   }
@@ -2244,7 +2244,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
   async function openFunctionMenu(funcMenuBtn) {
     if (!funcMenuBtn) {
       log.error(
-        "[ChatGPT-openFunctionMenu] 機能メニューボタンが見つかりません",
+        "[Step 4-4-openFunctionMenu] 機能メニューボタンが見つかりません",
       );
       return false;
     }
@@ -2266,16 +2266,16 @@ async function reportSelectorError(selectorKey, error, selectors) {
         1,
       );
       if (menuContainer) {
-        log.debug("[ChatGPT-openFunctionMenu] ✅ 機能メニュー開放成功");
+        log.debug("[Step 4-4-openFunctionMenu] ✅ 機能メニュー開放成功");
         return true;
       } else {
         log.warn(
-          "[ChatGPT-openFunctionMenu] ⚠️ メニュー開放したがDOM確認できず",
+          "[Step 4-4-openFunctionMenu] ⚠️ メニュー開放したがDOM確認できず",
         );
         return false;
       }
     } catch (error) {
-      log.error("[ChatGPT-openFunctionMenu] ❌ エラー:", error);
+      log.error("[Step 4-4-openFunctionMenu] ❌ エラー:", error);
       return false;
     }
   }
@@ -2313,14 +2313,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
           }
         }
 
-        throw new Error(`機能 '${functionName}' が見つかりません`);
+        throw new Error(`【Step 4-4】機能 '${functionName}' が見つかりません`);
       },
-      "ChatGPT機能選択",
+      "【Step 4-4】ChatGPT機能選択",
       { functionName },
     );
 
     if (!result.success) {
-      throw new Error(result.error?.message || "機能選択失敗");
+      throw new Error(result.error?.message || "【Step 4-4】機能選択失敗");
     }
 
     return true;
@@ -2347,19 +2347,21 @@ async function reportSelectorError(selectorKey, error, selectors) {
         );
 
         if (!sendBtn) {
-          throw new Error("送信ボタンが見つかりません");
+          throw new Error("【Step 4-5】送信ボタンが見つかりません");
         }
 
         sendBtn.click();
         await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
         return { success: true };
       },
-      "ChatGPTメッセージ送信",
+      "【Step 4-5】ChatGPTメッセージ送信",
       {},
     );
 
     if (!result.success) {
-      throw new Error(result.error?.message || "メッセージ送信失敗");
+      throw new Error(
+        result.error?.message || "【Step 4-5】メッセージ送信失敗",
+      );
     }
 
     return true;
@@ -2387,12 +2389,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
       ) {
         maxWaitTime = AI_WAIT_CONFIG.AGENT_MODE_WAIT; // エージェントモード: 40分
         logWithTimestamp(
-          `🤖 エージェントモード検出: ${maxWaitTime / 60000}分待機`,
+          `【Step 4-7】🤖 エージェントモード検出: ${maxWaitTime / 60000}分待機`,
           "info",
         );
       }
     } catch (error) {
-      logWithTimestamp("⚠️ 機能判定エラー: 通常モードで継続", "warning");
+      logWithTimestamp(
+        "【Step 4-7】⚠️ 機能判定エラー: 通常モードで継続",
+        "warning",
+      );
     }
 
     const checkInterval = 1000;
@@ -2410,7 +2415,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       elapsedTime += checkInterval;
     }
 
-    throw new Error("レスポンス待機タイムアウト");
+    throw new Error("【Step 4-7】レスポンス待機タイムアウト");
   }
 
   // ==========================================================
@@ -2424,7 +2429,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
    * @throws {Error} アシスタントの回答が見つからない場合
    */
   window.getResponseTextChatGPT = async function getResponseTextChatGPT() {
-    console.log("[ChatGPT] getResponseTextChatGPT: テキスト取得開始");
+    console.log("[Step 4-8-getResponseTextChatGPT] テキスト取得開始");
 
     // Canvasモードの複数セレクターをチェック（提供されたHTML構造に対応）
     const canvasSelectors = [
@@ -2454,48 +2459,50 @@ async function reportSelectorError(selectorKey, error, selectors) {
     ];
 
     for (const selector of canvasSelectors) {
-      console.log(`[ChatGPT] Canvasセレクターをチェック: ${selector}`);
+      console.log(`[Step 4-8] Canvasセレクターをチェック: ${selector}`);
       const canvasElement = document.querySelector(selector);
       if (canvasElement) {
-        console.log(`[ChatGPT] Canvasモードを検出 (${selector})`);
-        console.log("[ChatGPT] Canvas要素のクラス:", canvasElement.className);
+        console.log(`[Step 4-8] Canvasモードを検出 (${selector})`);
+        console.log("[Step 4-8] Canvas要素のクラス:", canvasElement.className);
         console.log(
-          "[ChatGPT] Canvas要素のcontenteditable:",
+          "[Step 4-8] Canvas要素のcontenteditable:",
           canvasElement.getAttribute("contenteditable"),
         );
 
         const canvasText = getCanvasText(canvasElement);
         if (canvasText && canvasText.trim().length > 0) {
           console.log(
-            `[ChatGPT] Canvasテキスト取得成功: ${canvasText.length}文字`,
+            `[Step 4-8] Canvasテキスト取得成功: ${canvasText.length}文字`,
           );
           return canvasText;
         } else {
-          console.warn(`[ChatGPT] Canvasテキスト取得失敗: 空またはnull`);
+          console.warn(`[Step 4-8] Canvasテキスト取得失敗: 空またはnull`);
         }
       } else {
-        console.log(`[ChatGPT] セレクターにマッチする要素なし: ${selector}`);
+        console.log(`[Step 4-8] セレクターにマッチする要素なし: ${selector}`);
       }
     }
 
-    console.log("[ChatGPT] Canvasモード検出失敗、通常モードにフォールバック");
+    console.log("[Step 4-8] Canvasモード検出失敗、通常モードにフォールバック");
 
     // 通常モードの処理
     const responseElements = document.querySelectorAll(
       '[data-message-author-role="assistant"]',
     );
     if (responseElements.length === 0) {
-      throw new Error("アシスタントの回答が見つかりません");
+      throw new Error("【Step 4-8】アシスタントの回答が見つかりません");
     }
 
     console.log(
-      `[ChatGPT] 通常モード: ${responseElements.length}個のresponse要素を検出`,
+      `[Step 4-8] 通常モード: ${responseElements.length}個のresponse要素を検出`,
     );
 
     const latestResponse = responseElements[responseElements.length - 1];
     const responseText = getCleanText(latestResponse);
 
-    console.log(`[ChatGPT] 通常モードテキスト取得: ${responseText.length}文字`);
+    console.log(
+      `[Step 4-8] 通常モードテキスト取得: ${responseText.length}文字`,
+    );
     return responseText;
   };
 
