@@ -8731,51 +8731,10 @@ async function executeStep3(taskList) {
         throw new Error("WindowController.openWindowsメソッドが見つかりません");
       }
 
-      // === 全ウィンドウ事前作成 ===
+      // 🔧 [DYNAMIC-WINDOW] ウィンドウ事前作成を無効化
+      // タスクごとに必要なウィンドウのみを開くため、事前作成は行わない
       ExecuteLogger.info(
-        "🪟 [Step 4-6-3] 全タスク用のウィンドウを事前に一括作成します",
-      );
-
-      // 全タスクから必要なAI種別を抽出（重複排除）
-      const requiredAiTypes = new Set();
-      for (const task of enrichedTaskList) {
-        if (task.aiType) {
-          requiredAiTypes.add(task.aiType);
-        }
-      }
-
-      ExecuteLogger.info(
-        `必要なAI種別: ${Array.from(requiredAiTypes).join(", ")}`,
-      );
-
-      // ウィンドウレイアウトを作成（各AI種別ごとに3つのウィンドウ: position 0,1,2）
-      const windowLayout = [];
-      for (const aiType of requiredAiTypes) {
-        for (let position = 0; position < 3; position++) {
-          windowLayout.push({ aiType, position });
-        }
-      }
-
-      // 全ウィンドウを一度に開く（内部で5秒待機）
-      ExecuteLogger.info(
-        `🚀 ${windowLayout.length}個のウィンドウを一括作成開始（各AI種別×3ウィンドウ）...`,
-      );
-      const windowResults =
-        await window.windowController.openWindows(windowLayout);
-      const successfulWindows = windowResults.filter((w) => w.success);
-
-      ExecuteLogger.info(
-        `✅ [Step 4-6-3] ウィンドウ一括作成完了: ${successfulWindows.length}/${windowResults.length}個成功`,
-      );
-
-      if (successfulWindows.length === 0 && enrichedTaskList.length > 0) {
-        throw new Error("ウィンドウを開くことができませんでした");
-      }
-
-      // Step 4-6-3-0.5: ウィンドウチェックをスキップ（unused/stream-processor-v2.js準拠）
-      // 元のコードではウィンドウチェックを行わず、直接タスク実行に進むため削除
-      ExecuteLogger.info(
-        "📝 [Step 4-6-3-0.5] ウィンドウチェックをスキップ（unused準拠）",
+        "📝 [Step 4-6-3] ウィンドウ事前作成をスキップ（動的作成モード）",
       );
     }
 
@@ -9032,17 +8991,53 @@ async function executeStep3(taskList) {
               },
             );
           } else {
-            // 既存ウィンドウが見つからない場合はエラー
-            ExecuteLogger.error(
-              `❌ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-2: ${windowKey}ウィンドウが見つかりません（事前作成が必要）`,
-              {
-                taskIndex: taskIndex,
-                aiType: aiType,
-                position: position,
-              },
+            // 🔧 [DYNAMIC-WINDOW] 必要なウィンドウをその場で作成
+            ExecuteLogger.info(
+              `🪟 [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-2: ${windowKey}ウィンドウを新規作成`,
             );
-            // ウィンドウが見つからない場合は処理をスキップ
-            continue;
+
+            try {
+              const windowLayout = [
+                {
+                  aiType: normalizedAiType,
+                  position: position,
+                },
+              ];
+
+              const windowResults =
+                await window.windowController.openWindows(windowLayout);
+              const createdWindow = windowResults.find((w) => w.success);
+
+              if (!createdWindow) {
+                throw new Error(`ウィンドウ作成失敗: ${windowKey}`);
+              }
+
+              // windowKeyを保存（ウィンドウクローズ時のMap削除用）
+              createdWindow.windowKey = windowKey;
+              batchWindows.set(taskIndex, createdWindow);
+              ExecuteLogger.info(
+                `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-3: タスク${taskIndex + 1}に新規ウィンドウ割り当て`,
+                {
+                  taskIndex: taskIndex,
+                  aiType: aiType,
+                  tabId: createdWindow?.tabId,
+                  windowId: createdWindow?.windowId,
+                  position: position,
+                },
+              );
+            } catch (error) {
+              ExecuteLogger.error(
+                `❌ [step4-execute.js] ウィンドウ作成エラー: ${windowKey}`,
+                {
+                  taskIndex: taskIndex,
+                  aiType: aiType,
+                  position: position,
+                  error: error.message,
+                },
+              );
+              // エラー時は処理をスキップ
+              continue;
+            }
           }
         }
 
