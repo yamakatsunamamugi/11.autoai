@@ -2009,23 +2009,31 @@ const log = {
               }
             };
 
-            const completionResult =
-              await sendCompletionMessageWithRetry(completionMessage);
-
-            if (completionResult.error) {
-              log.debug(
-                "ℹ️ [Gemini-TaskCompletion] 完了通知エラー（継続処理）:",
-                completionResult.message,
-              );
-            } else {
-              log.info(
-                "✅ [Gemini-TaskCompletion] 作業中マーカークリア通知送信完了",
-                {
-                  taskId: taskData.taskId || taskData.cellInfo,
-                  response: completionResult.response,
-                },
-              );
-            }
+            // 非同期で実行（ブロックしない） - recordSendTimeと同じパターン
+            // awaitを削除してPromiseハングを回避し、即座にreturn resultを実行
+            sendCompletionMessageWithRetry(completionMessage)
+              .then((completionResult) => {
+                if (completionResult.error) {
+                  log.debug(
+                    "ℹ️ [Gemini-TaskCompletion] 完了通知エラー（継続処理）:",
+                    completionResult.message,
+                  );
+                } else {
+                  log.info(
+                    "✅ [Gemini-TaskCompletion] 作業中マーカークリア通知送信完了",
+                    {
+                      taskId: taskData.taskId || taskData.cellInfo,
+                      response: completionResult.response,
+                    },
+                  );
+                }
+              })
+              .catch((error) => {
+                log.warn(
+                  "⚠️ [Gemini-TaskCompletion] 完了通知送信エラー:",
+                  error.message || error,
+                );
+              });
           }
         }
       } catch (completionError) {
