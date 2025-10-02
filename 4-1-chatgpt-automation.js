@@ -2549,7 +2549,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
   let executeTask; // 関数を変数として宣言
   try {
     executeTask = async function executeTaskImpl(taskData) {
-      console.log("🔍 [ChatGPT] タスク実行開始");
+      // ========================================
+      // タスク実行開始 (Step 4-0より前の初期化)
+      // ========================================
+      console.log("🔍 [executeTask] タスク実行開始");
 
       // 🔍 包括的デバッグ: 実行コンテキスト検証
       // デバッグログ削除済み
@@ -2565,16 +2568,20 @@ async function reportSelectorError(selectorKey, error, selectors) {
       try {
         ChatGPTLogManager.startTask(taskData);
       } catch (startTaskError) {
-        console.error(startTaskError, startTaskError.stack);
+        console.error(
+          "[executeTask] LogManager.startTaskエラー:",
+          startTaskError,
+          startTaskError.stack,
+        );
         // エラーでも処理を継続
       }
 
       log.debug(
-        "%c🚀 ChatGPT V2 タスク実行開始",
+        "%c🚀 [executeTask] ChatGPT V2 タスク実行開始",
         "color: #00BCD4; font-weight: bold; font-size: 16px",
       );
 
-      log.debug("受信したタスクデータ:", {
+      log.debug("[executeTask] 受信したタスクデータ:", {
         model: taskData.model,
         function: taskData.function,
         promptLength: taskData.prompt?.length || taskData.text?.length || 0,
