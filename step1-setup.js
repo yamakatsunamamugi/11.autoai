@@ -1102,12 +1102,25 @@ async function setupColumnStructure() {
       `[step1-setup.js] [Step 1-5-1] ✅ メニュー行取得: ${headerRow.length}列`,
     );
 
-    // 🔍 診断ログ：メニュー行の内容を表示
-    log.debug(`[DIAGNOSIS] メニュー行(${menuRowNumber}行目)の内容:`);
-    headerRow.forEach((cell, index) => {
-      const colLetter = indexToColumn(index);
-      log.debug(`  ${colLetter}列: "${cell}"`);
-    });
+    // 🔍 診断ログ：メニュー行の内容をサマリー化
+    const columnSummary = {
+      total: headerRow.length,
+      prompt: headerRow.filter((c) => c && c.toString().includes("プロンプト"))
+        .length,
+      log: headerRow.filter((c) => c && c.toString() === "ログ").length,
+      answer: headerRow.filter((c) => c && c.toString() === "回答").length,
+      special: headerRow
+        .map((c, i) => ({ col: indexToColumn(i), val: c }))
+        .filter(
+          (item) =>
+            item.val && !["プロンプト", "ログ", "回答", ""].includes(item.val),
+        )
+        .map((item) => `${item.col}:${item.val}`),
+    };
+    log.debug(
+      `[DIAGNOSIS] メニュー行(${menuRowNumber}行目)サマリー:`,
+      columnSummary,
+    );
 
     // プロンプト列を検索
     const promptColumns = [];
