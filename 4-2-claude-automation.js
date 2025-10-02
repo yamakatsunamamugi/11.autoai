@@ -1633,8 +1633,7 @@
                   // executeTask関数が定義されているか確認
                   if (typeof executeTask === "function") {
                     // executeTask関数が利用可能
-                    const taskToExecute =
-                      request.task || request.taskData || request;
+                    const taskToExecute = request.task || request.taskData;
 
                     // taskToExecute作成時のlogCell検証
                     console.log("🔍 [taskToExecute検証]", {

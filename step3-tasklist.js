@@ -547,15 +547,13 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
       },
     });
 
-    // Phase 2: 即座スプレッドシート記載（短いログは不要のため無効化）
-    /*
+    // Phase 2: 即座スプレッドシート記載
     if (
       BATCH_PROCESSING_CONFIG.ENABLE_IMMEDIATE_SPREADSHEET &&
       result.success
     ) {
       await immediateSpreadsheetUpdate(result, taskIndex);
     }
-    */
 
     // Phase 3: 即座ウィンドウクローズ
     if (
@@ -9987,6 +9985,7 @@ async function executeStep3(taskList) {
             sheetName: task.sheetName,
             spreadsheetId: task.spreadsheetId,
             gid: task.gid,
+            cellInfo: task.cellInfo, // 🔧 [CELLINFO-FIX] セル位置情報を追加（ChatGPT/Claude/Gemini統一）
           };
 
           const messagePayload = {

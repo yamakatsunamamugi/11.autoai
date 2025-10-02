@@ -835,6 +835,15 @@
         // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
         try {
           if (result.success && taskData.cellInfo) {
+            log.debug(
+              "📊 [Genspark-TaskCompletion] スプレッドシート書き込み成功確認開始",
+              {
+                taskId: taskData.taskId || taskData.cellInfo,
+                cellInfo: taskData.cellInfo,
+                hasResponse: !!result.response,
+              },
+            );
+
             // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
             if (chrome.runtime && chrome.runtime.sendMessage) {
               const completionMessage = {
@@ -846,19 +855,77 @@
                 spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
               };
 
-              chrome.runtime.sendMessage(completionMessage, (response) => {
-                if (chrome.runtime.lastError) {
-                  console.warn(
-                    "⚠️ [Genspark-TaskCompletion] 完了通知エラー:",
-                    chrome.runtime.lastError.message,
-                  );
-                } else {
+              // 完了通知用のリトライ付き送信
+              const sendCompletionMessageWithRetry = async (
+                message,
+                maxRetries = 2,
+              ) => {
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                  try {
+                    const result = await new Promise((resolve) => {
+                      chrome.runtime.sendMessage(message, (response) => {
+                        if (chrome.runtime.lastError) {
+                          resolve({
+                            error: "runtime_error",
+                            message: chrome.runtime.lastError.message,
+                          });
+                        } else {
+                          resolve({ success: true, response });
+                        }
+                      });
+                    });
+
+                    if (!result.error) {
+                      if (attempt > 1) {
+                        log.debug(
+                          `✅ [COMPLETION-RETRY] ${attempt}回目で完了通知成功`,
+                        );
+                      }
+                      return result;
+                    }
+
+                    if (
+                      attempt < maxRetries &&
+                      (result.message.includes("message port closed") ||
+                        result.message.includes("runtime_error"))
+                    ) {
+                      log.debug(
+                        `⏱️ [COMPLETION-RETRY] ${attempt}回目失敗、再試行します`,
+                      );
+                      await new Promise((resolve) => setTimeout(resolve, 1000));
+                    } else {
+                      return result;
+                    }
+                  } catch (error) {
+                    if (attempt === maxRetries) {
+                      return { error: "exception", message: error.message };
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                  }
                 }
-              });
+              };
+
+              const completionResult =
+                await sendCompletionMessageWithRetry(completionMessage);
+
+              if (completionResult.error) {
+                log.debug(
+                  "ℹ️ [Genspark-TaskCompletion] 完了通知エラー（継続処理）:",
+                  completionResult.message,
+                );
+              } else {
+                log.info(
+                  "✅ [Genspark-TaskCompletion] 作業中マーカークリア通知送信完了",
+                  {
+                    taskId: taskData.taskId || taskData.cellInfo,
+                    response: completionResult.response,
+                  },
+                );
+              }
             }
           }
         } catch (completionError) {
-          console.warn(
+          log.warn(
             "⚠️ [Genspark-TaskCompletion] 完了処理エラー:",
             completionError.message,
           );

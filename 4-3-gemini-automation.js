@@ -1459,13 +1459,178 @@ const log = {
   }
 
   // ========================================
+  // 🔄 重複実行防止システム（Claude統一版）
+  // ========================================
+
+  // windowレベルの実行状態管理（タブ間共有）
+  window.GEMINI_TASK_EXECUTING = window.GEMINI_TASK_EXECUTING || false;
+  window.GEMINI_CURRENT_TASK_ID = window.GEMINI_CURRENT_TASK_ID || null;
+  window.GEMINI_TASK_START_TIME = window.GEMINI_TASK_START_TIME || null;
+  window.GEMINI_LAST_ACTIVITY_TIME = window.GEMINI_LAST_ACTIVITY_TIME || null;
+
+  // ローカル変数（後方互換性のため維持）
+  let isExecuting = window.GEMINI_TASK_EXECUTING;
+  let currentTaskId = window.GEMINI_CURRENT_TASK_ID;
+  let taskStartTime = window.GEMINI_TASK_START_TIME;
+  let lastActivityTime = window.GEMINI_LAST_ACTIVITY_TIME;
+
+  // sessionStorageとの同期（永続化とタブ間共有）
+  const syncExecutionStateWithStorage = () => {
+    try {
+      const state = {
+        isExecuting: window.GEMINI_TASK_EXECUTING,
+        currentTaskId: window.GEMINI_CURRENT_TASK_ID,
+        taskStartTime: window.GEMINI_TASK_START_TIME,
+        lastActivityTime: window.GEMINI_LAST_ACTIVITY_TIME,
+      };
+      sessionStorage.setItem("GEMINI_EXECUTION_STATE", JSON.stringify(state));
+    } catch (e) {
+      log.debug("sessionStorage同期エラー:", e);
+    }
+  };
+
+  // 実行状態を設定
+  const setExecutionState = (executing, taskId = null) => {
+    // windowレベルの状態を更新
+    window.GEMINI_TASK_EXECUTING = executing;
+    window.GEMINI_CURRENT_TASK_ID = executing ? taskId : null;
+    window.GEMINI_LAST_ACTIVITY_TIME = Date.now();
+
+    // ローカル変数も更新
+    isExecuting = executing;
+    currentTaskId = executing ? taskId : null;
+    lastActivityTime = Date.now();
+
+    if (executing && taskId) {
+      window.GEMINI_TASK_START_TIME = Date.now();
+      taskStartTime = Date.now();
+      log.info(`タスク実行開始: ${taskId}`);
+    } else if (!executing) {
+      const duration = window.GEMINI_TASK_START_TIME
+        ? Date.now() - window.GEMINI_TASK_START_TIME
+        : 0;
+      log.info(`タスク実行完了 (${Math.round(duration / 1000)}秒)`);
+      window.GEMINI_TASK_START_TIME = null;
+      taskStartTime = null;
+    }
+
+    // sessionStorageに同期
+    syncExecutionStateWithStorage();
+  };
+
+  // 実行状態を取得
+  const getExecutionStatus = () => {
+    // 最新のwindowレベルの状態を返す
+    return {
+      isExecuting: window.GEMINI_TASK_EXECUTING,
+      currentTaskId: window.GEMINI_CURRENT_TASK_ID,
+      taskStartTime: window.GEMINI_TASK_START_TIME,
+      lastActivityTime: window.GEMINI_LAST_ACTIVITY_TIME,
+      executionDuration: window.GEMINI_TASK_START_TIME
+        ? Date.now() - window.GEMINI_TASK_START_TIME
+        : 0,
+    };
+  };
+
+  // 重複実行チェック
+  async function checkDuplicateExecution(taskId) {
+    // 重複実行チェック（グローバル状態を使用）
+    const currentStatus = getExecutionStatus();
+
+    // windowレベルの状態を再確認（異なるコンテキストからの実行を検出）
+    if (window.GEMINI_TASK_EXECUTING || currentStatus.isExecuting) {
+      // タイムアウトチェック（15分間実行状態が続いていたらリセット）
+      const timeSinceStart = currentStatus.taskStartTime
+        ? Date.now() - currentStatus.taskStartTime
+        : 0;
+      if (timeSinceStart > 15 * 60 * 1000) {
+        log.warn(
+          `⏰ タスク ${currentStatus.currentTaskId} は15分以上実行中 - リセット`,
+        );
+        setExecutionState(false);
+        return { canExecute: true };
+      } else {
+        if (currentStatus.currentTaskId === taskId) {
+          log.warn(
+            `⚠️ [DUPLICATE-EXECUTION] タスクID ${taskId} は既に実行中です (コンテキスト: ${typeof chrome !== "undefined" && chrome.runtime ? chrome.runtime.id : "unknown"})`,
+          );
+          return {
+            canExecute: false,
+            error: "Task already executing",
+            details: {
+              inProgress: true,
+              taskId: taskId,
+              executionStatus: currentStatus,
+            },
+          };
+        }
+
+        log.warn(
+          `⚠️ [BUSY] 別のタスク（${currentStatus.currentTaskId}）が実行中です。新しいタスク（${taskId}）は拒否されました`,
+        );
+        log.debug(`実行中タスク情報:`, {
+          currentTaskId: currentStatus.currentTaskId,
+          duration: Math.round(timeSinceStart / 1000),
+          context:
+            typeof chrome !== "undefined" && chrome.runtime
+              ? chrome.runtime.id
+              : "unknown",
+        });
+        return {
+          canExecute: false,
+          error: "Another task is in progress",
+          details: {
+            busyWith: currentStatus.currentTaskId,
+            requestedTaskId: taskId,
+            executionStatus: currentStatus,
+          },
+        };
+      }
+    }
+
+    // 実行状態を設定
+    setExecutionState(true, taskId);
+    return { canExecute: true };
+  }
+
+  // ========================================
   // Step 4-9: タスク実行（拡張版） - RetryManager統合
   // ========================================
   async function executeTask(taskData) {
     log.info("🚀 【Step 4-0】Gemini タスク実行開始", taskData);
 
+    // 🔧 [FIX-LOGCELL] logCellが欠如している場合の復旧ロジック
+    if (!taskData?.logCell && taskData?.row && taskData?.cellInfo) {
+      // ログセルを推測して復旧
+      const inferredLogColumn = "S"; // デフォルトログ列
+      const inferredLogCell = `${inferredLogColumn}${taskData.row}`;
+
+      log.error(`🔧 [FIX-LOGCELL] logCellを復旧します:`, {
+        originalLogCell: taskData.logCell,
+        inferredLogCell: inferredLogCell,
+        row: taskData.row,
+        taskId: taskData.taskId || taskData.id,
+      });
+
+      // taskDataにlogCellを追加
+      taskData.logCell = inferredLogCell;
+    }
+
     // taskIdを最初に定義（スコープ全体で利用可能にする）
     const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+
+    // ========================================
+    // Step 4-1: 重複実行チェック
+    // ========================================
+    log.info("【Step 4-1】重複実行チェック");
+    const duplicateCheckResult = await checkDuplicateExecution(taskId);
+    if (!duplicateCheckResult.canExecute) {
+      return {
+        success: false,
+        error: duplicateCheckResult.error,
+        ...duplicateCheckResult.details,
+      };
+    }
 
     try {
       // プロンプトの適切な処理 - オブジェクトの場合は文字列化
@@ -1796,6 +1961,15 @@ const log = {
       // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
       try {
         if (result.success && taskData.cellInfo) {
+          log.debug(
+            "📊 [Gemini-TaskCompletion] スプレッドシート書き込み成功確認開始",
+            {
+              taskId: taskData.taskId || taskData.cellInfo,
+              cellInfo: taskData.cellInfo,
+              hasResponse: !!result.text,
+            },
+          );
+
           // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
           if (chrome.runtime && chrome.runtime.sendMessage) {
             const completionMessage = {
@@ -1807,27 +1981,91 @@ const log = {
               spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
             };
 
-            chrome.runtime.sendMessage(completionMessage, (response) => {
-              if (chrome.runtime.lastError) {
-                log.warn(
-                  "⚠️ 【Step 4-9】[Gemini-TaskCompletion] 完了通知エラー:",
-                  chrome.runtime.lastError.message,
-                );
-              } else {
+            // 完了通知用のリトライ付き送信
+            const sendCompletionMessageWithRetry = async (
+              message,
+              maxRetries = 2,
+            ) => {
+              for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                  const result = await new Promise((resolve) => {
+                    chrome.runtime.sendMessage(message, (response) => {
+                      if (chrome.runtime.lastError) {
+                        resolve({
+                          error: "runtime_error",
+                          message: chrome.runtime.lastError.message,
+                        });
+                      } else {
+                        resolve({ success: true, response });
+                      }
+                    });
+                  });
+
+                  if (!result.error) {
+                    if (attempt > 1) {
+                      log.debug(
+                        `✅ [COMPLETION-RETRY] ${attempt}回目で完了通知成功`,
+                      );
+                    }
+                    return result;
+                  }
+
+                  if (
+                    attempt < maxRetries &&
+                    (result.message.includes("message port closed") ||
+                      result.message.includes("runtime_error"))
+                  ) {
+                    log.debug(
+                      `⏱️ [COMPLETION-RETRY] ${attempt}回目失敗、再試行します`,
+                    );
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                  } else {
+                    return result;
+                  }
+                } catch (error) {
+                  if (attempt === maxRetries) {
+                    return { error: "exception", message: error.message };
+                  }
+                  await new Promise((resolve) => setTimeout(resolve, 1000));
+                }
               }
-            });
+            };
+
+            const completionResult =
+              await sendCompletionMessageWithRetry(completionMessage);
+
+            if (completionResult.error) {
+              log.debug(
+                "ℹ️ [Gemini-TaskCompletion] 完了通知エラー（継続処理）:",
+                completionResult.message,
+              );
+            } else {
+              log.info(
+                "✅ [Gemini-TaskCompletion] 作業中マーカークリア通知送信完了",
+                {
+                  taskId: taskData.taskId || taskData.cellInfo,
+                  response: completionResult.response,
+                },
+              );
+            }
           }
         }
       } catch (completionError) {
         log.warn(
-          "⚠️ 【Step 4-9】[Gemini-TaskCompletion] 完了処理エラー:",
+          "⚠️ [Gemini-TaskCompletion] 完了処理エラー:",
           completionError.message,
         );
       }
 
+      // 実行状態を解除
+      setExecutionState(false);
+
       log.info("✅ 【Step 4-0】Gemini タスク実行完了");
       return result;
     } catch (error) {
+      // エラー時も実行状態を解除
+      setExecutionState(false);
+
       log.error(`❌ 【Step 4-0】Gemini タスク実行エラー:`, error);
       return {
         success: false,
@@ -1944,7 +2182,7 @@ const log = {
         (async () => {
           try {
             if (typeof executeTask === "function") {
-              const taskToExecute = request.task || request.taskData || request;
+              const taskToExecute = request.task || request.taskData;
               try {
                 const result = await executeTask(taskToExecute);
                 sendResponse({ success: true, result });

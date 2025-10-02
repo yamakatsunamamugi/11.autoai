@@ -2105,7 +2105,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       const menuContainer = await findElement(
         SELECTORS.modelMenu,
         "モデルメニュー",
-        1,
+        5,
       );
       if (menuContainer) {
         log.debug("[Step 4-3-openModelMenu] ✅ モデルメニュー開放成功");
@@ -2136,6 +2136,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
           "モデルボタン",
         );
         await openModelMenu(modelButton);
+        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
 
         const modelMenuEl = await findElement(
           SELECTORS.modelMenu,
@@ -2152,6 +2153,38 @@ async function reportSelectorError(selectorKey, error, selectors) {
             item.click();
             await sleep(1000);
             return { success: true };
+          }
+        }
+
+        // レガシーメニューから検索
+        const legacyButton = Array.from(
+          modelMenuEl.querySelectorAll('[role="menuitem"]'),
+        ).find(
+          (el) => el.textContent && el.textContent.includes("レガシーモデル"),
+        );
+
+        if (legacyButton) {
+          legacyButton.click();
+          await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
+
+          const legacyMenu = await findElement(
+            [
+              '[data-side="right"][role="menu"][data-radix-menu-content][data-state="open"]',
+            ],
+            "レガシーメニュー",
+            3,
+          );
+
+          if (legacyMenu) {
+            const legacyItems =
+              legacyMenu.querySelectorAll('[role="menuitem"]');
+            for (const item of legacyItems) {
+              if (getCleanText(item).includes(modelName)) {
+                item.click();
+                await sleep(1000);
+                return { success: true };
+              }
+            }
           }
         }
 
@@ -3158,6 +3191,15 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // タスク重複実行問題を修正：書き込み成功を確実に確認してから完了通知
         try {
           if (result.success && taskData.cellInfo) {
+            log.debug(
+              "📊 [ChatGPT-TaskCompletion] スプレッドシート書き込み成功確認開始",
+              {
+                taskId: taskData.taskId || taskData.cellInfo,
+                cellInfo: taskData.cellInfo,
+                hasResponse: !!result.text,
+              },
+            );
+
             // backgroundスクリプトにタスク完了を通知（作業中マーカークリア用）
             if (chrome.runtime && chrome.runtime.sendMessage) {
               const completionMessage = {
@@ -3169,20 +3211,78 @@ async function reportSelectorError(selectorKey, error, selectors) {
                 spreadsheetWriteConfirmed: true, // スプレッドシート書き込み完了フラグ
               };
 
-              chrome.runtime.sendMessage(completionMessage, (response) => {
-                if (chrome.runtime.lastError) {
-                  console.warn(
-                    "⚠️ [Step 4-9] 完了通知エラー:",
-                    chrome.runtime.lastError.message,
-                  );
-                } else {
+              // 完了通知用のリトライ付き送信
+              const sendCompletionMessageWithRetry = async (
+                message,
+                maxRetries = 2,
+              ) => {
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                  try {
+                    const result = await new Promise((resolve) => {
+                      chrome.runtime.sendMessage(message, (response) => {
+                        if (chrome.runtime.lastError) {
+                          resolve({
+                            error: "runtime_error",
+                            message: chrome.runtime.lastError.message,
+                          });
+                        } else {
+                          resolve({ success: true, response });
+                        }
+                      });
+                    });
+
+                    if (!result.error) {
+                      if (attempt > 1) {
+                        log.debug(
+                          `✅ [COMPLETION-RETRY] ${attempt}回目で完了通知成功`,
+                        );
+                      }
+                      return result;
+                    }
+
+                    if (
+                      attempt < maxRetries &&
+                      (result.message.includes("message port closed") ||
+                        result.message.includes("runtime_error"))
+                    ) {
+                      log.debug(
+                        `⏱️ [COMPLETION-RETRY] ${attempt}回目失敗、再試行します`,
+                      );
+                      await new Promise((resolve) => setTimeout(resolve, 1000));
+                    } else {
+                      return result;
+                    }
+                  } catch (error) {
+                    if (attempt === maxRetries) {
+                      return { error: "exception", message: error.message };
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                  }
                 }
-              });
+              };
+
+              const completionResult =
+                await sendCompletionMessageWithRetry(completionMessage);
+
+              if (completionResult.error) {
+                log.debug(
+                  "ℹ️ [ChatGPT-TaskCompletion] 完了通知エラー（継続処理）:",
+                  completionResult.message,
+                );
+              } else {
+                log.info(
+                  "✅ [ChatGPT-TaskCompletion] 作業中マーカークリア通知送信完了",
+                  {
+                    taskId: taskData.taskId || taskData.cellInfo,
+                    response: completionResult.response,
+                  },
+                );
+              }
             }
           }
         } catch (completionError) {
-          console.warn(
-            "⚠️ [Step 4-9] 完了処理エラー:",
+          log.warn(
+            "⚠️ [ChatGPT-TaskCompletion] 完了処理エラー:",
             completionError.message,
           );
         }
@@ -3416,62 +3516,64 @@ async function reportSelectorError(selectorKey, error, selectors) {
               const availableModels = [];
               const availableFunctions = [];
 
-              // モデル探索
-              const modelBtn =
-                document.querySelector(
-                  'button[type="button"]:has([data-testid="model-switcher-button"])',
-                ) ||
-                document.querySelector(
-                  'button:has([data-testid="model-switcher-button"])',
-                );
+              // モデル探索（SELECTORS使用）
+              const modelBtn = await findElement(
+                SELECTORS.modelButton,
+                "モデルボタン",
+                1,
+              );
 
               if (modelBtn) {
-                modelBtn.click();
-                await sleep(1500);
+                await openModelMenu(modelBtn);
+                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
 
-                const modelMenu = document.querySelector('div[role="menu"]');
+                const modelMenu = await findElement(
+                  SELECTORS.modelMenu,
+                  "モデルメニュー",
+                  3,
+                );
+
                 if (modelMenu) {
                   // メインモデルメニューの項目取得
                   const mainMenuItems = modelMenu.querySelectorAll(
                     '[role="menuitem"][data-testid^="model-switcher-"]',
                   );
                   mainMenuItems.forEach((item) => {
-                    const modelName = item.textContent.trim();
+                    const modelName = getCleanText(item);
                     if (modelName && !modelName.includes("レガシー")) {
                       availableModels.push(modelName);
                     }
                   });
 
                   // レガシーモデルもチェック
-                  const legacyButton =
-                    modelMenu.querySelector(
-                      '[role="menuitem"][data-has-submenu]',
-                    ) ||
-                    Array.from(
-                      modelMenu.querySelectorAll('[role="menuitem"]'),
-                    ).find(
-                      (el) =>
-                        el.textContent &&
-                        el.textContent.includes("レガシーモデル"),
-                    );
+                  const legacyButton = Array.from(
+                    modelMenu.querySelectorAll('[role="menuitem"]'),
+                  ).find(
+                    (el) =>
+                      el.textContent &&
+                      el.textContent.includes("レガシーモデル"),
+                  );
 
                   if (legacyButton) {
                     legacyButton.click();
-                    await sleep(1500);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
 
-                    const allMenus = document.querySelectorAll('[role="menu"]');
-                    allMenus.forEach((menu) => {
-                      if (menu !== modelMenu) {
-                        const items =
-                          menu.querySelectorAll('[role="menuitem"]');
-                        items.forEach((item) => {
-                          const modelName = item.textContent.trim();
-                          if (modelName && modelName.includes("GPT")) {
-                            availableModels.push(modelName);
-                          }
-                        });
-                      }
-                    });
+                    const legacyMenu = await findElement(
+                      SELECTORS.subMenu,
+                      "レガシーメニュー",
+                      3,
+                    );
+
+                    if (legacyMenu) {
+                      const items =
+                        legacyMenu.querySelectorAll('[role="menuitem"]');
+                      items.forEach((item) => {
+                        const modelName = getCleanText(item);
+                        if (modelName) {
+                          availableModels.push(modelName);
+                        }
+                      });
+                    }
                   }
 
                   // メニューを閉じる
@@ -3485,28 +3587,30 @@ async function reportSelectorError(selectorKey, error, selectors) {
                 }
               }
 
-              // 機能探索
-              const funcMenuBtn =
-                document.querySelector(
-                  'button[aria-label="機能メニューを開く"]',
-                ) ||
-                document.querySelector(
-                  'button:has(svg):has(path[d*="M12 6.5a5.5"])',
-                );
+              // 機能探索（SELECTORS使用）
+              const funcMenuBtn = await findElement(
+                SELECTORS.menuButton,
+                "機能メニューボタン",
+                1,
+              );
 
               if (funcMenuBtn) {
-                funcMenuBtn.click();
-                await sleep(1500);
+                await openFunctionMenu(funcMenuBtn);
+                await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
 
-                const funcMenu = document.querySelector('div[role="menu"]');
+                const funcMenu = await findElement(
+                  SELECTORS.mainMenu,
+                  "機能メニュー",
+                  3,
+                );
+
                 if (funcMenu) {
                   // メイン機能を取得
-                  const menuItems = funcMenu.querySelectorAll(
-                    '[role="menuitemradio"]',
-                  );
+                  const menuItems =
+                    funcMenu.querySelectorAll('[role="menuitem"]');
                   menuItems.forEach((item) => {
-                    const funcName = item.textContent.trim();
-                    if (funcName) {
+                    const funcName = getCleanText(item);
+                    if (funcName && !funcName.includes("さらに表示")) {
                       availableFunctions.push(funcName);
                     }
                   });
@@ -3521,17 +3625,19 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
                   if (moreButton) {
                     moreButton.click();
-                    await sleep(1000);
+                    await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
 
-                    const subMenu = document.querySelector(
-                      '[data-side="right"]',
+                    const subMenu = await findElement(
+                      SELECTORS.subMenu,
+                      "機能サブメニュー",
+                      3,
                     );
+
                     if (subMenu) {
-                      const subMenuItems = subMenu.querySelectorAll(
-                        '[role="menuitemradio"]',
-                      );
+                      const subMenuItems =
+                        subMenu.querySelectorAll('[role="menuitem"]');
                       subMenuItems.forEach((item) => {
-                        const funcName = item.textContent.trim();
+                        const funcName = getCleanText(item);
                         if (funcName) {
                           availableFunctions.push(funcName);
                         }

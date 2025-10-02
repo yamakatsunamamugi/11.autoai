@@ -913,7 +913,13 @@ async function findSpecialRows() {
     }
 
     // globalStateにシート名を保存
+    log.info(
+      `[step1-setup.js] [Step 1-4] 📝 シート名をglobalStateに保存: "${sheetName}"`,
+    );
     window.globalState.sheetName = sheetName;
+    log.info(
+      `[step1-setup.js] [Step 1-4] ✅ globalState.sheetName確認: "${window.globalState.sheetName}"`,
+    );
 
     log.debug(
       `[step1-setup.js] [Step 1-4] 抽出完了: ID=${spreadsheetId}, GID=${gid}, シート=${sheetName}`,
@@ -968,6 +974,7 @@ async function findSpecialRows() {
 
     // 初期設定用データをキャッシュ
     window.globalState.initialSheetData = allSheetData;
+    window.globalState.currentSpreadsheetData = allSheetData; // step3用
     log.debug(`[step1-setup.js] ✅ データ取得完了: ${allSheetData.length}行`);
 
     // 作業中マーカー削除処理（初回実行時のみ）
