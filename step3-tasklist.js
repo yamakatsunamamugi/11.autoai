@@ -4061,13 +4061,9 @@ async function generateTaskList(
       `[3-4] [TaskList] 処理結果サマリー: 全${totalRows}行中、処理対象${processedRows}行、スキップ${skippedCount}行`,
     );
 
-    // 3-3: 3タスクずつのバッチ作成
-    const batchSize = options.batchSize || 3;
-    const batch = validTasks.slice(0, batchSize);
-
-    // 「既に回答あり」ログのサマリー出力（統合済み上記に含む）
-
-    return batch;
+    // 3-3: 全タスクを返す（バッチ分割はwhileループで自動実行）
+    // whileループが statusManager.getAvailableTasks() で3個ずつ取得して実行する
+    return validTasks;
   } catch (error) {
     log.error(
       "[3-4] [step3-tasklist.js] [Step 3-Error] generateTaskList内でエラー発生:",
@@ -6023,6 +6019,15 @@ class WindowLifecycleManager {
         if (windowInfo?.windowId) {
           await StepIntegratedWindowService.closeWindow(windowInfo.windowId);
           this.registeredWindows.delete(task.aiType);
+
+          // window.windowController.openedWindows からも削除（独立モード対応）
+          if (task.windowKey && window.windowController?.openedWindows) {
+            window.windowController.openedWindows.delete(task.windowKey);
+            ExecuteLogger.info(
+              `🗑️ [WindowLifecycleManager] openedWindowsから削除: ${task.windowKey}`,
+            );
+          }
+
           ExecuteLogger.info(
             `✅ [WindowLifecycleManager] ウィンドウクローズ完了: ${task.aiType}`,
           );
@@ -6302,7 +6307,14 @@ if (!window.SimpleSheetsClient) {
     /**
      * スプレッドシートから値を取得（レート制限対策付き）
      */
-    async getValues(spreadsheetId, range) {
+    async getValues(spreadsheetId, range, retryCount = 0) {
+      const maxRetries = 10;
+      // 待機時間（ミリ秒）: 10秒→30秒→1分→3分→5分→10分→15分→30分→45分→60分
+      const retryDelays = [
+        10000, 30000, 60000, 180000, 300000, 600000, 900000, 1800000, 2700000,
+        3600000,
+      ];
+
       // レート制限対策：最小間隔を設ける
       if (this.lastApiCallTime) {
         const elapsed = Date.now() - this.lastApiCallTime;
@@ -6333,7 +6345,23 @@ if (!window.SimpleSheetsClient) {
               `⚠️ API レート制限エラー検出。3秒後にリトライします: ${range}`,
             );
             await new Promise((resolve) => setTimeout(resolve, 3000));
-            return await this.getValues(spreadsheetId, range); // リトライ
+            return await this.getValues(spreadsheetId, range, retryCount); // リトライ
+          }
+
+          // サーバーエラー（500/502/503）の場合、リトライ
+          if (
+            (response.status === 500 ||
+              response.status === 502 ||
+              response.status === 503) &&
+            retryCount < maxRetries
+          ) {
+            const waitTime =
+              retryDelays[Math.min(retryCount, retryDelays.length - 1)];
+            ExecuteLogger.warn(
+              `⚠️ API サーバーエラー検出 (${response.status})。${waitTime / 1000}秒後にリトライします (${retryCount + 1}/${maxRetries}): ${range}`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+            return await this.getValues(spreadsheetId, range, retryCount + 1); // リトライ
           }
 
           throw new Error(
@@ -6370,7 +6398,14 @@ if (!window.SimpleSheetsClient) {
     /**
      * スプレッドシートに値を書き込み（単一セル）
      */
-    async updateValue(spreadsheetId, range, value) {
+    async updateValue(spreadsheetId, range, value, retryCount = 0) {
+      const maxRetries = 10;
+      // 待機時間（ミリ秒）: 10秒→30秒→1分→3分→5分→10分→15分→30分→45分→60分
+      const retryDelays = [
+        10000, 30000, 60000, 180000, 300000, 600000, 900000, 1800000, 2700000,
+        3600000,
+      ];
+
       // レート制限対策：最小間隔を設ける
       if (this.lastApiCallTime) {
         const elapsed = Date.now() - this.lastApiCallTime;
@@ -6406,7 +6441,33 @@ if (!window.SimpleSheetsClient) {
               `⚠️ API レート制限エラー検出。3秒後にリトライします: ${range}`,
             );
             await new Promise((resolve) => setTimeout(resolve, 3000));
-            return await this.updateValue(spreadsheetId, range, value); // リトライ
+            return await this.updateValue(
+              spreadsheetId,
+              range,
+              value,
+              retryCount,
+            ); // リトライ
+          }
+
+          // サーバーエラー（500/502/503）の場合、リトライ
+          if (
+            (response.status === 500 ||
+              response.status === 502 ||
+              response.status === 503) &&
+            retryCount < maxRetries
+          ) {
+            const waitTime =
+              retryDelays[Math.min(retryCount, retryDelays.length - 1)];
+            ExecuteLogger.warn(
+              `⚠️ API サーバーエラー検出 (${response.status})。${waitTime / 1000}秒後にリトライします (${retryCount + 1}/${maxRetries}): ${range}`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+            return await this.updateValue(
+              spreadsheetId,
+              range,
+              value,
+              retryCount + 1,
+            ); // リトライ
           }
 
           throw new Error(
@@ -9207,6 +9268,8 @@ async function executeStep3(taskList) {
               ? existingWindow[0]
               : existingWindow;
 
+            // windowKeyを保存（ウィンドウクローズ時のMap削除用）
+            windowToUse.windowKey = windowKey;
             batchWindows.set(taskIndex, windowToUse);
             ExecuteLogger.info(
               `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-3: タスク${taskIndex + 1}に既存ウィンドウ割り当て`,
@@ -9240,6 +9303,8 @@ async function executeStep3(taskList) {
                 throw new Error(`ウィンドウ作成失敗: ${windowKey}`);
               }
 
+              // windowKeyを保存（ウィンドウクローズ時のMap削除用）
+              createdWindow.windowKey = windowKey;
               batchWindows.set(taskIndex, createdWindow);
               ExecuteLogger.info(
                 `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-A-3: タスク${taskIndex + 1}に新規ウィンドウ割り当て`,
@@ -9313,6 +9378,7 @@ async function executeStep3(taskList) {
           // Step 4-6-6-C-3: タスクにウィンドウ情報を設定（unused/stream-processor-v2.js準拠）
           task.tabId = windowInfo.tabId;
           task.windowId = windowInfo.windowId;
+          task.windowKey = windowInfo.windowKey; // ウィンドウクローズ時のMap削除用
 
           ExecuteLogger.info(
             `✅ [step4-execute.js] Step 4-6-6-${batchIndex + 2}-C-3: タスク${taskId}準備完了（unused準拠）`,
