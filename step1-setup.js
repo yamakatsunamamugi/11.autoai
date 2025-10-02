@@ -240,12 +240,12 @@ async function checkInternetConnection() {
 // 1-2: スリープ防止設定
 // ========================================
 async function preventSleep() {
-  log.debug("========");
-  log.debug("[step1-setup.js→Step1-2] スリープ防止設定開始");
-  log.debug("========");
+  log.info("========");
+  log.info("[step1-setup.js→Step1-2] スリープ防止設定開始");
+  log.info("========");
 
   try {
-    log.debug(
+    log.info(
       `[step1-setup.js] [Step 1-2-1] Wake Lock APIサポート: ${"wakeLock" in navigator}`,
     );
 
@@ -269,9 +269,9 @@ async function preventSleep() {
         wakeLock = await navigator.wakeLock.request("screen");
         const elapsedTime = Date.now() - startTime;
 
-        log.debug("[step1-setup.js] [Step 1-2-1] ✅ Wake Lock取得成功");
+        log.info("[step1-setup.js] [Step 1-2-1] ✅ Wake Lock取得成功");
         // 取得時間記録
-        log.debug(`  - Wake Lock状態: アクティブ`);
+        log.info(`  - Wake Lock状態: アクティブ`);
 
         const now = new Date();
         log.debug(
@@ -297,8 +297,8 @@ async function preventSleep() {
         // グローバルに保存
         window.wakeLock = wakeLock;
       } catch (err) {
-        log.error(
-          `[step1-setup.js] [Step 1-2-1] Wake Lock取得失敗: ${err.name}, ${err.message}`,
+        log.warn(
+          `[step1-setup.js] [Step 1-2-1] ⚠️ Wake Lock取得失敗: ${err.name}, ${err.message}`,
         );
       }
     }
@@ -334,11 +334,11 @@ async function preventSleep() {
     // グローバルに保存（必要に応じて停止可能）
     window.keepAliveInterval = keepAliveInterval;
 
-    log.debug("[step1-setup.js] [Step 1-2-3] ✅ スリープ防止設定完了");
-    log.debug(
+    log.info("[step1-setup.js] [Step 1-2-3] ✅ スリープ防止設定完了");
+    log.info(
       `  - 使用方法: ${wakeLock ? "Wake Lock API" : window.noSleep ? "NoSleepライブラリ" : "定期的な活動"}`,
     );
-    log.debug(
+    log.info(
       `  - 状態: ${wakeLock ? "アクティブ" : window.noSleep ? "有効" : "実行中"}`,
     );
 
@@ -897,14 +897,11 @@ async function findSpecialRows() {
 
     // globalStateからURLまたはIDを取得
     if (window.globalState) {
-      spreadsheetId = window.globalState.spreadsheetId;
-      gid = window.globalState.gid;
-
       // spreadsheetUrlが設定されている場合はそこからIDとGIDを抽出
-      if (!spreadsheetId && window.globalState.spreadsheetUrl) {
+      if (window.globalState.spreadsheetUrl) {
         const spreadsheetUrl = window.globalState.spreadsheetUrl;
-        log.debug(
-          `[step1-setup.js] [Step 1-4] globalStateからURL取得: ${spreadsheetUrl}`,
+        log.info(
+          `[step1-setup.js] [Step 1-4] 📄 globalStateからURL取得: ${spreadsheetUrl}`,
         );
 
         // URLからスプレッドシートIDとGIDを抽出
@@ -976,15 +973,20 @@ async function findSpecialRows() {
       const metadata = await metadataResponse.json();
 
       const sheet = metadata.sheets.find((s) => s.properties.sheetId == gid);
-      sheetName = sheet ? sheet.properties.title : `シート${gid}`;
+      if (!sheet) {
+        throw new Error(
+          `GID ${gid} に対応するシートが見つかりません。スプレッドシートに該当するシートが存在するか確認してください。`,
+        );
+      }
+      sheetName = sheet.properties.title;
       log.debug(
         `[step1-setup.js] [Step 1-4] ✅ シート名取得成功: ${sheetName}`,
       );
     } catch (error) {
-      log.warn(
-        `[step1-setup.js] [Step 1-4] ⚠️ シート名取得エラー、デフォルト使用: ${error.message}`,
+      log.error(
+        `[step1-setup.js] [Step 1-4] ❌ シート名取得エラー: ${error.message}`,
       );
-      sheetName = gid === "0" ? "シート1" : `シート${gid}`;
+      throw error;
     }
 
     // globalStateにシート名を保存
@@ -1491,6 +1493,9 @@ function columnToIndex(column) {
 async function executeStep1(spreadsheetUrl) {
   // 関数呼び出し追跡のためのユニークID
   const callId = `CALL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  log.info("========================================");
+  log.info(`📋 [Step1] 処理対象スプレッドシート: ${spreadsheetUrl}`);
+  log.info("========================================");
   log.debug("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
   log.debug(`🆔 [CALL TRACKER] executeStep1 呼び出し開始 - ID: ${callId}`);
   log.debug("＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝");
@@ -1507,7 +1512,7 @@ async function executeStep1(spreadsheetUrl) {
     // スプレッドシートURLをglobalStateに設定
     if (spreadsheetUrl) {
       window.globalState.spreadsheetUrl = spreadsheetUrl;
-      log.debug(
+      log.info(
         `[step1-setup.js] ✅ スプレッドシートURLをglobalStateに設定: ${spreadsheetUrl}`,
       );
     } else {
