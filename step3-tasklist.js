@@ -63,6 +63,50 @@ const BATCH_PROCESSING_CONFIG = {
   TASK_RETRY_INTERVAL: 5000, // タスクリトライ間隔: 5秒
 };
 
+// ========================================
+// 共通エスカレーション設定（全システムで統一）
+// ========================================
+const ESCALATION_CONFIG = {
+  MAX_RETRIES: 20,
+  LEVELS: {
+    LIGHTWEIGHT: {
+      range: [1, 5],
+      delays: [1000, 2000, 5000, 10000, 15000], // 1秒→2秒→5秒→10秒→15秒
+    },
+    MODERATE: {
+      range: [6, 8],
+      delays: [30000, 60000, 120000], // 30秒→1分→2分
+    },
+    HEAVY_RESET: {
+      range: [9, 20],
+      delays: [300000, 900000, 1800000, 3600000, 7200000], // 5分→15分→30分→1時間→2時間
+    },
+  },
+};
+
+/**
+ * エスカレーションレベルを決定
+ */
+function determineEscalationLevel(retryCount) {
+  for (const [levelName, config] of Object.entries(ESCALATION_CONFIG.LEVELS)) {
+    if (retryCount >= config.range[0] && retryCount <= config.range[1]) {
+      return levelName;
+    }
+  }
+  return "HEAVY_RESET";
+}
+
+/**
+ * 段階的遅延を計算
+ */
+function calculateEscalationDelay(retryCount, escalationLevel) {
+  const config = ESCALATION_CONFIG.LEVELS[escalationLevel];
+  if (!config) return 5000;
+  const indexInLevel = retryCount - config.range[0];
+  const delayIndex = Math.min(indexInLevel, config.delays.length - 1);
+  return config.delays[delayIndex];
+}
+
 // Chrome Storageからログレベルを取得（非同期）
 let CURRENT_LOG_LEVEL = LOG_LEVEL.WARN; // デフォルト値（簡潔な動作確認用）
 
@@ -1753,56 +1797,70 @@ async function openAIWindowForTask(task) {
 // ========================================
 
 /**
- * シンプルリトライ機能 - 成功実績あり
+ * シンプルリトライ機能 - 段階的エスカレーション対応
  * @param {Object} options リトライ設定
  * @param {Function} options.action 実行する関数
  * @param {Function} options.isSuccess 成功判定関数
  * @param {number} options.maxRetries 最大リトライ回数
- * @param {number} options.interval リトライ間隔(ms)
+ * @param {boolean} options.useEscalation エスカレーション使用（デフォルト: true）
  * @param {string} options.actionName アクション名（ログ用）
  * @param {Object} options.context コンテキスト情報
  */
 async function executeSimpleRetry({
   action,
   isSuccess,
-  maxRetries = BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_COUNT || 20,
-  interval = BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_INTERVAL || 500,
+  maxRetries = ESCALATION_CONFIG.MAX_RETRIES,
+  useEscalation = true,
   actionName = "",
   context = {},
 }) {
-  let retryCount = 0;
   let lastResult = null;
   let lastError = null;
 
-  while (retryCount < maxRetries) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      if (retryCount === maxRetries - 1) {
+      const escalationLevel = useEscalation
+        ? determineEscalationLevel(attempt)
+        : "LIGHTWEIGHT";
+
+      if (attempt === 1 || attempt === maxRetries) {
         log.debug(
-          `[3-4] [Retry] ${actionName} 最終試行 ${retryCount}/${maxRetries}`,
+          `[3-4] [Retry] ${actionName} 試行 ${attempt}/${maxRetries} [${escalationLevel}]`,
         );
       }
+
       lastResult = await action();
       if (isSuccess(lastResult)) {
-        // 成功時は詳細ログ不要
-        return { success: true, result: lastResult, retryCount };
+        return { success: true, result: lastResult, retryCount: attempt - 1 };
       }
     } catch (error) {
       lastError = error;
-      if (retryCount === maxRetries - 1) {
-        log.error(`[3-4] [Retry] ${actionName} 失敗: ${error.message}`);
+      if (attempt === maxRetries) {
+        log.error(
+          `[3-4] [Retry] ${actionName} 失敗 (${attempt}回試行): ${error.message}`,
+        );
       }
     }
-    retryCount++;
-    if (retryCount >= maxRetries) {
+
+    if (attempt >= maxRetries) {
       return {
         success: false,
         result: lastResult,
         error: lastError,
-        retryCount,
+        retryCount: attempt - 1,
       };
     }
-    if (interval > 0) {
-      await new Promise((resolve) => setTimeout(resolve, interval));
+
+    // 段階的エスカレーション遅延
+    if (useEscalation) {
+      const escalationLevel = determineEscalationLevel(attempt + 1);
+      const waitTime = calculateEscalationDelay(attempt + 1, escalationLevel);
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+    } else {
+      // エスカレーション無効時は固定間隔
+      await new Promise((resolve) =>
+        setTimeout(resolve, BATCH_PROCESSING_CONFIG.ELEMENT_RETRY_INTERVAL),
+      );
     }
   }
   return { success: false, result: lastResult, error: lastError, retryCount };
@@ -2015,22 +2073,25 @@ class SafeMessenger {
       sendMessageExists: !!chrome?.tabs?.sendMessage,
     });
 
-    // リトライ設定
-    const maxRetries = 3;
+    // リトライ設定（段階的エスカレーション）
+    const maxRetries = ESCALATION_CONFIG.MAX_RETRIES;
     let lastError = null;
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        const escalationLevel = determineEscalationLevel(attempt);
+
         // 🔍 [DEBUG] chrome.tabs.sendMessage実行前ログ
-        log.debug(
-          "[3-4] 🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行前:",
-          {
-            tabId: tabId,
-            message: message,
-            attempt: attempt + 1,
-            maxRetries: maxRetries,
-          },
-        );
+        if (attempt === 1 || attempt === maxRetries) {
+          log.debug(
+            `[3-4] 🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行: ${attempt}/${maxRetries} [${escalationLevel}]`,
+            {
+              tabId: tabId,
+              messageAction: message.action,
+              attempt: attempt,
+            },
+          );
+        }
 
         const response = await Promise.race([
           chrome.tabs.sendMessage(tabId, message),
@@ -2043,23 +2104,20 @@ class SafeMessenger {
         ]);
 
         // 🔍 [DEBUG] レスポンス受信ログ
-        log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
-          tabId: tabId,
-          responseReceived: !!response,
-          responseType: typeof response,
-          responseKeys: response ? Object.keys(response) : null,
-          responseSuccess: response?.success,
-          hasResponseData: !!response?.data,
-          responseAction: response?.action,
-          attempt: attempt + 1,
-        });
+        if (attempt > 1) {
+          log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
+            tabId: tabId,
+            responseSuccess: response?.success,
+            attempt: attempt,
+          });
+        }
 
         return {
           success: true,
           data: response,
           tabId: tabId,
           timestamp: Date.now(),
-          retryCount: attempt,
+          retryCount: attempt - 1,
         };
       } catch (error) {
         lastError = error;
@@ -2069,20 +2127,31 @@ class SafeMessenger {
         if (
           (errorMessage.includes("Could not establish connection") ||
             errorMessage.includes("Receiving end does not exist")) &&
-          attempt < maxRetries - 1
+          attempt < maxRetries
         ) {
+          const escalationLevel = determineEscalationLevel(attempt + 1);
+          const waitTime = calculateEscalationDelay(
+            attempt + 1,
+            escalationLevel,
+          );
+          const waitTimeDisplay =
+            waitTime >= 60000
+              ? `${(waitTime / 60000).toFixed(1)}分`
+              : `${(waitTime / 1000).toFixed(1)}秒`;
+
           log.debug(
-            `[3-4] 🔁 [SafeMessenger] 接続エラー、リトライ ${attempt + 1}/${maxRetries}`,
+            `[3-4] 🔁 [SafeMessenger] 接続エラー、${waitTimeDisplay}後にリトライ ${attempt + 1}/${maxRetries} [${escalationLevel}]`,
           );
-          // 指数バックオフ
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 5000)),
-          );
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
           continue;
         }
 
         // その他のエラーまたは最終リトライ
-        log.debug(`[3-4] [SafeMessenger] エラー: ${errorMessage}`);
+        if (attempt === maxRetries) {
+          log.error(
+            `[3-4] [SafeMessenger] エラー (${maxRetries}回試行): ${errorMessage}`,
+          );
+        }
         // 🔍 [DEBUG] エラー詳細ログ
         log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
           tabId: tabId,
@@ -6059,12 +6128,7 @@ if (!window.SimpleSheetsClient) {
      * スプレッドシートから値を取得（レート制限対策付き）
      */
     async getValues(spreadsheetId, range, retryCount = 0) {
-      const maxRetries = 10;
-      // 待機時間（ミリ秒）: 10秒→30秒→1分→3分→5分→10分→15分→30分→45分→60分
-      const retryDelays = [
-        10000, 30000, 60000, 180000, 300000, 600000, 900000, 1800000, 2700000,
-        3600000,
-      ];
+      const maxRetries = ESCALATION_CONFIG.MAX_RETRIES;
 
       // レート制限対策：最小間隔を設ける
       if (this.lastApiCallTime) {
@@ -6090,29 +6154,47 @@ if (!window.SimpleSheetsClient) {
         if (!response.ok) {
           const errorText = await response.text();
 
-          // レート制限エラーの場合、exponential backoffでリトライ
-          if (response.status === 429) {
-            ExecuteLogger.warn(
-              `⚠️ API レート制限エラー検出。3秒後にリトライします: ${range}`,
+          // レート制限エラーの場合、段階的エスカレーションでリトライ
+          if (response.status === 429 && retryCount < maxRetries) {
+            const escalationLevel = determineEscalationLevel(retryCount + 1);
+            const waitTime = calculateEscalationDelay(
+              retryCount + 1,
+              escalationLevel,
             );
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-            return await this.getValues(spreadsheetId, range, retryCount); // リトライ
+            const waitTimeDisplay =
+              waitTime >= 60000
+                ? `${(waitTime / 60000).toFixed(1)}分`
+                : `${(waitTime / 1000).toFixed(1)}秒`;
+
+            ExecuteLogger.warn(
+              `⚠️ API レート制限エラー検出。${waitTimeDisplay}後にリトライ [${escalationLevel}]: ${range}`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+            return await this.getValues(spreadsheetId, range, retryCount + 1);
           }
 
-          // サーバーエラー（500/502/503）の場合、リトライ
+          // サーバーエラー（500/502/503）の場合、段階的エスカレーションでリトライ
           if (
             (response.status === 500 ||
               response.status === 502 ||
               response.status === 503) &&
             retryCount < maxRetries
           ) {
-            const waitTime =
-              retryDelays[Math.min(retryCount, retryDelays.length - 1)];
+            const escalationLevel = determineEscalationLevel(retryCount + 1);
+            const waitTime = calculateEscalationDelay(
+              retryCount + 1,
+              escalationLevel,
+            );
+            const waitTimeDisplay =
+              waitTime >= 60000
+                ? `${(waitTime / 60000).toFixed(1)}分`
+                : `${(waitTime / 1000).toFixed(1)}秒`;
+
             ExecuteLogger.warn(
-              `⚠️ API サーバーエラー検出 (${response.status})。${waitTime / 1000}秒後にリトライします (${retryCount + 1}/${maxRetries}): ${range}`,
+              `⚠️ API サーバーエラー検出 (${response.status})。${waitTimeDisplay}後にリトライ (${retryCount + 1}/${maxRetries}) [${escalationLevel}]: ${range}`,
             );
             await new Promise((resolve) => setTimeout(resolve, waitTime));
-            return await this.getValues(spreadsheetId, range, retryCount + 1); // リトライ
+            return await this.getValues(spreadsheetId, range, retryCount + 1);
           }
 
           throw new Error(
@@ -6123,7 +6205,12 @@ if (!window.SimpleSheetsClient) {
         const data = await response.json();
         return data.values || [];
       } catch (error) {
-        ExecuteLogger.error(`❌ getValues失敗: ${range}`, error);
+        if (retryCount >= maxRetries) {
+          ExecuteLogger.error(
+            `❌ getValues失敗 (${maxRetries}回試行): ${range}`,
+            error,
+          );
+        }
         throw error;
       }
     }
@@ -6150,12 +6237,7 @@ if (!window.SimpleSheetsClient) {
      * スプレッドシートに値を書き込み（単一セル）
      */
     async updateValue(spreadsheetId, range, value, retryCount = 0) {
-      const maxRetries = 10;
-      // 待機時間（ミリ秒）: 10秒→30秒→1分→3分→5分→10分→15分→30分→45分→60分
-      const retryDelays = [
-        10000, 30000, 60000, 180000, 300000, 600000, 900000, 1800000, 2700000,
-        3600000,
-      ];
+      const maxRetries = ESCALATION_CONFIG.MAX_RETRIES;
 
       // レート制限対策：最小間隔を設ける
       if (this.lastApiCallTime) {
@@ -6186,31 +6268,20 @@ if (!window.SimpleSheetsClient) {
         if (!response.ok) {
           const errorText = await response.text();
 
-          // レート制限エラーの場合、exponential backoffでリトライ
-          if (response.status === 429) {
-            ExecuteLogger.warn(
-              `⚠️ API レート制限エラー検出。3秒後にリトライします: ${range}`,
+          // レート制限エラーの場合、段階的エスカレーションでリトライ
+          if (response.status === 429 && retryCount < maxRetries) {
+            const escalationLevel = determineEscalationLevel(retryCount + 1);
+            const waitTime = calculateEscalationDelay(
+              retryCount + 1,
+              escalationLevel,
             );
-            await new Promise((resolve) => setTimeout(resolve, 3000));
-            return await this.updateValue(
-              spreadsheetId,
-              range,
-              value,
-              retryCount,
-            ); // リトライ
-          }
+            const waitTimeDisplay =
+              waitTime >= 60000
+                ? `${(waitTime / 60000).toFixed(1)}分`
+                : `${(waitTime / 1000).toFixed(1)}秒`;
 
-          // サーバーエラー（500/502/503）の場合、リトライ
-          if (
-            (response.status === 500 ||
-              response.status === 502 ||
-              response.status === 503) &&
-            retryCount < maxRetries
-          ) {
-            const waitTime =
-              retryDelays[Math.min(retryCount, retryDelays.length - 1)];
             ExecuteLogger.warn(
-              `⚠️ API サーバーエラー検出 (${response.status})。${waitTime / 1000}秒後にリトライします (${retryCount + 1}/${maxRetries}): ${range}`,
+              `⚠️ API レート制限エラー検出。${waitTimeDisplay}後にリトライ [${escalationLevel}]: ${range}`,
             );
             await new Promise((resolve) => setTimeout(resolve, waitTime));
             return await this.updateValue(
@@ -6218,7 +6289,36 @@ if (!window.SimpleSheetsClient) {
               range,
               value,
               retryCount + 1,
-            ); // リトライ
+            );
+          }
+
+          // サーバーエラー（500/502/503）の場合、段階的エスカレーションでリトライ
+          if (
+            (response.status === 500 ||
+              response.status === 502 ||
+              response.status === 503) &&
+            retryCount < maxRetries
+          ) {
+            const escalationLevel = determineEscalationLevel(retryCount + 1);
+            const waitTime = calculateEscalationDelay(
+              retryCount + 1,
+              escalationLevel,
+            );
+            const waitTimeDisplay =
+              waitTime >= 60000
+                ? `${(waitTime / 60000).toFixed(1)}分`
+                : `${(waitTime / 1000).toFixed(1)}秒`;
+
+            ExecuteLogger.warn(
+              `⚠️ API サーバーエラー検出 (${response.status})。${waitTimeDisplay}後にリトライ (${retryCount + 1}/${maxRetries}) [${escalationLevel}]: ${range}`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+            return await this.updateValue(
+              spreadsheetId,
+              range,
+              value,
+              retryCount + 1,
+            );
           }
 
           throw new Error(
@@ -9591,55 +9691,157 @@ async function executeStep3(taskList) {
           }
         }
 
-        // 失敗がある場合は処理を停止
+        // 失敗がある場合はリトライまたはログ記録
         if (failCount > 0) {
-          ExecuteLogger.error(
-            `🛑 [step4-execute.js] バッチ${batchIndex + 1}で${failCount}個のタスクが失敗したため、処理を停止します`,
+          ExecuteLogger.warn(
+            `⚠️ [step4-execute.js] バッチ${batchIndex + 1}で${failCount}個のタスクが失敗しました - リトライを開始`,
           );
 
-          // 失敗したタスクの詳細ログ記録
-          ExecuteLogger.error(`📋 [step4-execute.js] 失敗したタスクの詳細:`, {
-            batchIndex: batchIndex + 1,
-            failCount: failCount,
-            failedTasks: failedTasks,
-            timestamp: new Date().toISOString(),
-          });
+          // 段階的エスカレーション設定（WindowLifecycleManagerと同じ）
+          const escalationLevels = {
+            LIGHTWEIGHT: {
+              range: [1, 5],
+              delays: [1000, 2000, 5000, 10000, 15000], // 1秒→2秒→5秒→10秒→15秒
+            },
+            MODERATE: {
+              range: [6, 8],
+              delays: [30000, 60000, 120000], // 30秒→1分→2分
+            },
+            HEAVY_RESET: {
+              range: [9, 20],
+              delays: [300000, 900000, 1800000, 3600000, 7200000], // 5分→15分→30分→1時間→2時間
+            },
+          };
 
-          // 個別の失敗タスクも詳細ログ出力
-          failedTasks.forEach((failedTask, failIndex) => {
-            ExecuteLogger.error(
-              `❌ [失敗タスク ${failIndex + 1}/${failCount}]`,
-              {
-                taskId: failedTask.taskId,
-                aiType: failedTask.aiType,
-                position: `${failedTask.column}${failedTask.row}`,
-                error: failedTask.error,
-                batchIndex: batchIndex + 1,
-                taskIndex: failedTask.taskIndex,
-              },
+          const determineEscalationLevel = (retryCount) => {
+            for (const [levelName, config] of Object.entries(
+              escalationLevels,
+            )) {
+              if (
+                retryCount >= config.range[0] &&
+                retryCount <= config.range[1]
+              ) {
+                return levelName;
+              }
+            }
+            return "HEAVY_RESET";
+          };
+
+          const calculateEscalationDelay = (retryCount, escalationLevel) => {
+            const config = escalationLevels[escalationLevel];
+            if (!config) return 5000;
+            const indexInLevel = retryCount - config.range[0];
+            const delayIndex = Math.min(indexInLevel, config.delays.length - 1);
+            return config.delays[delayIndex];
+          };
+
+          // 失敗タスクをリトライ
+          let retriedTasks = [...failedTasks];
+          const maxRetries = BATCH_PROCESSING_CONFIG.TASK_RETRY_COUNT || 20;
+
+          for (
+            let retryAttempt = 1;
+            retryAttempt <= maxRetries;
+            retryAttempt++
+          ) {
+            if (retriedTasks.length === 0) break;
+
+            const escalationLevel = determineEscalationLevel(retryAttempt);
+            const waitTime = calculateEscalationDelay(
+              retryAttempt,
+              escalationLevel,
             );
-          });
+            const waitTimeDisplay =
+              waitTime >= 60000
+                ? `${(waitTime / 60000).toFixed(1)}分`
+                : `${(waitTime / 1000).toFixed(1)}秒`;
 
-          // 失敗時でも作業中マーカーをクリア
-          ExecuteLogger.info(
-            `🧹 [step4-execute.js] 失敗時の緊急マーカークリア開始（バッチ${batchIndex + 1}）`,
-          );
+            ExecuteLogger.info(
+              `🔄 [リトライ ${retryAttempt}/${maxRetries}] [${escalationLevel}] ${retriedTasks.length}個のタスクを${waitTimeDisplay}後に再試行`,
+            );
 
-          for (const task of validBatchTasks) {
-            try {
-              await statusManager.clearMarker(task);
-              ExecuteLogger.debug(
-                `🧹 [緊急クリア] マーカークリア完了: ${task.column}${task.row}`,
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+
+            // 失敗したタスクのみを再実行
+            const retryPromises = retriedTasks.map((failedTask) => {
+              const task = validBatchTasks[failedTask.taskIndex];
+              return executeAITask(task, `retry_${retryAttempt}_${task.id}`);
+            });
+
+            const retryResults = await Promise.allSettled(retryPromises);
+
+            // リトライ結果を評価
+            const stillFailed = [];
+            retryResults.forEach((pr, index) => {
+              const failedTask = retriedTasks[index];
+              const task = validBatchTasks[failedTask.taskIndex];
+
+              if (pr.status === "fulfilled" && pr.value?.success) {
+                ExecuteLogger.info(
+                  `✅ [リトライ成功] ${task.column}${task.row}: ${task.aiType}`,
+                );
+                // 成功した結果をresultsに追加
+                results[failedTask.taskIndex] = pr.value;
+              } else {
+                stillFailed.push(failedTask);
+                ExecuteLogger.warn(
+                  `❌ [リトライ失敗] ${task.column}${task.row}: ${pr.reason?.message || pr.value?.error || "不明"}`,
+                );
+              }
+            });
+
+            retriedTasks = stillFailed;
+
+            if (retriedTasks.length === 0) {
+              ExecuteLogger.info(
+                `🎉 [リトライ完了] 全ての失敗タスクが成功しました (試行回数: ${retryAttempt})`,
               );
-            } catch (clearError) {
-              ExecuteLogger.error(
-                `❌ [緊急クリア] マーカークリアエラー: ${task.column}${task.row}`,
-                clearError,
-              );
+              break;
             }
           }
 
-          break;
+          // 最終的に失敗したタスクの処理
+          if (retriedTasks.length > 0) {
+            ExecuteLogger.error(
+              `❌ [最終失敗] ${retriedTasks.length}個のタスクが${maxRetries}回のリトライ後も失敗`,
+            );
+
+            retriedTasks.forEach((failedTask) => {
+              const task = validBatchTasks[failedTask.taskIndex];
+              if (task) {
+                ExecuteLogger.error(
+                  `❌ [最終失敗タスク] ${task.column}${task.row}`,
+                  {
+                    taskId: failedTask.taskId,
+                    aiType: failedTask.aiType,
+                    error: failedTask.error,
+                  },
+                );
+              }
+            });
+
+            // 失敗タスクのマーカーをクリア（次回実行時に再試行可能にする）
+            for (const failedTask of retriedTasks) {
+              const task = validBatchTasks[failedTask.taskIndex];
+              if (task) {
+                try {
+                  await statusManager.clearMarker(task);
+                  ExecuteLogger.debug(
+                    `🧹 [クリア] マーカークリア完了: ${task.column}${task.row}`,
+                  );
+                } catch (clearError) {
+                  ExecuteLogger.error(
+                    `❌ [クリア] マーカークリアエラー: ${task.column}${task.row}`,
+                    clearError,
+                  );
+                }
+              }
+            }
+          }
+
+          ExecuteLogger.info(
+            `➡️ [step4-execute.js] リトライ処理完了 - 次のバッチに進みます`,
+          );
         }
 
         // 処理済みカウントを更新
