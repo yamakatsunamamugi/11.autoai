@@ -1840,22 +1840,37 @@ const log = {
         throw waitError;
       }
 
-      // 【Step 4-8】テキスト取得
+      // 【Step 4-8】テキスト取得（GeminiRetryManager統合）
       log.info("【Step 4-8】テキスト取得");
       let content;
-      try {
-        content = await getResponseTextGemini();
-      } catch (getTextError) {
+
+      const textRetryManager = new GeminiRetryManager();
+      const textResult = await textRetryManager.executeWithRetry(
+        async () => {
+          return await getResponseTextGemini();
+        },
+        "Gemini回答テキスト取得",
+        { feature: featureName },
+      );
+
+      if (textResult.success) {
+        content = textResult.result;
+        log.info(`✅ 【Step 4-8】テキスト取得成功`);
+      } else {
         // 部分的な結果の場合はエラーを許容
         if (isPartialResult) {
           log.warn(
-            `⚠️ 【Step 4-8】部分的な結果の取得を試みます:`,
-            getTextError,
+            `⚠️ 【Step 4-8】20回リトライしましたが失敗。部分的な結果として処理します`,
           );
           content = "[タイムアウトによる部分的な応答]";
         } else {
-          log.error(`❌ 【Step 4-8】テキスト取得エラー:`, getTextError);
-          throw getTextError;
+          log.error(
+            `❌ 【Step 4-8】20回リトライしましたが、テキスト取得に失敗しました`,
+          );
+          throw new Error(
+            textResult.error ||
+              "Geminiの回答が見つかりません（20回リトライ後）",
+          );
         }
       }
 

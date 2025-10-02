@@ -5371,9 +5371,28 @@ class WindowLifecycleManager {
   constructor() {
     this.registeredWindows = new Map(); // aiType -> windowInfo
     this.sheetsClient = null;
-    this.maxRetries = 3;
-    this.retryDelay = 1000;
-    ExecuteLogger.info("🔄 WindowLifecycleManager初期化");
+    this.maxRetries = 20; // 3 → 20回に変更
+
+    // 段階的エスカレーション遅延設定（GeminiRetryManagerと統一）
+    this.escalationLevels = {
+      LIGHTWEIGHT: {
+        range: [1, 5],
+        delays: [1000, 2000, 5000, 10000, 15000], // 1秒→2秒→5秒→10秒→15秒
+      },
+      MODERATE: {
+        range: [6, 8],
+        delays: [30000, 60000, 120000], // 30秒→1分→2分
+      },
+      HEAVY_RESET: {
+        range: [9, 20],
+        delays: [300000, 900000, 1800000, 3600000, 7200000], // 5分→15分→30分→1時間→2時間
+      },
+    };
+
+    ExecuteLogger.info("🔄 WindowLifecycleManager初期化", {
+      maxRetries: this.maxRetries,
+      escalationEnabled: true,
+    });
   }
 
   /**
@@ -5755,22 +5774,47 @@ class WindowLifecycleManager {
   }
 
   /**
-   * リトライ機能付きタスク実行
+   * エスカレーションレベルを決定
+   */
+  determineEscalationLevel(retryCount) {
+    for (const [levelName, config] of Object.entries(this.escalationLevels)) {
+      if (retryCount >= config.range[0] && retryCount <= config.range[1]) {
+        return levelName;
+      }
+    }
+    return "HEAVY_RESET"; // デフォルト
+  }
+
+  /**
+   * 段階的遅延を計算
+   */
+  calculateEscalationDelay(retryCount, escalationLevel) {
+    const config = this.escalationLevels[escalationLevel];
+    if (!config) return 5000; // デフォルト5秒
+
+    const indexInLevel = retryCount - config.range[0];
+    const delayIndex = Math.min(indexInLevel, config.delays.length - 1);
+    return config.delays[delayIndex];
+  }
+
+  /**
+   * リトライ機能付きタスク実行（段階的エスカレーション対応）
    */
   async executeWithRetry(taskFunction, task, description) {
     let lastError = null;
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
+        const escalationLevel = this.determineEscalationLevel(attempt);
         ExecuteLogger.info(
-          `🔄 [WindowLifecycleManager] 実行試行 ${attempt}/${this.maxRetries}: ${description}`,
+          `🔄 [WindowLifecycleManager] 実行試行 ${attempt}/${this.maxRetries} [${escalationLevel}]: ${description}`,
         );
 
         const result = await taskFunction();
 
         if (result?.success) {
           ExecuteLogger.info(
-            `✅ [WindowLifecycleManager] 実行成功: ${description}`,
+            `✅ [WindowLifecycleManager] 実行成功 (${attempt}回目): ${description}`,
           );
           return result;
         } else {
@@ -5813,9 +5857,15 @@ class WindowLifecycleManager {
         );
 
         if (attempt < this.maxRetries) {
-          const waitTime = this.retryDelay * attempt;
+          const escalationLevel = this.determineEscalationLevel(attempt + 1);
+          const waitTime = this.calculateEscalationDelay(
+            attempt + 1,
+            escalationLevel,
+          );
+          const waitTimeMin = (waitTime / 60000).toFixed(1);
+
           ExecuteLogger.info(
-            `⏳ [WindowLifecycleManager] ${waitTime}ms待機後リトライ`,
+            `⏳ [WindowLifecycleManager] ${waitTimeMin}分待機後リトライ [次回: ${escalationLevel}]`,
           );
           await new Promise((resolve) => setTimeout(resolve, waitTime));
         }
@@ -5823,10 +5873,9 @@ class WindowLifecycleManager {
     }
 
     ExecuteLogger.warn(
-      `⚠️ [WindowLifecycleManager] リトライ後も失敗（エラーはスプレッドシートに記録しません）: ${description}`,
+      `⚠️ [WindowLifecycleManager] ${this.maxRetries}回リトライ後も失敗: ${description}`,
       lastError,
     );
-    // エラーを返すが、スプレッドシートには書き込まれない（writeErrorToSpreadsheetが無効化されているため）
     return { success: false, error: lastError?.message || "実行失敗" };
   }
 
@@ -10723,191 +10772,6 @@ async function readFullSpreadsheet() {
     return data.values;
   } catch (error) {
     log.error("[Helper] スプレッドシート全体データ取得エラー:", error);
-    throw error;
-  }
-}
-
-async function createTaskList(taskGroup, isFirstRun = false) {
-  log.info("[Helper] タスクリスト作成開始:", {
-    グループ番号: taskGroup?.groupNumber,
-    グループタイプ: taskGroup?.groupType,
-    列情報: taskGroup?.columns,
-    dataStartRow: taskGroup?.dataStartRow,
-    初回実行: isFirstRun
-      ? "はい（作業中マーカー削除あり）"
-      : "いいえ（通常処理）",
-  });
-
-  // ログバッファを初期化
-  const logBuffer = [];
-  const addLog = (message, data) => {
-    if (data) {
-      logBuffer.push(`${message}: ${JSON.stringify(data)}`);
-    } else {
-      logBuffer.push(message);
-    }
-  };
-
-  try {
-    // Step3TaskList利用可能性の詳細チェック
-
-    // step3-tasklist.jsのgenerateTaskList関数を利用
-    if (!window.Step3TaskList || !window.Step3TaskList.generateTaskList) {
-      throw new Error("Step3TaskList.generateTaskListが利用できません");
-    }
-
-    // 重要：Step3が期待する実際のスプレッドシートデータ（2次元配列）を取得
-    log.info("[Helper] スプレッドシート全体データを取得中...");
-    const spreadsheetData = await readFullSpreadsheet();
-
-    if (!spreadsheetData || spreadsheetData.length === 0) {
-      log.warn(
-        "[Helper] スプレッドシートデータが空のため、タスク生成をスキップ",
-      );
-      return [];
-    }
-
-    const specialRows = {
-      menuRow: window.globalState.setupResult?.menuRow || 3,
-      aiRow: window.globalState.setupResult?.aiRow || 5,
-      modelRow: window.globalState.setupResult?.modelRow || 6,
-      functionRow: window.globalState.setupResult?.functionRow || 7,
-    };
-
-    // taskGroupから直接dataStartRowを取得（統一構造）
-    const dataStartRow =
-      taskGroup?.dataStartRow ||
-      window.globalState.setupResult?.dataStartRow ||
-      9;
-
-    const options = {
-      batchSize: 3,
-      forceReprocess: false,
-      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${window.globalState.spreadsheetId}/edit#gid=${window.globalState.gid}`,
-    };
-
-    // Step 5-3-前処理: 制御情報の取得と適用
-    log.info(
-      "[createTaskList] [Step 5-3-前処理] 行制御・列制御情報を取得中...",
-    );
-
-    let rowControls = [];
-    let columnControls = [];
-
-    try {
-      // Step 5-3-1: 行制御をチェック
-      rowControls = window.Step3TaskList.getRowControl(spreadsheetData);
-
-      // 🔧 [OFFSET-FIX] createTaskList用のdataStartRowオフセット適用
-      // 注意：spreadsheetDataは全体データなので、dataStartRowオフセットは不要
-      // rowControlsは既に正しい行番号を持っている
-
-      log.info("[createTaskList] [Step 5-3-1] 行制御情報取得完了:", {
-        制御数: rowControls.length,
-        詳細: rowControls.map((c) => `${c.type}制御: ${c.row}行目`),
-        備考: "全体データからの行制御取得（オフセット不要）",
-      });
-
-      // Step 5-3-2: 列制御の再チェック（タスクグループ作成後の追加フィルタ）
-      const columnControlRow =
-        window.globalState.setupResult?.columnControlRow || 4;
-      columnControls = window.Step3TaskList.getColumnControl(
-        spreadsheetData,
-        columnControlRow,
-      );
-      log.info("[createTaskList] [Step 5-3-2] 列制御情報取得完了:", {
-        制御数: columnControls.length,
-        制御行: columnControlRow,
-        詳細: columnControls.map((c) => `${c.type}制御: ${c.column}列`),
-      });
-    } catch (error) {
-      log.error("[createTaskList] [Step 5-3-前処理] 制御情報取得エラー:", {
-        エラーメッセージ: error.message,
-        スタック: error.stack,
-      });
-      // エラーが発生しても処理を継続
-    }
-
-    // Step 5-3-3: 列制御チェック（タスクグループレベルでの追加フィルタリング）
-    if (columnControls.length > 0) {
-      log.info("[createTaskList] [Step 5-3-3] 列制御チェック実行中...");
-
-      if (
-        !window.Step3TaskList.shouldProcessColumn(taskGroup, columnControls)
-      ) {
-        log.info("[createTaskList] [Step 5-3-3] タスクグループ除外:", {
-          グループ番号: taskGroup.groupNumber,
-          理由: "列制御により除外（この列から処理/この列の処理後に停止/この列のみ処理）",
-          グループ列: taskGroup?.columns?.prompts,
-          列制御: columnControls.map((c) => `${c.type}:${c.column}`),
-        });
-        return []; // このタスクグループは処理しない
-      } else {
-        log.info("[createTaskList] [Step 5-3-3] タスクグループ通過:", {
-          グループ番号: taskGroup.groupNumber,
-          理由: "列制御を通過",
-        });
-      }
-    } else {
-      log.info(
-        "[createTaskList] [Step 5-3-前処理] 列制御なし - 全てのタスクグループを処理",
-      );
-    }
-
-    // 拡張オプションに制御情報を追加
-    const extendedOptions = {
-      ...options,
-      rowControls: rowControls,
-      columnControls: columnControls,
-      applyRowControl: true,
-      applyColumnControl: true,
-      isFirstRun: isFirstRun, // 初回実行フラグを追加
-    };
-
-    // DEBUG: Step3に渡すパラメータ
-
-    // ログバッファを一つのログとして出力
-    // log.info(`[Step5-Loop] [統合ログ]\n${logBuffer.join("\n")}`);
-
-    // generateTaskList内でaddLogが使われているため、グローバルに定義
-    if (typeof window.addLog === "undefined") {
-      window.addLog = (message, data) => {
-        if (data) {
-          log.info(`[Step3-TaskList] ${message}:`, data);
-        } else {
-          log.info(`[Step3-TaskList] ${message}`);
-        }
-      };
-    }
-
-    // タスクリスト生成を実行（制御情報付き）
-    const tasks = await window.Step3TaskList.generateTaskList(
-      taskGroup,
-      spreadsheetData, // 修正：実際の2次元配列データを渡す
-      specialRows,
-      dataStartRow,
-      extendedOptions, // 制御情報を含む拡張オプション
-    );
-
-    log.info(`[Helper] タスクリスト作成完了: ${tasks.length}件のタスク`);
-    if (tasks.length > 0) {
-      log.info("[Helper] 生成されたタスクサンプル:", tasks.slice(0, 2));
-    } else {
-      log.warn(
-        "[Helper] ⚠️ 0件のタスクが生成されました。以下を確認してください:",
-      );
-      log.warn("  - taskGroup.columns.prompts:", taskGroup?.columns?.prompts);
-      log.warn("  - プロンプトデータの存在確認が必要");
-    }
-
-    return tasks;
-  } catch (error) {
-    log.error("[Helper] タスクリスト作成エラー:", {
-      エラーメッセージ: error.message,
-      スタック: error.stack,
-      taskGroup: taskGroup,
-      "window.Step3TaskList": !!window.Step3TaskList,
-    });
     throw error;
   }
 }
