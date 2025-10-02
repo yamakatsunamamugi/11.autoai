@@ -29,6 +29,9 @@
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
+// グループ最大行数定義（全箇所で統一使用）
+const GROUP_MAX_ROWS = 1000;
+
 // バッチ処理改善設定（個別完了処理を有効化）
 const BATCH_PROCESSING_CONFIG = {
   ENABLE_ASYNC_BATCH: true, // 非同期バッチ処理を有効化
@@ -61,6 +64,15 @@ const BATCH_PROCESSING_CONFIG = {
   // === タスク失敗時のリトライ設定 ===
   TASK_RETRY_COUNT: 20, // タスク失敗時の最大リトライ回数: 20回
   TASK_RETRY_INTERVAL: 5000, // タスクリトライ間隔: 5秒
+};
+
+// ========================================
+// スプレッドシート範囲設定
+// ========================================
+const SPREADSHEET_RANGE_CONFIG = {
+  MAX_COLUMN: "ZZ", // 最大列（A-ZZまで対応）
+  MAX_ROW: 10000, // スプレッドシート全体の最大行数
+  GROUP_MAX_ROWS: 1000, // 各タスクグループあたりの最大行数
 };
 
 // ========================================
@@ -441,6 +453,17 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
     fulfilled: results.filter((r) => r.status === "fulfilled").length,
     rejected: results.filter((r) => r.status === "rejected").length,
   });
+
+  // Wake Lock解放（全タスク完了時）
+  if (window.releaseSleep && typeof window.releaseSleep === "function") {
+    try {
+      log.info("[3-0] 🔓 [非同期バッチ処理] Wake Lock解放を実行");
+      await window.releaseSleep();
+      log.info("[3-0] ✅ [非同期バッチ処理] Wake Lock解放完了");
+    } catch (error) {
+      log.error("[3-0] ❌ [非同期バッチ処理] Wake Lock解放エラー:", error);
+    }
+  }
 
   return results;
 }
@@ -1436,6 +1459,25 @@ async function checkAndHandleGroupCompletion(taskIndex) {
         log.info(
           `[3-4] 🎉 [GROUP-TRANSITION] 全グループ完了 - 処理終了[${taskIndex}]`,
         );
+
+        // Wake Lock解放（全グループ完了時）
+        if (window.releaseSleep && typeof window.releaseSleep === "function") {
+          try {
+            log.info(
+              `[3-4] 🔓 [GROUP-TRANSITION] Wake Lock解放を実行[${taskIndex}]`,
+            );
+            await window.releaseSleep();
+            log.info(
+              `[3-4] ✅ [GROUP-TRANSITION] Wake Lock解放完了[${taskIndex}]`,
+            );
+          } catch (error) {
+            log.error(
+              `[3-4] ❌ [GROUP-TRANSITION] Wake Lock解放エラー[${taskIndex}]:`,
+              error,
+            );
+          }
+        }
+
         return;
       }
 
@@ -1533,6 +1575,24 @@ async function transitionToNextGroup(completedGroup, taskIndex) {
         log.info(
           `[3-4] 🏁 [GROUP-TRANSITION] 全てのグループ完了[${taskIndex}] - 処理終了`,
         );
+
+        // Wake Lock解放（全グループ完了時）
+        if (window.releaseSleep && typeof window.releaseSleep === "function") {
+          try {
+            log.info(
+              `[3-4] 🔓 [GROUP-TRANSITION] Wake Lock解放を実行[${taskIndex}]`,
+            );
+            await window.releaseSleep();
+            log.info(
+              `[3-4] ✅ [GROUP-TRANSITION] Wake Lock解放完了[${taskIndex}]`,
+            );
+          } catch (error) {
+            log.error(
+              `[3-4] ❌ [GROUP-TRANSITION] Wake Lock解放エラー[${taskIndex}]:`,
+              error,
+            );
+          }
+        }
       }
     } else {
       log.error(
@@ -1584,6 +1644,24 @@ async function transitionToNextGroupFallback(taskIndex) {
         log.info(
           `[3-4] 🏁 [GROUP-TRANSITION] フォールバック: 全グループ完了[${taskIndex}]`,
         );
+
+        // Wake Lock解放（全グループ完了時）
+        if (window.releaseSleep && typeof window.releaseSleep === "function") {
+          try {
+            log.info(
+              `[3-4] 🔓 [GROUP-TRANSITION] フォールバック: Wake Lock解放を実行[${taskIndex}]`,
+            );
+            await window.releaseSleep();
+            log.info(
+              `[3-4] ✅ [GROUP-TRANSITION] フォールバック: Wake Lock解放完了[${taskIndex}]`,
+            );
+          } catch (error) {
+            log.error(
+              `[3-4] ❌ [GROUP-TRANSITION] フォールバック: Wake Lock解放エラー[${taskIndex}]:`,
+              error,
+            );
+          }
+        }
       }
     } else {
       log.warn(`[3-4] ⚠️ [GROUP-TRANSITION] step6機能も利用不可[${taskIndex}]`);
@@ -3419,7 +3497,7 @@ async function generateTaskList(
           const sheetName =
             window.globalState?.sheetName ||
             `シート${window.globalState?.gid || "0"}`;
-          const range = `'${sheetName}'!A1:ZZ1000`; // 十分な範囲を指定
+          const range = `'${sheetName}'!A1:ZZ${GROUP_MAX_ROWS}`;
           const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${options.spreadsheetId}/values/${encodeURIComponent(range)}`;
 
           try {
@@ -3582,13 +3660,6 @@ async function generateTaskList(
               cellValuePreview: cellValue.substring(0, 50) + "...",
               group: taskGroup.groupNumber,
               groupType: taskGroup.groupType,
-            });
-            // 🔍 スキップ時の詳細ログ（冒頭10文字表示）
-            log.info(`⏭️ [行${row + 1}] 回答済みスキップ:`, {
-              行: row + 1,
-              列: col,
-              冒頭10文字: cellValue.substring(0, 10),
-              文字数: cellValue.length,
             });
             break;
           } else {
@@ -4748,56 +4819,25 @@ class WindowController {
     maxRetries = 15, // 15回に増やす（30秒待機）
     delayMs = 2000,
   ) {
-    const startTimestamp = new Date().toISOString();
-    const lifecycleId = `tab_${tabId}_${Date.now()}`;
-
-    // 🔍 [TAB-LIFECYCLE] タブライフサイクル開始ログ
-    console.log(`🔍 [TAB-LIFECYCLE] waitForTabReady開始:`, {
-      lifecycleId,
-      tabId,
-      startTimestamp,
-      maxRetries,
-      delayMs,
-      callStack: new Error().stack.split("\n").slice(1, 3),
-    });
+    const startTime = Date.now();
+    const lifecycleId = `tab_${tabId}_${startTime}`;
 
     for (let i = 0; i < maxRetries; i++) {
       try {
-        const attemptTimestamp = new Date().toISOString();
         const tab = await chrome.tabs.get(tabId);
 
-        // 🔍 [TAB-LIFECYCLE] タブ状態チェック詳細（初回とエラー時のみ）
-        if (i === 0 || i === maxRetries - 1) {
-          console.log(`🔍 [TAB-LIFECYCLE] タブ状態チェック:`, {
-            lifecycleId,
-            tabId,
-            attempt: i + 1,
-            maxRetries,
-            attemptTimestamp,
-            tabState: {
-              exists: Boolean(tab),
-              status: tab?.status,
-              url: tab?.url,
-            },
-            isReady: tab && tab.status === "complete",
-          });
-        }
-
         if (tab && tab.status === "complete") {
-          const completionTimestamp = new Date().toISOString();
+          const duration = Date.now() - startTime;
 
-          // 🔍 [TAB-LIFECYCLE] タブ準備完了
+          // 🔍 [TAB-LIFECYCLE] タブ準備完了サマリー（全情報を1つに集約）
           console.log(`🔍 [TAB-LIFECYCLE] タブ準備完了:`, {
             lifecycleId,
             tabId,
-            completionTimestamp,
-            totalDuration: Date.now() - new Date(startTimestamp).getTime(),
-            attemptsUsed: i + 1,
-            finalTabState: {
-              status: tab.status,
-              url: tab.url,
-              windowId: tab.windowId,
-            },
+            duration: `${duration}ms`,
+            attempts: i + 1,
+            status: tab.status,
+            url: tab.url,
+            windowId: tab.windowId,
           });
 
           ExecuteLogger.info(`✅ [Tab Ready] Tab is ready:`, {
@@ -7165,6 +7205,9 @@ class DynamicTaskSearch {
     this.processingTasks = new Set(); // 処理中タスクのID管理
     this.completedTasks = new Set(); // 完了タスクのID管理
 
+    // グループの最大行数設定（タスク検索とデータ取得で共通使用）
+    this.groupMaxRows = SPREADSHEET_RANGE_CONFIG.GROUP_MAX_ROWS;
+
     // 【追加】currentGroup変更の監視
     this.initializeCurrentGroupListener();
   }
@@ -7256,8 +7299,9 @@ class DynamicTaskSearch {
         // シート名を取得
         const sheetName = window.globalState.sheetName || `シート${gid || "0"}`;
 
-        // 全体データ取得（A1:Z1000）- シート名を含める
-        const range = `'${sheetName}'!A1:Z1000`;
+        // 全体データ取得 - groupMaxRowsを使用
+        const maxCol = this.getMaxUsedColumn() || "ZZ";
+        const range = `'${sheetName}'!A1:${maxCol}${this.groupMaxRows}`;
         const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
 
         const response = await window.fetchWithTokenRefresh(apiUrl, {
@@ -7451,15 +7495,16 @@ class DynamicTaskSearch {
     const promptColumns = columns.prompts || [];
     const answerColumns = this.getAnswerColumns(columns.answer, taskGroup);
 
+    // グループの範囲を限定
+    const groupMaxRows = this.groupMaxRows;
+
     // 【無限ループ防止】カウンター追加
     let tasksChecked = 0;
     let completedTasksFound = 0;
     let availableTasksFound = 0;
     let skippedTasks = [];
-    const maxTasksToCheck = 200;
-
-    // グループの範囲を限定（最大70行までチェック）
-    const groupMaxRows = 100;
+    const maxTasksToCheck =
+      groupMaxRows * answerColumns.length * Math.max(promptColumns.length, 1);
     const endRow = Math.min(
       dataStartRow + groupMaxRows - 1,
       spreadsheetData.length,
@@ -7931,9 +7976,9 @@ class DynamicTaskSearch {
 
       // グループ範囲内の全タスクをチェック
       // グループの終了行を決定（グループサイズまたはデータ終端）
-      const maxRowsToCheck = 100; // グループの最大行数
+      const groupMaxRows = this.groupMaxRows;
       const endRow = Math.min(
-        dataStartRow + maxRowsToCheck - 1,
+        dataStartRow + groupMaxRows - 1,
         spreadsheetData.length,
       );
 
@@ -10976,8 +11021,8 @@ async function readFullSpreadsheet() {
     const sheetName =
       window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
 
-    // 全体範囲を取得（A1:ZZ1000の範囲で十分なデータを取得）
-    const fullRange = `'${sheetName}'!A1:ZZ1000`;
+    // 全体範囲を取得
+    const fullRange = `'${sheetName}'!A1:ZZ${GROUP_MAX_ROWS}`;
     const data = await readSpreadsheet(fullRange);
 
     if (!data || !data.values) {
