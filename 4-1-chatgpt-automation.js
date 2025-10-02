@@ -3074,6 +3074,13 @@ async function reportSelectorError(selectorKey, error, selectors) {
               "info",
             );
 
+            // 「再試行」のみの回答の場合はリトライ
+            if (responseText.trim() === "再試行") {
+              throw new Error(
+                "【Step 4-8】回答が「再試行」のみのため、リトライします",
+              );
+            }
+
             // Canvasモードかどうか判定してログ出力
             const canvasElement = document.querySelector(
               "#prosemirror-editor-container .ProseMirror",
@@ -3122,6 +3129,13 @@ async function reportSelectorError(selectorKey, error, selectors) {
                   `【Step 4-8】フォールバック取得文字数: ${responseText.length}文字`,
                   "info",
                 );
+
+                // 「再試行」のみの回答の場合はリトライ
+                if (responseText.trim() === "再試行") {
+                  throw new Error(
+                    "【Step 4-8】回答が「再試行」のみのため、リトライします",
+                  );
+                }
               } else {
                 logWithTimestamp(
                   "【Step 4-8】⚠️ フォールバックでもテキストが取得できません",
