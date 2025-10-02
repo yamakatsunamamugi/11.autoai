@@ -1,3 +1,31 @@
+/**
+ * ========================================
+ * step3-tasklist.js - タスク実行管理
+ * ========================================
+ *
+ * 【実行フロー】
+ *
+ * [3-1] startNextTaskIfAvailable() ← step2から開始
+ *   └─ タスク探索開始
+ *
+ * [3-2] findNextAvailableTask()
+ *   ├─ DynamicTaskSearch.findNext() - 空きタスク検索
+ *   └─ 次タスクを返す
+ *
+ * [3-3] executeTaskIndependently()
+ *   ├─ AIウィンドウオープン
+ *   ├─ タスク実行
+ *   ├─ 結果をスプレッドシートに記載
+ *   └─ DynamicTaskSearch.registerCompletion() - 完了登録
+ *
+ * [3-4] checkAndHandleGroupCompletion()
+ *   ├─ window.checkCompletionStatus() ← step2の[2-2-2]を呼び出し
+ *   ├─ グループ完了判定
+ *   └─ 完了なら window.executeStep2() → step2の[2-1]に戻る
+ *
+ * ========================================
+ */
+
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
@@ -57,7 +85,7 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
 
       console.log(
-        "📋 [step4-tasklist] Chrome Storageから設定を読み込みました:",
+        "📋 [step3-tasklist] Chrome Storageから設定を読み込みました:",
         {
           INDEPENDENT_WINDOW_MODE:
             BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE,
@@ -73,7 +101,7 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       );
     } else {
       console.log(
-        "📋 [step4-tasklist] Chrome Storageに設定がないため、デフォルト設定を使用",
+        "📋 [step3-tasklist] Chrome Storageに設定がないため、デフォルト設定を使用",
       );
     }
   });
@@ -87,7 +115,7 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       // 🚨 CRITICAL FIX: タスク完了を適切に待機するため強制設定
       BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
 
-      console.log("⏱️ [step4-tasklist] 回答待機時間設定を読み込みました:", {
+      console.log("⏱️ [step3-tasklist] 回答待機時間設定を読み込みました:", {
         MAX_RESPONSE_WAIT_TIME:
           BATCH_PROCESSING_CONFIG.MAX_RESPONSE_WAIT_TIME / 60000 + "分",
         MAX_RESPONSE_WAIT_TIME_DEEP:
@@ -109,7 +137,7 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       // 🚨 CRITICAL FIX: タスク完了を適切に待機するため強制設定
       BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION = true;
 
-      console.log("🪟 [step4-tasklist] ウィンドウ初期化設定を読み込みました:", {
+      console.log("🪟 [step3-tasklist] ウィンドウ初期化設定を読み込みました:", {
         WINDOW_CREATION_WAIT:
           BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT / 1000 + "秒",
         TAB_READY_TIMEOUT:
@@ -145,8 +173,8 @@ const log = {
  */
 
 // 初期化ログ（簡略化）
-log.info("✅ [step4-tasklist.js] 初期化完了");
-log.info("🔧 [バッチ処理設定]", {
+log.info("[3-0] ✅ [step3-tasklist.js] 初期化完了");
+log.info("[3-0] 🔧 [バッチ処理設定]", {
   // 基本設定
   ENABLE_ASYNC_BATCH: BATCH_PROCESSING_CONFIG.ENABLE_ASYNC_BATCH,
   ENABLE_INDIVIDUAL_COMPLETION:
@@ -245,7 +273,7 @@ function safeStringify(obj, maxDepth = 3) {
  * 各ウィンドウが独立してタスクを処理し、完了後即座に次のタスクを開始
  */
 async function executeIndependentProcessing(batchPromises, originalTasks = []) {
-  log.info("🚀 [独立処理モード] 各ウィンドウが独立してタスク処理を開始", {
+  log.info("[3-0] 🚀 [独立処理モード] 各ウィンドウが独立してタスク処理を開始", {
     タスク数: batchPromises.length,
     INDEPENDENT_WINDOW_MODE: BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE,
     WAIT_FOR_BATCH_COMPLETION:
@@ -261,7 +289,7 @@ async function executeIndependentProcessing(batchPromises, originalTasks = []) {
     const aiType = originalTask.aiType || originalTask.ai || `window_${index}`;
 
     if (BATCH_PROCESSING_CONFIG.DEBUG_INDEPENDENT_MODE) {
-      log.debug(`🔄 [独立処理] ウィンドウ開始: ${aiType}`, {
+      log.debug(`[3-0] 🔄 [独立処理] ウィンドウ開始: ${aiType}`, {
         taskIndex: index,
         taskId: originalTask.id,
         row: originalTask.row,
@@ -280,7 +308,7 @@ async function executeIndependentProcessing(batchPromises, originalTasks = []) {
           aiType: aiType,
         };
 
-        log.info(`✅ [独立処理] ${aiType} タスク完了`, {
+        log.info(`[3-0] ✅ [独立処理] ${aiType} タスク完了`, {
           taskIndex: index,
           success: enhancedResult.success,
           row: enhancedResult.row,
@@ -303,7 +331,7 @@ async function executeIndependentProcessing(batchPromises, originalTasks = []) {
 
         // 次のタスクを即座に探して実行（独立モードの場合）
         if (!BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION) {
-          log.info(`🔍 [独立処理] ${aiType} 次のタスク検索を即座に開始`);
+          log.info(`[3-0] 🔍 [独立処理] ${aiType} 次のタスク検索を即座に開始`);
           // ここで次のタスク検索・実行ロジックを呼び出す
           // ※実際の実装は step4.5-dynamic-search.js の機能を利用
         }
@@ -311,7 +339,7 @@ async function executeIndependentProcessing(batchPromises, originalTasks = []) {
         return { status: "fulfilled", value: enhancedResult };
       })
       .catch((error) => {
-        log.error(`❌ [独立処理エラー] ${aiType}:`, error);
+        log.error(`[3-0] ❌ [独立処理エラー] ${aiType}:`, error);
         activeWindows.set(aiType, {
           status: "failed",
           error: error,
@@ -325,13 +353,15 @@ async function executeIndependentProcessing(batchPromises, originalTasks = []) {
 
   // WAIT_FOR_BATCH_COMPLETIONがtrueの場合は全て待つ、falseの場合は即座に返す
   if (BATCH_PROCESSING_CONFIG.WAIT_FOR_BATCH_COMPLETION) {
-    log.info("⏳ [独立処理] バッチ完了待機モード - 全タスクの完了を待機");
+    log.info("[3-0] ⏳ [独立処理] バッチ完了待機モード - 全タスクの完了を待機");
     return await Promise.all(results);
   } else {
-    log.info("🏃 [独立処理] 即座実行モード - タスク開始後、完了を待たずに続行");
+    log.info(
+      "[3-0] 🏃 [独立処理] 即座実行モード - タスク開始後、完了を待たずに続行",
+    );
     // 非同期で結果を収集（待機しない）
     Promise.all(results).then(() => {
-      log.info("✅ [独立処理] 全ウィンドウのタスク処理が完了");
+      log.info("[3-0] ✅ [独立処理] 全ウィンドウのタスク処理が完了");
     });
     // 即座に開始状態を返す
     return results.map((_, index) => ({
@@ -353,11 +383,11 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
 
   // 独立ウィンドウモードの判定
   if (BATCH_PROCESSING_CONFIG.INDEPENDENT_WINDOW_MODE) {
-    log.info("🔀 [処理モード切替] 独立ウィンドウモードで実行");
+    log.info("[3-0] 🔀 [処理モード切替] 独立ウィンドウモードで実行");
     return await executeIndependentProcessing(batchPromises, originalTasks);
   }
 
-  log.info("🚀 [非同期バッチ処理] 個別完了処理対応モードで実行開始");
+  log.info("[3-0] 🚀 [非同期バッチ処理] 個別完了処理対応モードで実行開始");
 
   const completedTasks = new Map();
 
@@ -395,35 +425,38 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
           };
 
           // 【仮説検証】詳細デバッグログ追加
-          log.debug(`🔍 [仮説検証] タスク[${index}] enhancedResult生成詳細:`, {
-            originalTask: {
-              taskId: originalTask.id,
-              column: originalTask.column,
-              row: originalTask.row,
-              cellRef: originalTask.cellRef,
-              answerCell: originalTask.answerCell,
-              windowId: originalTask.windowId,
+          log.debug(
+            `[3-0] 🔍 [仮説検証] タスク[${index}] enhancedResult生成詳細:`,
+            {
+              originalTask: {
+                taskId: originalTask.id,
+                column: originalTask.column,
+                row: originalTask.row,
+                cellRef: originalTask.cellRef,
+                answerCell: originalTask.answerCell,
+                windowId: originalTask.windowId,
+              },
+              result: {
+                taskId: result.taskId,
+                column: result.column,
+                row: result.row,
+                windowId: result.windowId,
+                success: result.success,
+                hasResponse: !!result.response,
+              },
+              enhancedResult: {
+                taskId: enhancedResult.taskId,
+                column: enhancedResult.column,
+                row: enhancedResult.row,
+                windowId: enhancedResult.windowId,
+                success: enhancedResult.success,
+                hasResponse: !!enhancedResult.response,
+              },
+              timestamp: new Date().toISOString(),
             },
-            result: {
-              taskId: result.taskId,
-              column: result.column,
-              row: result.row,
-              windowId: result.windowId,
-              success: result.success,
-              hasResponse: !!result.response,
-            },
-            enhancedResult: {
-              taskId: enhancedResult.taskId,
-              column: enhancedResult.column,
-              row: enhancedResult.row,
-              windowId: enhancedResult.windowId,
-              success: enhancedResult.success,
-              hasResponse: !!enhancedResult.response,
-            },
-            timestamp: new Date().toISOString(),
-          });
+          );
 
-          log.info(`✅ [個別完了] タスク[${index}]完了:`, {
+          log.info(`[3-0] ✅ [個別完了] タスク[${index}]完了:`, {
             success: enhancedResult.success,
             taskId: enhancedResult.taskId,
             windowId: enhancedResult.windowId,
@@ -432,7 +465,7 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
             hasResponse: !!enhancedResult.response,
           });
 
-          log.debug(`🔍 [個別完了判定] タスク[${index}]`, {
+          log.debug(`[3-0] 🔍 [個別完了判定] タスク[${index}]`, {
             success: enhancedResult.success,
             ENABLE_INDIVIDUAL_COMPLETION:
               BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION,
@@ -446,16 +479,16 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
             BATCH_PROCESSING_CONFIG.ENABLE_INDIVIDUAL_COMPLETION
           ) {
             log.info(
-              `🚀 [個別完了] handleIndividualTaskCompletion呼び出し開始: タスク[${index}]`,
+              `[3-0] 🚀 [個別完了] handleIndividualTaskCompletion呼び出し開始: タスク[${index}]`,
             );
             // 個別タスク完了時の即座処理（拡張された結果を渡す）
             await handleIndividualTaskCompletion(enhancedResult, index);
             log.info(
-              `✅ [個別完了] handleIndividualTaskCompletion呼び出し完了: タスク[${index}]`,
+              `[3-0] ✅ [個別完了] handleIndividualTaskCompletion呼び出し完了: タスク[${index}]`,
             );
           } else {
             log.warn(
-              `⚠️ [個別完了] handleIndividualTaskCompletion呼び出しスキップ: タスク[${index}]`,
+              `[3-0] ⚠️ [個別完了] handleIndividualTaskCompletion呼び出しスキップ: タスク[${index}]`,
               {
                 success: enhancedResult.success,
                 ENABLE_INDIVIDUAL_COMPLETION:
@@ -467,14 +500,14 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
           completedTasks.set(index, enhancedResult);
           return { status: "fulfilled", value: enhancedResult };
         } catch (error) {
-          log.error(`❌ [個別完了処理エラー] タスク[${index}]:`, error);
+          log.error(`[3-0] ❌ [個別完了処理エラー] タスク[${index}]:`, error);
           const errorResult = { status: "rejected", reason: error };
           completedTasks.set(index, errorResult);
           return errorResult;
         }
       })
       .catch((error) => {
-        log.error(`❌ [タスク実行エラー] タスク[${index}]:`, error);
+        log.error(`[3-0] ❌ [タスク実行エラー] タスク[${index}]:`, error);
         const errorResult = { status: "rejected", reason: error };
         completedTasks.set(index, errorResult);
         return errorResult;
@@ -484,7 +517,7 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
   // 全てのタスクの完了を待機
   const results = await Promise.all(enhancedPromises);
 
-  log.info(`🏁 [非同期バッチ処理] 全タスク完了:`, {
+  log.info(`[3-0] 🏁 [非同期バッチ処理] 全タスク完了:`, {
     total: results.length,
     fulfilled: results.filter((r) => r.status === "fulfilled").length,
     rejected: results.filter((r) => r.status === "rejected").length,
@@ -497,10 +530,10 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
  * 個別タスク完了時の処理（安全実装）
  */
 async function handleIndividualTaskCompletion(result, taskIndex) {
-  log.info(`🎯🎯🎯 [個別完了処理] 関数呼び出し開始 タスク[${taskIndex}]`);
+  log.info(`[3-0] 🎯🎯🎯 [個別完了処理] 関数呼び出し開始 タスク[${taskIndex}]`);
 
   try {
-    log.info(`🎯 [個別完了処理] タスク[${taskIndex}]開始:`, {
+    log.info(`[3-0] 🎯 [個別完了処理] タスク[${taskIndex}]開始:`, {
       taskId: result.taskId,
       success: result.success,
       hasResponse: !!result.response,
@@ -534,23 +567,23 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
       // 重要: ウィンドウクローズ完了を確実に待機
       if (BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME > 0) {
         log.info(
-          `⏰ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機: ${result.windowId} (${BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME}ms)`,
+          `[3-0] ⏰ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機: ${result.windowId} (${BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME}ms)`,
         );
         await new Promise((resolve) =>
           setTimeout(resolve, BATCH_PROCESSING_CONFIG.WINDOW_CLOSE_WAIT_TIME),
         );
         log.info(
-          `✅ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機終了: ${result.windowId}`,
+          `[3-0] ✅ [TASK-FLOW-TRACE] ウィンドウクローズ完了待機終了: ${result.windowId}`,
         );
       } else {
         log.info(
-          `⚡ [TASK-FLOW-TRACE] ウィンドウクローズ後の待機をスキップ (設定: 0ms)`,
+          `[3-0] ⚡ [TASK-FLOW-TRACE] ウィンドウクローズ後の待機をスキップ (設定: 0ms)`,
         );
       }
     }
 
     // Phase 4: 動的次タスク探索
-    log.info(`🔍 [TASK-FLOW-TRACE] Phase 4開始 - 動的次タスク探索:`, {
+    log.info(`[3-0] 🔍 [TASK-FLOW-TRACE] Phase 4開始 - 動的次タスク探索:`, {
       taskIndex: taskIndex,
       taskId: result.taskId,
       ENABLE_DYNAMIC_NEXT_TASK:
@@ -560,7 +593,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
 
     if (BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK) {
       // DynamicTaskSearchにタスク完了を登録
-      log.info(`🔍 [TASK-FLOW-TRACE] 完了登録プロセス開始:`, {
+      log.info(`[3-0] 🔍 [TASK-FLOW-TRACE] 完了登録プロセス開始:`, {
         hasRegisterFunction:
           typeof window.registerTaskCompletionDynamic === "function",
         hasTaskId: !!result.taskId,
@@ -579,7 +612,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
             ? `${result.column}${result.row}`
             : result.taskId;
 
-        log.info(`🔍 [TASK-FLOW-TRACE] 完了登録実行中:`, {
+        log.info(`[3-0] 🔍 [TASK-FLOW-TRACE] 完了登録実行中:`, {
           taskId: taskId,
           originalTaskId: result.taskId,
           taskIndex: taskIndex,
@@ -599,23 +632,26 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
           }
 
           log.info(
-            `✅ [TASK-FLOW-TRACE] DynamicTaskSearch完了登録成功: ${taskId}`,
+            `[3-0] ✅ [TASK-FLOW-TRACE] DynamicTaskSearch完了登録成功: ${taskId}`,
             {
               taskIndex: taskIndex,
               登録時刻: new Date().toISOString(),
             },
           );
         } catch (error) {
-          log.error(`❌ [TASK-FLOW-TRACE] DynamicTaskSearch完了登録エラー:`, {
-            taskId: taskId,
-            taskIndex: taskIndex,
-            error: error.message,
-            stack: error.stack,
-            タイムスタンプ: new Date().toISOString(),
-          });
+          log.error(
+            `[3-0] ❌ [TASK-FLOW-TRACE] DynamicTaskSearch完了登録エラー:`,
+            {
+              taskId: taskId,
+              taskIndex: taskIndex,
+              error: error.message,
+              stack: error.stack,
+              タイムスタンプ: new Date().toISOString(),
+            },
+          );
         }
       } else {
-        log.warn(`⚠️ [TASK-FLOW-TRACE] 完了登録スキップ - 条件未満:`, {
+        log.warn(`[3-0] ⚠️ [TASK-FLOW-TRACE] 完了登録スキップ - 条件未満:`, {
           hasRegisterFunction:
             typeof window.registerTaskCompletionDynamic === "function",
           hasTaskId: !!result.taskId,
@@ -667,12 +703,15 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
         );
         // 待機せずに即座に次タスク探索
         startNextTaskIfAvailable(taskIndex).catch((error) => {
-          log.error(`❌ [TASK-FLOW-TRACE] 次タスク探索エラー[${taskIndex}]:`, {
-            error: error.message,
-            stack: error.stack,
-            taskId: result.taskId,
-            エラー発生時刻: new Date().toISOString(),
-          });
+          log.error(
+            `[3-0] ❌ [TASK-FLOW-TRACE] 次タスク探索エラー[${taskIndex}]:`,
+            {
+              error: error.message,
+              stack: error.stack,
+              taskId: result.taskId,
+              エラー発生時刻: new Date().toISOString(),
+            },
+          );
         });
       }
     } else {
@@ -686,9 +725,9 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
       );
     }
 
-    log.info(`✅ [個別完了処理] タスク[${taskIndex}]完了`);
+    log.info(`[3-0] ✅ [個別完了処理] タスク[${taskIndex}]完了`);
   } catch (error) {
-    log.error(`❌ [個別完了処理エラー] タスク[${taskIndex}]:`, error);
+    log.error(`[3-0] ❌ [個別完了処理エラー] タスク[${taskIndex}]:`, error);
   }
 }
 
@@ -699,7 +738,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
   try {
     // SimpleSheetsClient初期化状態チェック
 
-    log.info(`📊 [即座スプレッドシート] タスク[${taskIndex}]記載開始:`, {
+    log.info(`[3-0] 📊 [即座スプレッドシート] タスク[${taskIndex}]記載開始:`, {
       taskId: result.taskId,
       column: result.column,
       row: result.row,
@@ -795,15 +834,18 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       const cellRef = `${columnLetter}${result.row}`;
 
       // 【仮説検証】書き込み実行前ログ
-      log.debug(`🔍 [仮説検証] スプレッドシート書き込み実行[${taskIndex}]:`, {
-        spreadsheetId: spreadsheetId,
-        cellRef: cellRef,
-        columnLetter: columnLetter,
-        originalColumn: result.column,
-        originalRow: result.row,
-        responseLength: result.response.length,
-        aboutToCallUpdateCell: true,
-      });
+      log.debug(
+        `[3-0] 🔍 [仮説検証] スプレッドシート書き込み実行[${taskIndex}]:`,
+        {
+          spreadsheetId: spreadsheetId,
+          cellRef: cellRef,
+          columnLetter: columnLetter,
+          originalColumn: result.column,
+          originalRow: result.row,
+          responseLength: result.response.length,
+          aboutToCallUpdateCell: true,
+        },
+      );
 
       const updateResult = await window.simpleSheetsClient.updateCell(
         spreadsheetId,
@@ -812,17 +854,20 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       );
 
       // 【仮説検証】書き込み成功ログ
-      log.debug(`✅ [仮説検証] スプレッドシート書き込み成功[${taskIndex}]:`, {
-        requestedCell: cellRef,
-        actualCell: updateResult?.updatedRange || cellRef,
-        column: result.column,
-        row: result.row,
-        success: updateResult?.success || true,
-        updateResult: updateResult,
-        writeWasSuccessful: true,
-      });
+      log.debug(
+        `[3-0] ✅ [仮説検証] スプレッドシート書き込み成功[${taskIndex}]:`,
+        {
+          requestedCell: cellRef,
+          actualCell: updateResult?.updatedRange || cellRef,
+          column: result.column,
+          row: result.row,
+          success: updateResult?.success || true,
+          updateResult: updateResult,
+          writeWasSuccessful: true,
+        },
+      );
 
-      log.info(`✅ [即座スプレッドシート] 記載完了[${taskIndex}]:`, {
+      log.info(`[3-0] ✅ [即座スプレッドシート] 記載完了[${taskIndex}]:`, {
         requestedCell: cellRef,
         actualCell: updateResult?.updatedRange || cellRef,
         column: result.column,
@@ -836,7 +881,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
       );
     }
   } catch (error) {
-    log.error(`❌ [即座スプレッドシート] エラー[${taskIndex}]:`, error);
+    log.error(`[3-0] ❌ [即座スプレッドシート] エラー[${taskIndex}]:`, error);
   }
 }
 
@@ -845,7 +890,7 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
  */
 async function immediateWindowClose(windowId, taskIndex) {
   try {
-    log.info(`🪟 [即座ウィンドウクローズ] タスク[${taskIndex}]開始:`, {
+    log.info(`[3-0] 🪟 [即座ウィンドウクローズ] タスク[${taskIndex}]開始:`, {
       windowId,
     });
 
@@ -859,7 +904,7 @@ async function immediateWindowClose(windowId, taskIndex) {
       // 追加の待機時間でクローズ確実性を向上
       await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (err) {
-      log.warn(`⚠️ [ウィンドウクローズ警告] タスク[${taskIndex}]:`, err);
+      log.warn(`[3-0] ⚠️ [ウィンドウクローズ警告] タスク[${taskIndex}]:`, err);
     }
 
     // WindowControllerから削除
@@ -870,9 +915,11 @@ async function immediateWindowClose(windowId, taskIndex) {
       await window.windowController.removeClosedWindow(windowId);
     }
 
-    log.info(`✅ [即座ウィンドウクローズ] 完了[${taskIndex}]:`, { windowId });
+    log.info(`[3-0] ✅ [即座ウィンドウクローズ] 完了[${taskIndex}]:`, {
+      windowId,
+    });
   } catch (error) {
-    log.error(`❌ [即座ウィンドウクローズ] エラー[${taskIndex}]:`, error);
+    log.error(`[3-0] ❌ [即座ウィンドウクローズ] エラー[${taskIndex}]:`, error);
   }
 }
 
@@ -891,18 +938,23 @@ const groupTransitionState = {
 // グローバル完了タスクレジストリの初期化
 if (!window.globalCompletedTasks) {
   window.globalCompletedTasks = new Set();
-  log.info(`📋 [GLOBAL-REGISTRY] グローバル完了タスクレジストリ初期化完了`);
+  log.info(
+    `[3-1] 📋 [GLOBAL-REGISTRY] グローバル完了タスクレジストリ初期化完了`,
+  );
 }
 
+// ========================================
+// [3-1] タスク探索開始
+// ========================================
 async function startNextTaskIfAvailable(taskIndex) {
   try {
-    log.info(`🔍 [TASK-FLOW-TRACE] startNextTaskIfAvailable開始:`, {
+    log.info(`[3-1] 🔍 [TASK-FLOW-TRACE] startNextTaskIfAvailable開始:`, {
       taskIndex: taskIndex,
       開始時刻: new Date().toISOString(),
     });
 
     // デバッグ: 設定値と状態を確認
-    log.info("🔍 [TASK-FLOW-TRACE] 次タスク探索システム状態確認:", {
+    log.info("[3-1] 🔍 [TASK-FLOW-TRACE] 次タスク探索システム状態確認:", {
       taskIndex: taskIndex,
       ENABLE_DYNAMIC_NEXT_TASK:
         BATCH_PROCESSING_CONFIG.ENABLE_DYNAMIC_NEXT_TASK,
@@ -917,14 +969,14 @@ async function startNextTaskIfAvailable(taskIndex) {
     });
 
     // 利用可能なタスクを動的に検索
-    log.info(`🔍 [TASK-FLOW-TRACE] findNextAvailableTask呼び出し開始:`, {
+    log.info(`[3-1] 🔍 [TASK-FLOW-TRACE] findNextAvailableTask呼び出し開始:`, {
       taskIndex: taskIndex,
       呼び出し開始時刻: new Date().toISOString(),
     });
 
     const nextTask = await findNextAvailableTask();
 
-    log.info(`🔍 [TASK-FLOW-TRACE] findNextAvailableTask結果:`, {
+    log.info(`[3-1] 🔍 [TASK-FLOW-TRACE] findNextAvailableTask結果:`, {
       taskIndex: taskIndex,
       hasNextTask: !!nextTask,
       nextTaskId: nextTask?.id,
@@ -949,7 +1001,7 @@ async function startNextTaskIfAvailable(taskIndex) {
       // 新しいウィンドウを開いて即座に開始
       const windowInfo = await openAIWindowForTask(nextTask);
 
-      log.info(`🔍 [TASK-FLOW-TRACE] ウィンドウ開設結果:`, {
+      log.info(`[3-1] 🔍 [TASK-FLOW-TRACE] ウィンドウ開設結果:`, {
         taskIndex: taskIndex,
         nextTaskId: nextTask.id,
         hasWindowInfo: !!windowInfo,
@@ -962,7 +1014,7 @@ async function startNextTaskIfAvailable(taskIndex) {
         nextTask.tabId = windowInfo.tabId;
         nextTask.windowId = windowInfo.windowId;
 
-        log.info(`🚀 [TASK-FLOW-TRACE] タスク独立実行開始:`, {
+        log.info(`[3-1] 🚀 [TASK-FLOW-TRACE] タスク独立実行開始:`, {
           taskIndex: taskIndex,
           nextTaskId: nextTask.id,
           tabId: nextTask.tabId,
@@ -979,14 +1031,14 @@ async function startNextTaskIfAvailable(taskIndex) {
         // 非同期で実行開始
         executeTaskIndependently(nextTask);
       } else {
-        log.error(`❌ [TASK-FLOW-TRACE] ウィンドウ開設失敗:`, {
+        log.error(`[3-1] ❌ [TASK-FLOW-TRACE] ウィンドウ開設失敗:`, {
           taskIndex: taskIndex,
           nextTaskId: nextTask.id,
           エラー時刻: new Date().toISOString(),
         });
       }
     } else {
-      log.info(`📭 [TASK-FLOW-TRACE] 利用可能タスクなし[${taskIndex}]:`, {
+      log.info(`[3-1] 📭 [TASK-FLOW-TRACE] 利用可能タスクなし[${taskIndex}]:`, {
         taskIndex: taskIndex,
         理由: "findNextAvailableTaskがnullを返却",
         確認時刻: new Date().toISOString(),
@@ -998,7 +1050,7 @@ async function startNextTaskIfAvailable(taskIndex) {
         ? Date.now() - groupTransitionState.lastTransitionAttempt
         : Infinity;
 
-      log.info(`🔍 [LOOP-PREVENTION] 無限ループ防止状態[${taskIndex}]:`, {
+      log.info(`[3-1] 🔍 [LOOP-PREVENTION] 無限ループ防止状態[${taskIndex}]:`, {
         taskIndex: taskIndex,
         consecutiveNoTasksCount: groupTransitionState.consecutiveNoTasksCount,
         maxConsecutiveAttempts: groupTransitionState.maxConsecutiveAttempts,
@@ -1043,21 +1095,25 @@ async function startNextTaskIfAvailable(taskIndex) {
       }
     }
   } catch (error) {
-    log.error(`❌ [次タスク探索] エラー[${taskIndex}]:`, error);
+    log.error(`[3-2] ❌ [次タスク探索] エラー[${taskIndex}]:`, error);
   }
 }
+
+// ========================================
+// [3-2] 次タスク検索
+// ========================================
 
 /**
  * 利用可能な次タスクを検索
  */
 async function findNextAvailableTask() {
   try {
-    log.info("🔍 [TASK-FLOW-TRACE] findNextAvailableTask開始:", {
+    log.info("[3-2] 🔍 [TASK-FLOW-TRACE] findNextAvailableTask開始:", {
       開始時刻: new Date().toISOString(),
     });
 
     // デバッグ: 利用可能な機能を確認
-    log.info("🔍 [TASK-FLOW-TRACE] システム機能確認:", {
+    log.info("[3-2] 🔍 [TASK-FLOW-TRACE] システム機能確認:", {
       hasDynamicSearch:
         typeof window.findNextAvailableTaskDynamic === "function",
       hasRegisterCompletion:
@@ -1074,7 +1130,7 @@ async function findNextAvailableTask() {
 
     // step4.5-dynamic-search.jsの動的検索システムを使用
     if (typeof window.findNextAvailableTaskDynamic === "function") {
-      log.info("🔗 [TASK-FLOW-TRACE] DynamicTaskSearch使用開始:", {
+      log.info("[3-2] 🔗 [TASK-FLOW-TRACE] DynamicTaskSearch使用開始:", {
         システム: "window.findNextAvailableTaskDynamic",
         呼び出し開始時刻: new Date().toISOString(),
       });
@@ -1082,7 +1138,7 @@ async function findNextAvailableTask() {
       try {
         const nextTask = await window.findNextAvailableTaskDynamic();
 
-        log.info("🔍 [TASK-FLOW-TRACE] DynamicTaskSearch検索結果:", {
+        log.info("[3-2] 🔍 [TASK-FLOW-TRACE] DynamicTaskSearch検索結果:", {
           hasNextTask: !!nextTask,
           nextTaskId: nextTask?.id,
           nextTaskAiType: nextTask?.aiType,
@@ -1093,29 +1149,32 @@ async function findNextAvailableTask() {
         });
 
         if (nextTask) {
-          log.info("✅ [TASK-FLOW-TRACE] DynamicTaskSearchで次タスク発見:", {
-            taskId: nextTask.id,
-            aiType: nextTask.aiType,
-            row: nextTask.row,
-            column: nextTask.column,
-            発見時刻: new Date().toISOString(),
-          });
+          log.info(
+            "[3-2] ✅ [TASK-FLOW-TRACE] DynamicTaskSearchで次タスク発見:",
+            {
+              taskId: nextTask.id,
+              aiType: nextTask.aiType,
+              row: nextTask.row,
+              column: nextTask.column,
+              発見時刻: new Date().toISOString(),
+            },
+          );
           return nextTask;
         } else {
-          log.info("📭 [TASK-FLOW-TRACE] DynamicTaskSearch結果なし:", {
+          log.info("[3-2] 📭 [TASK-FLOW-TRACE] DynamicTaskSearch結果なし:", {
             理由: "利用可能タスクなし - グループ完了の可能性",
             検索完了時刻: new Date().toISOString(),
           });
         }
       } catch (error) {
-        log.error("❌ [TASK-FLOW-TRACE] DynamicTaskSearchエラー:", {
+        log.error("[3-2] ❌ [TASK-FLOW-TRACE] DynamicTaskSearchエラー:", {
           error: error.message,
           stack: error.stack,
           エラー発生時刻: new Date().toISOString(),
         });
       }
     } else {
-      log.warn("⚠️ [TASK-FLOW-TRACE] DynamicTaskSearch利用不可:", {
+      log.warn("[3-2] ⚠️ [TASK-FLOW-TRACE] DynamicTaskSearch利用不可:", {
         hasDynamicFunction:
           typeof window.findNextAvailableTaskDynamic === "function",
         理由: "window.findNextAvailableTaskDynamic関数が存在しない",
@@ -1126,7 +1185,7 @@ async function findNextAvailableTask() {
     // フォールバック: 従来の方法
     if (typeof window.processIncompleteTasks === "function") {
       // 既存のタスク処理システムを活用
-      log.debug("🔗 [次タスク検索] 既存システム活用（フォールバック）");
+      log.debug("[3-2] 🔗 [次タスク検索] 既存システム活用（フォールバック）");
       return null; // 既存システムに委譲
     }
 
@@ -1137,7 +1196,7 @@ async function findNextAvailableTask() {
       );
 
       if (availableTask) {
-        log.info("🎯 [次タスク検索] 発見（フォールバック）:", {
+        log.info("[3-2] 🎯 [次タスク検索] 発見（フォールバック）:", {
           taskId: availableTask.id,
           aiType: availableTask.aiType,
         });
@@ -1148,29 +1207,265 @@ async function findNextAvailableTask() {
       }
     }
 
-    log.debug("📭 [次タスク検索] 利用可能タスクなし");
+    log.debug("[3-2] 📭 [次タスク検索] 利用可能タスクなし");
     return null;
   } catch (error) {
-    log.error("❌ [次タスク検索] エラー:", error);
+    log.error("[3-2] ❌ [次タスク検索] エラー:", error);
     return null;
   }
 }
 
+// ========================================
+// [3-3] タスク実行
+// ========================================
+
+/**
+ * タスクを独立して実行
+ */
+async function executeTaskIndependently(task) {
+  try {
+    log.info("[3-3] 🔍 [TASK-FLOW-TRACE] executeTaskIndependently開始:", {
+      taskId: task.id,
+      aiType: task.aiType,
+      column: task.column,
+      row: task.row,
+      hasTabId: !!task.tabId,
+      tabId: task.tabId,
+      hasWindowId: !!task.windowId,
+      windowId: task.windowId,
+      hasLogCell: !!task.logCell,
+      logCell: task.logCell || "未設定",
+      実行開始時刻: new Date().toISOString(),
+    });
+
+    // Content Script初期化待機（新しいウィンドウの場合）
+    if (task.tabId && task.windowId) {
+      log.info("[3-3] ⏰ [TASK-FLOW-TRACE] Content Script初期化待機開始:", {
+        taskId: task.id,
+        tabId: task.tabId,
+        windowId: task.windowId,
+        待機時間: "3秒",
+        待機開始時刻: new Date().toISOString(),
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 3000)); // 3秒待機
+
+      log.info("[3-3] ⏰ [TASK-FLOW-TRACE] Content Script初期化待機完了:", {
+        taskId: task.id,
+        tabId: task.tabId,
+        待機完了時刻: new Date().toISOString(),
+      });
+
+      // Content Script準備確認
+      try {
+        const response = await chrome.tabs.sendMessage(task.tabId, {
+          action: "ping",
+          from: "independent-task-executor",
+        });
+        log.info("[3-3] ✅ [TASK-FLOW-TRACE] Content Script準備確認成功:", {
+          taskId: task.id,
+          tabId: task.tabId,
+          response: response,
+          確認成功時刻: new Date().toISOString(),
+        });
+      } catch (e) {
+        log.warn("[3-3] ⚠️ [TASK-FLOW-TRACE] Content Script未応答:", {
+          taskId: task.id,
+          tabId: task.tabId,
+          error: e.message,
+          エラー時刻: new Date().toISOString(),
+          処理: "続行",
+        });
+      }
+    } else {
+      log.warn("[3-3] ⚠️ [TASK-FLOW-TRACE] タブ/ウィンドウ情報不足:", {
+        taskId: task.id,
+        hasTabId: !!task.tabId,
+        hasWindowId: !!task.windowId,
+        タイムスタンプ: new Date().toISOString(),
+      });
+    }
+
+    // windowに保存されたexecuteNormalAITask関数をチェック
+    if (
+      window._executeNormalAITask &&
+      typeof window._executeNormalAITask === "function"
+    ) {
+      log.debug("[3-3] 🔍 [独立タスク実行] _executeNormalAITask使用");
+      const result = await window._executeNormalAITask(task);
+
+      log.info("[3-3] ✅ [独立タスク実行] 完了:", {
+        taskId: task.id,
+        success: result?.success,
+      });
+
+      // 完了後の処理（スプレッドシート記載、ウィンドウクローズ）
+      if (result?.success) {
+        // 【修正】タスク情報を結果にマージして渡す
+        const enhancedResult = {
+          ...result,
+          taskId: result.taskId || task.id,
+          column: result.column || task.column,
+          row: result.row || task.row,
+          windowId: result.windowId || task.windowId,
+          aiType: result.aiType || task.aiType,
+        };
+
+        // 個別完了処理を実行
+        await handleIndividualTaskCompletion(enhancedResult, "independent");
+      }
+
+      return result;
+    } else {
+      log.warn(
+        "⚠️ [独立タスク実行] window._executeNormalAITask関数が利用不可、簡易実行モードを使用",
+      );
+      // 簡易実行モードで直接タスクを実行
+      const result = await executeSimpleTask(task);
+      return result;
+    }
+  } catch (error) {
+    log.error("[3-3] ❌ [独立タスク実行] エラー:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 簡易タスク実行（動的タスク用）
+ */
+async function executeSimpleTask(task) {
+  try {
+    // WindowControllerからタブ情報を取得
+    const windowInfo = window.windowController?.openedWindows?.get(
+      task.aiType?.toLowerCase(),
+    );
+    const tabId = windowInfo?.tabId || task.tabId;
+
+    if (!tabId) {
+      log.error("[3-3] ❌ [簡易タスク実行] タブIDが見つかりません");
+      return { success: false, error: "Tab ID not found" };
+    }
+
+    log.info("[3-3] 📝 [簡易タスク実行] タスク送信開始:", {
+      taskId: task.id,
+      tabId: tabId,
+      aiType: task.aiType,
+    });
+
+    // Content Scriptに直接メッセージを送信
+    const response = await chrome.tabs.sendMessage(tabId, {
+      action: "executeTask",
+      task: {
+        ...task,
+        taskId: task.id,
+        tabId: tabId,
+        model: task.model || "Claude Opus 4.1",
+        function: task.function || "",
+      },
+      from: "step3-tasklist-simple",
+    });
+
+    log.info("[3-3] ✅ [簡易タスク実行] 応答受信:", {
+      taskId: task.id,
+      success: response?.success,
+    });
+
+    // 結果を記録
+    if (response?.success && response?.response) {
+      const cellRef = `${task.column}${task.row}`;
+      await updateSpreadsheetCell(cellRef, response.response);
+    }
+
+    return {
+      success: response?.success || false,
+      response: response?.response,
+      taskId: task.id,
+    };
+  } catch (error) {
+    log.error("[3-3] ❌ [簡易タスク実行] エラー:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * スプレッドシートのセルを更新
+ */
+async function updateSpreadsheetCell(cellRef, value) {
+  try {
+    if (!window.globalState?.spreadsheetId || !window.globalState?.authToken) {
+      log.warn("[3-3] ⚠️ [セル更新] 認証情報が不足");
+      return;
+    }
+
+    // シート名が含まれていない場合は追加
+    let fullCellRef = cellRef;
+    if (!cellRef.includes("!")) {
+      const sheetName =
+        window.globalState?.sheetName ||
+        `シート${window.globalState?.gid || "0"}`;
+      fullCellRef = `'${sheetName}'!${cellRef}`;
+    }
+
+    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${window.globalState.spreadsheetId}/values/${encodeURIComponent(fullCellRef)}?valueInputOption=USER_ENTERED`;
+
+    const response = await fetch(apiUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${window.globalState.authToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        values: [[value]],
+      }),
+    });
+
+    if (response.ok) {
+      log.info("[3-3] ✅ [セル更新] 成功:", cellRef);
+    } else {
+      log.error("[3-3] ❌ [セル更新] 失敗:", await response.text());
+    }
+  } catch (error) {
+    log.error("[3-3] ❌ [セル更新] エラー:", error);
+  }
+}
+
+// グローバルエラーハンドリング
+if (typeof window !== "undefined") {
+  window.step4FileError = null;
+
+  // 未処理エラーの捕捉
+  window.addEventListener("error", function (event) {
+    if (event.filename && event.filename.includes("step3-tasklist.js")) {
+      log.error("[3-3] ❌ [step3-tasklist.js] エラー:", event.error);
+      window.step4FileError = event.error?.message || "未知のエラー";
+    }
+  });
+}
+
+// ========================================
+// [3-4] グループ完了チェック
+// ========================================
+
 /**
  * グループ完了チェックと次のグループへの移行処理（シンプル版）
- * step3を呼び出して次のグループを準備
+ * step2を呼び出して次のグループを準備
  */
 async function checkAndHandleGroupCompletion(taskIndex) {
   try {
-    log.info(`🔍 [GROUP-TRANSITION] グループ完了状態確認開始[${taskIndex}]:`, {
-      taskIndex: taskIndex,
-      currentGroup: window.globalState?.currentGroup?.groupNumber,
-      開始時刻: new Date().toISOString(),
-    });
+    log.info(
+      `[3-4] 🔍 [GROUP-TRANSITION] グループ完了状態確認開始[${taskIndex}]:`,
+      {
+        taskIndex: taskIndex,
+        currentGroup: window.globalState?.currentGroup?.groupNumber,
+        開始時刻: new Date().toISOString(),
+      },
+    );
 
     const currentGroup = window.globalState?.currentGroup;
     if (!currentGroup) {
-      log.warn(`⚠️ [GROUP-TRANSITION] 現在のグループ情報なし[${taskIndex}]`);
+      log.warn(
+        `[3-4] ⚠️ [GROUP-TRANSITION] 現在のグループ情報なし[${taskIndex}]`,
+      );
       return;
     }
 
@@ -1184,30 +1479,38 @@ async function checkAndHandleGroupCompletion(taskIndex) {
 
     const isGroupCompleted = await window.checkCompletionStatus(currentGroup);
 
-    log.info(`📊 [GROUP-TRANSITION] グループ完了判定結果[${taskIndex}]:`, {
-      taskIndex: taskIndex,
-      groupNumber: currentGroup.groupNumber,
-      isCompleted: isGroupCompleted,
-      判定時刻: new Date().toISOString(),
-    });
+    log.info(
+      `[3-4] 📊 [GROUP-TRANSITION] グループ完了判定結果[${taskIndex}]:`,
+      {
+        taskIndex: taskIndex,
+        groupNumber: currentGroup.groupNumber,
+        isCompleted: isGroupCompleted,
+        判定時刻: new Date().toISOString(),
+      },
+    );
 
     if (isGroupCompleted) {
       log.info(
-        `🏁 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}完了 - step2でタスクグループ再作成[${taskIndex}]`,
+        `[3-4] 🏁 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}完了 - step2でタスクグループ再作成[${taskIndex}]`,
       );
 
       // step2を呼び出して次のグループを準備（タスクグループ作成+未完了グループ選択）
       if (!window.executeStep2) {
-        log.error(`❌ [GROUP-TRANSITION] executeStep2未定義[${taskIndex}]`);
+        log.error(
+          `[3-4] ❌ [GROUP-TRANSITION] executeStep2未定義[${taskIndex}]`,
+        );
         return;
       }
 
       const step2Result = await window.executeStep2();
 
       if (!step2Result.success) {
-        log.error(`❌ [GROUP-TRANSITION] step2実行エラー[${taskIndex}]:`, {
-          error: step2Result.error,
-        });
+        log.error(
+          `[3-4] ❌ [GROUP-TRANSITION] step2実行エラー[${taskIndex}]:`,
+          {
+            error: step2Result.error,
+          },
+        );
         return;
       }
 
@@ -1258,11 +1561,14 @@ async function checkAndHandleGroupCompletion(taskIndex) {
  */
 async function transitionToNextGroup(completedGroup, taskIndex) {
   try {
-    log.info(`🔀 [GROUP-TRANSITION] グループ移行実行開始[${taskIndex}]:`, {
-      taskIndex: taskIndex,
-      completedGroup: completedGroup.groupNumber,
-      移行開始時刻: new Date().toISOString(),
-    });
+    log.info(
+      `[3-4] 🔀 [GROUP-TRANSITION] グループ移行実行開始[${taskIndex}]:`,
+      {
+        taskIndex: taskIndex,
+        completedGroup: completedGroup.groupNumber,
+        移行開始時刻: new Date().toISOString(),
+      },
+    );
 
     // step6-nextgroup.jsの機能を使用
     if (
@@ -1272,20 +1578,26 @@ async function transitionToNextGroup(completedGroup, taskIndex) {
       const nextGroup = window.checkNextGroup();
 
       if (nextGroup) {
-        log.info(`➡️ [GROUP-TRANSITION] 次のグループ発見[${taskIndex}]:`, {
-          taskIndex: taskIndex,
-          nextGroup: nextGroup.groupNumber || nextGroup.number,
-          groupType: nextGroup.groupType || nextGroup.type,
-        });
+        log.info(
+          `[3-4] ➡️ [GROUP-TRANSITION] 次のグループ発見[${taskIndex}]:`,
+          {
+            taskIndex: taskIndex,
+            nextGroup: nextGroup.groupNumber || nextGroup.number,
+            groupType: nextGroup.groupType || nextGroup.type,
+          },
+        );
 
         await window.processNextGroup(nextGroup);
 
-        log.info(`✅ [GROUP-TRANSITION] グループ移行完了[${taskIndex}]:`, {
-          taskIndex: taskIndex,
-          from: completedGroup.groupNumber,
-          to: nextGroup.groupNumber || nextGroup.number,
-          移行完了時刻: new Date().toISOString(),
-        });
+        log.info(
+          `[3-4] ✅ [GROUP-TRANSITION] グループ移行完了[${taskIndex}]:`,
+          {
+            taskIndex: taskIndex,
+            from: completedGroup.groupNumber,
+            to: nextGroup.groupNumber || nextGroup.number,
+            移行完了時刻: new Date().toISOString(),
+          },
+        );
 
         // 移行後、新しいグループでタスクを開始
         setTimeout(() => {
@@ -1310,7 +1622,7 @@ async function transitionToNextGroup(completedGroup, taskIndex) {
       );
     }
   } catch (error) {
-    log.error(`❌ [GROUP-TRANSITION] グループ移行エラー[${taskIndex}]:`, {
+    log.error(`[3-4] ❌ [GROUP-TRANSITION] グループ移行エラー[${taskIndex}]:`, {
       taskIndex: taskIndex,
       error: error.message,
       stack: error.stack,
@@ -1325,7 +1637,9 @@ async function transitionToNextGroup(completedGroup, taskIndex) {
  */
 async function transitionToNextGroupFallback(taskIndex) {
   try {
-    log.info(`🔄 [GROUP-TRANSITION] フォールバック移行開始[${taskIndex}]`);
+    log.info(
+      `[3-4] 🔄 [GROUP-TRANSITION] フォールバック移行開始[${taskIndex}]`,
+    );
 
     // 簡単なグループ移行ロジック
     if (
@@ -1335,7 +1649,9 @@ async function transitionToNextGroupFallback(taskIndex) {
       const nextGroup = window.checkNextGroup();
       if (nextGroup) {
         await window.processNextGroup(nextGroup);
-        log.info(`✅ [GROUP-TRANSITION] フォールバック移行完了[${taskIndex}]`);
+        log.info(
+          `[3-4] ✅ [GROUP-TRANSITION] フォールバック移行完了[${taskIndex}]`,
+        );
 
         // 移行後タスク探索
         setTimeout(() => {
@@ -1352,7 +1668,7 @@ async function transitionToNextGroupFallback(taskIndex) {
         );
       }
     } else {
-      log.warn(`⚠️ [GROUP-TRANSITION] step6機能も利用不可[${taskIndex}]`);
+      log.warn(`[3-4] ⚠️ [GROUP-TRANSITION] step6機能も利用不可[${taskIndex}]`);
     }
   } catch (error) {
     log.error(
@@ -1367,7 +1683,7 @@ async function transitionToNextGroupFallback(taskIndex) {
  */
 async function openAIWindowForTask(task) {
   try {
-    log.info("🔍 [TASK-FLOW-TRACE] openAIWindowForTask開始:", {
+    log.info("[3-4] 🔍 [TASK-FLOW-TRACE] openAIWindowForTask開始:", {
       taskId: task.id,
       aiType: task.aiType,
       column: task.column,
@@ -1376,27 +1692,32 @@ async function openAIWindowForTask(task) {
     });
 
     if (!window.windowController) {
-      log.error("❌ [AIウィンドウ開く] WindowController利用不可");
+      log.error("[3-4] ❌ [AIウィンドウ開く] WindowController利用不可");
       return null;
     }
 
     if (typeof window.windowController.openWindows !== "function") {
-      log.error("❌ [AIウィンドウ開く] openWindowsメソッドが存在しません", {
-        availableMethods: Object.getOwnPropertyNames(
-          Object.getPrototypeOf(window.windowController),
-        ),
-      });
+      log.error(
+        "[3-4] ❌ [AIウィンドウ開く] openWindowsメソッドが存在しません",
+        {
+          availableMethods: Object.getOwnPropertyNames(
+            Object.getPrototypeOf(window.windowController),
+          ),
+        },
+      );
       return null;
     }
 
     // StableWindowManager.positionToWindowの初期化確認
     if (!StableWindowManager.positionToWindow) {
-      log.warn("⚠️ [AIウィンドウ開く] positionToWindow未初期化、初期化実行");
+      log.warn(
+        "[3-4] ⚠️ [AIウィンドウ開く] positionToWindow未初期化、初期化実行",
+      );
       StableWindowManager.positionToWindow = new Map();
     }
 
     // StepIntegratedWindowServiceの状態確認
-    log.debug("🔍 [AIウィンドウ開く] StepIntegratedWindowService状態:", {
+    log.debug("[3-4] 🔍 [AIウィンドウ開く] StepIntegratedWindowService状態:", {
       serviceExists: typeof StepIntegratedWindowService !== "undefined",
       hasPositionToWindow:
         StableWindowManager && StableWindowManager.positionToWindow,
@@ -1407,9 +1728,11 @@ async function openAIWindowForTask(task) {
     });
 
     // 利用可能なpositionを検索
-    log.debug("🔍 [AIウィンドウ開く] findAvailablePosition呼び出し前");
+    log.debug("[3-4] 🔍 [AIウィンドウ開く] findAvailablePosition呼び出し前");
     const availablePosition = window.windowController.findAvailablePosition();
-    log.info(`🎯 [AIウィンドウ開く] 検索結果 position: ${availablePosition}`);
+    log.info(
+      `[3-4] 🎯 [AIウィンドウ開く] 検索結果 position: ${availablePosition}`,
+    );
 
     // 既存ウィンドウとの競合チェック
     if (availablePosition !== null) {
@@ -1417,7 +1740,7 @@ async function openAIWindowForTask(task) {
       const openedWindowsInfo = Array.from(
         window.windowController.openedWindows.entries(),
       );
-      log.info(`🔍 [競合チェック] 現在のウィンドウ状態:`, {
+      log.info(`[3-4] 🔍 [競合チェック] 現在のウィンドウ状態:`, {
         position: availablePosition,
         openedWindowsCount: openedWindowsInfo.length,
         openedWindows: openedWindowsInfo.map(([key, value]) => ({
@@ -1448,7 +1771,7 @@ async function openAIWindowForTask(task) {
       },
     ];
 
-    log.debug("🔧 [AIウィンドウ開く] 単一ウィンドウレイアウト作成:", {
+    log.debug("[3-4] 🔧 [AIウィンドウ開く] 単一ウィンドウレイアウト作成:", {
       windowLayout,
       layoutValid:
         windowLayout.length > 0 &&
@@ -1457,7 +1780,7 @@ async function openAIWindowForTask(task) {
     });
 
     // openWindowsメソッド呼び出し前の詳細ログ
-    log.debug("🔍 [AIウィンドウ開く] openWindows呼び出し前の状態:", {
+    log.debug("[3-4] 🔍 [AIウィンドウ開く] openWindows呼び出し前の状態:", {
       windowControllerReady: !!window.windowController,
       openWindowsMethod: typeof window.windowController.openWindows,
       layoutLength: windowLayout.length,
@@ -1472,11 +1795,11 @@ async function openAIWindowForTask(task) {
     });
 
     // 既存のopenWindowsメソッドを使用して単一ウィンドウを開く
-    log.info("🚀 [AIウィンドウ開く] openWindows実行開始");
+    log.info("[3-4] 🚀 [AIウィンドウ開く] openWindows実行開始");
     const windowResults =
       await window.windowController.openWindows(windowLayout);
 
-    log.debug("🔍 [AIウィンドウ開く] openWindows戻り値詳細:", {
+    log.debug("[3-4] 🔍 [AIウィンドウ開く] openWindows戻り値詳細:", {
       resultsExists: !!windowResults,
       resultsType: typeof windowResults,
       resultsLength: Array.isArray(windowResults)
@@ -1497,7 +1820,7 @@ async function openAIWindowForTask(task) {
     if (windowResults && windowResults.length > 0 && windowResults[0].success) {
       const windowResult = windowResults[0];
 
-      log.info("✅ [AIウィンドウ開く] 成功:", {
+      log.info("[3-4] ✅ [AIウィンドウ開く] 成功:", {
         aiType: task.aiType,
         position: availablePosition,
         tabId: windowResult.tabId,
@@ -1513,11 +1836,11 @@ async function openAIWindowForTask(task) {
         position: availablePosition,
       };
 
-      log.info("✅ [AIウィンドウ開く] 最終的な戻り値:", result);
+      log.info("[3-4] ✅ [AIウィンドウ開く] 最終的な戻り値:", result);
       return result;
     }
 
-    log.error("❌ [AIウィンドウ開く] ウィンドウ作成失敗:", {
+    log.error("[3-4] ❌ [AIウィンドウ開く] ウィンドウ作成失敗:", {
       windowResults,
       resultsLength: Array.isArray(windowResults)
         ? windowResults.length
@@ -1531,7 +1854,7 @@ async function openAIWindowForTask(task) {
     });
     return null;
   } catch (error) {
-    log.error("❌ [AIウィンドウ開く] エラー詳細:", {
+    log.error("[3-4] ❌ [AIウィンドウ開く] エラー詳細:", {
       errorMessage: error.message,
       errorStack: error.stack,
       errorName: error.name,
@@ -1542,229 +1865,6 @@ async function openAIWindowForTask(task) {
     });
     return null;
   }
-}
-
-/**
- * タスクを独立して実行
- */
-async function executeTaskIndependently(task) {
-  try {
-    log.info("🔍 [TASK-FLOW-TRACE] executeTaskIndependently開始:", {
-      taskId: task.id,
-      aiType: task.aiType,
-      column: task.column,
-      row: task.row,
-      hasTabId: !!task.tabId,
-      tabId: task.tabId,
-      hasWindowId: !!task.windowId,
-      windowId: task.windowId,
-      hasLogCell: !!task.logCell,
-      logCell: task.logCell || "未設定",
-      実行開始時刻: new Date().toISOString(),
-    });
-
-    // Content Script初期化待機（新しいウィンドウの場合）
-    if (task.tabId && task.windowId) {
-      log.info("⏰ [TASK-FLOW-TRACE] Content Script初期化待機開始:", {
-        taskId: task.id,
-        tabId: task.tabId,
-        windowId: task.windowId,
-        待機時間: "3秒",
-        待機開始時刻: new Date().toISOString(),
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // 3秒待機
-
-      log.info("⏰ [TASK-FLOW-TRACE] Content Script初期化待機完了:", {
-        taskId: task.id,
-        tabId: task.tabId,
-        待機完了時刻: new Date().toISOString(),
-      });
-
-      // Content Script準備確認
-      try {
-        const response = await chrome.tabs.sendMessage(task.tabId, {
-          action: "ping",
-          from: "independent-task-executor",
-        });
-        log.info("✅ [TASK-FLOW-TRACE] Content Script準備確認成功:", {
-          taskId: task.id,
-          tabId: task.tabId,
-          response: response,
-          確認成功時刻: new Date().toISOString(),
-        });
-      } catch (e) {
-        log.warn("⚠️ [TASK-FLOW-TRACE] Content Script未応答:", {
-          taskId: task.id,
-          tabId: task.tabId,
-          error: e.message,
-          エラー時刻: new Date().toISOString(),
-          処理: "続行",
-        });
-      }
-    } else {
-      log.warn("⚠️ [TASK-FLOW-TRACE] タブ/ウィンドウ情報不足:", {
-        taskId: task.id,
-        hasTabId: !!task.tabId,
-        hasWindowId: !!task.windowId,
-        タイムスタンプ: new Date().toISOString(),
-      });
-    }
-
-    // windowに保存されたexecuteNormalAITask関数をチェック
-    if (
-      window._executeNormalAITask &&
-      typeof window._executeNormalAITask === "function"
-    ) {
-      log.debug("🔍 [独立タスク実行] _executeNormalAITask使用");
-      const result = await window._executeNormalAITask(task);
-
-      log.info("✅ [独立タスク実行] 完了:", {
-        taskId: task.id,
-        success: result?.success,
-      });
-
-      // 完了後の処理（スプレッドシート記載、ウィンドウクローズ）
-      if (result?.success) {
-        // 【修正】タスク情報を結果にマージして渡す
-        const enhancedResult = {
-          ...result,
-          taskId: result.taskId || task.id,
-          column: result.column || task.column,
-          row: result.row || task.row,
-          windowId: result.windowId || task.windowId,
-          aiType: result.aiType || task.aiType,
-        };
-
-        // 個別完了処理を実行
-        await handleIndividualTaskCompletion(enhancedResult, "independent");
-      }
-
-      return result;
-    } else {
-      log.warn(
-        "⚠️ [独立タスク実行] window._executeNormalAITask関数が利用不可、簡易実行モードを使用",
-      );
-      // 簡易実行モードで直接タスクを実行
-      const result = await executeSimpleTask(task);
-      return result;
-    }
-  } catch (error) {
-    log.error("❌ [独立タスク実行] エラー:", error);
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * 簡易タスク実行（動的タスク用）
- */
-async function executeSimpleTask(task) {
-  try {
-    // WindowControllerからタブ情報を取得
-    const windowInfo = window.windowController?.openedWindows?.get(
-      task.aiType?.toLowerCase(),
-    );
-    const tabId = windowInfo?.tabId || task.tabId;
-
-    if (!tabId) {
-      log.error("❌ [簡易タスク実行] タブIDが見つかりません");
-      return { success: false, error: "Tab ID not found" };
-    }
-
-    log.info("📝 [簡易タスク実行] タスク送信開始:", {
-      taskId: task.id,
-      tabId: tabId,
-      aiType: task.aiType,
-    });
-
-    // Content Scriptに直接メッセージを送信
-    const response = await chrome.tabs.sendMessage(tabId, {
-      action: "executeTask",
-      task: {
-        ...task,
-        taskId: task.id,
-        tabId: tabId,
-        model: task.model || "Claude Opus 4.1",
-        function: task.function || "",
-      },
-      from: "step4-tasklist-simple",
-    });
-
-    log.info("✅ [簡易タスク実行] 応答受信:", {
-      taskId: task.id,
-      success: response?.success,
-    });
-
-    // 結果を記録
-    if (response?.success && response?.response) {
-      const cellRef = `${task.column}${task.row}`;
-      await updateSpreadsheetCell(cellRef, response.response);
-    }
-
-    return {
-      success: response?.success || false,
-      response: response?.response,
-      taskId: task.id,
-    };
-  } catch (error) {
-    log.error("❌ [簡易タスク実行] エラー:", error);
-    return { success: false, error: error.message };
-  }
-}
-
-/**
- * スプレッドシートのセルを更新
- */
-async function updateSpreadsheetCell(cellRef, value) {
-  try {
-    if (!window.globalState?.spreadsheetId || !window.globalState?.authToken) {
-      log.warn("⚠️ [セル更新] 認証情報が不足");
-      return;
-    }
-
-    // シート名が含まれていない場合は追加
-    let fullCellRef = cellRef;
-    if (!cellRef.includes("!")) {
-      const sheetName =
-        window.globalState?.sheetName ||
-        `シート${window.globalState?.gid || "0"}`;
-      fullCellRef = `'${sheetName}'!${cellRef}`;
-    }
-
-    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${window.globalState.spreadsheetId}/values/${encodeURIComponent(fullCellRef)}?valueInputOption=USER_ENTERED`;
-
-    const response = await fetch(apiUrl, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${window.globalState.authToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        values: [[value]],
-      }),
-    });
-
-    if (response.ok) {
-      log.info("✅ [セル更新] 成功:", cellRef);
-    } else {
-      log.error("❌ [セル更新] 失敗:", await response.text());
-    }
-  } catch (error) {
-    log.error("❌ [セル更新] エラー:", error);
-  }
-}
-
-// グローバルエラーハンドリング
-if (typeof window !== "undefined") {
-  window.step4FileError = null;
-
-  // 未処理エラーの捕捉
-  window.addEventListener("error", function (event) {
-    if (event.filename && event.filename.includes("step4-tasklist.js")) {
-      log.error("❌ [step4-tasklist.js] エラー:", event.error);
-      window.step4FileError = event.error?.message || "未知のエラー";
-    }
-  });
 }
 
 // ========================================
@@ -1961,7 +2061,7 @@ class SafeMessenger {
     );
 
     // 🔍 [DEBUG] SafeMessenger詳細ログ
-    log.debug("🔍 [DEBUG-SAFE-MESSENGER] 送信開始詳細:", {
+    log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] 送信開始詳細:", {
       tabId: tabId,
       messageAction: message.action,
       messageKeys: Object.keys(message),
@@ -1975,18 +2075,18 @@ class SafeMessenger {
     // 既に同じタブに送信中の場合は待機
     if (this.sendMessageQueue.has(tabId)) {
       log.debug(`[SafeMessenger] タブ${tabId}は送信中、待機...`);
-      log.debug("🔍 [DEBUG-SAFE-MESSENGER] キュー待機詳細:", {
+      log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] キュー待機詳細:", {
         waitingForTab: tabId,
         currentQueueSize: this.sendMessageQueue.size,
         queuedTabs: Array.from(this.sendMessageQueue.keys()),
       });
       try {
         await this.sendMessageQueue.get(tabId);
-        log.debug("🔍 [DEBUG-SAFE-MESSENGER] キュー待機完了:", {
+        log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] キュー待機完了:", {
           tabId: tabId,
         });
       } catch (error) {
-        log.debug("🔍 [DEBUG-SAFE-MESSENGER] キュー待機エラー:", {
+        log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] キュー待機エラー:", {
           tabId: tabId,
           error: error.message,
         });
@@ -1995,7 +2095,7 @@ class SafeMessenger {
     }
 
     // 新しいリクエストを開始
-    log.debug("🔍 [DEBUG-SAFE-MESSENGER] 新規リクエスト開始:", {
+    log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] 新規リクエスト開始:", {
       tabId: tabId,
     });
     const promise = this._doSendMessage(tabId, message, timeout);
@@ -2007,7 +2107,7 @@ class SafeMessenger {
         `[SafeMessenger] 送信完了: tabId=${tabId}, success=${result.success}`,
       );
       // 🔍 [DEBUG] SafeMessenger結果詳細ログ
-      log.debug("🔍 [DEBUG-SAFE-MESSENGER] 送信完了詳細:", {
+      log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] 送信完了詳細:", {
         tabId: tabId,
         success: result.success,
         resultKeys: result ? Object.keys(result) : null,
@@ -2019,7 +2119,7 @@ class SafeMessenger {
     } finally {
       // 完了後はキューから削除
       this.sendMessageQueue.delete(tabId);
-      log.debug("🔍 [DEBUG-SAFE-MESSENGER] キューから削除:", {
+      log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] キューから削除:", {
         tabId: tabId,
         remainingQueueSize: this.sendMessageQueue.size,
       });
@@ -2031,7 +2131,7 @@ class SafeMessenger {
    */
   static async _doSendMessage(tabId, message, timeout) {
     // 🔍 [DEBUG] 実際の送信処理開始ログ
-    log.debug("🔍 [DEBUG-SAFE-MESSENGER] _doSendMessage開始:", {
+    log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] _doSendMessage開始:", {
       tabId: tabId,
       messageAction: message.action,
       timeout: timeout,
@@ -2046,12 +2146,15 @@ class SafeMessenger {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         // 🔍 [DEBUG] chrome.tabs.sendMessage実行前ログ
-        log.debug("🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行前:", {
-          tabId: tabId,
-          message: message,
-          attempt: attempt + 1,
-          maxRetries: maxRetries,
-        });
+        log.debug(
+          "[3-4] 🔍 [DEBUG-SAFE-MESSENGER] chrome.tabs.sendMessage実行前:",
+          {
+            tabId: tabId,
+            message: message,
+            attempt: attempt + 1,
+            maxRetries: maxRetries,
+          },
+        );
 
         const response = await Promise.race([
           chrome.tabs.sendMessage(tabId, message),
@@ -2064,7 +2167,7 @@ class SafeMessenger {
         ]);
 
         // 🔍 [DEBUG] レスポンス受信ログ
-        log.debug("🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
+        log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] レスポンス受信:", {
           tabId: tabId,
           responseReceived: !!response,
           responseType: typeof response,
@@ -2105,7 +2208,7 @@ class SafeMessenger {
         // その他のエラーまたは最終リトライ
         log.debug(`[SafeMessenger] エラー: ${errorMessage}`);
         // 🔍 [DEBUG] エラー詳細ログ
-        log.debug("🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
+        log.debug("[3-4] 🔍 [DEBUG-SAFE-MESSENGER] エラー詳細:", {
           tabId: tabId,
           errorMessage: errorMessage,
           errorName: error.name,
@@ -2213,7 +2316,9 @@ class StableWindowManager {
       });
 
       this.isMonitoringEnabled = true;
-      log.debug("🔍 [StableWindowManager] ウィンドウ閉鎖監視を開始しました");
+      log.debug(
+        "[3-4] 🔍 [StableWindowManager] ウィンドウ閉鎖監視を開始しました",
+      );
     }
   }
 
@@ -2224,12 +2329,15 @@ class StableWindowManager {
     const windowInfo = this.activeWindows.get(windowId);
 
     if (windowInfo) {
-      log.error(`🚨 [StableWindowManager] 予期しないウィンドウ閉鎖を検出:`, {
-        windowId,
-        aiType: windowInfo.aiType || "不明",
-        position: this.positionToWindow.get(windowId),
-        timestamp: new Date().toISOString(),
-      });
+      log.error(
+        `[3-4] 🚨 [StableWindowManager] 予期しないウィンドウ閉鎖を検出:`,
+        {
+          windowId,
+          aiType: windowInfo.aiType || "不明",
+          position: this.positionToWindow.get(windowId),
+          timestamp: new Date().toISOString(),
+        },
+      );
 
       // クリーンアップ処理
       this.cleanupClosedWindow(windowId);
@@ -2502,14 +2610,18 @@ class StepIntegratedWindowService {
                   altPosition !== position &&
                   !this.windowPositions.has(altPosition)
                 ) {
-                  log.info(`🔄 [代替position] position=${altPosition}を使用`);
+                  log.info(
+                    `[3-4] 🔄 [代替position] position=${altPosition}を使用`,
+                  );
                   position = altPosition;
                   break;
                 }
               }
               // それでも見つからない場合はエラー
               if (this.windowPositions.has(position)) {
-                log.error(`❌ [position不足] すべてのpositionが使用中です`);
+                log.error(
+                  `[3-4] ❌ [position不足] すべてのpositionが使用中です`,
+                );
                 return null;
               }
             }
@@ -2641,7 +2753,10 @@ class StepIntegratedWindowService {
                 break;
               }
             } catch (error) {
-              log.debug(`タブ状態取得エラー (試行 ${retryCount + 1}):`, error);
+              log.debug(
+                `[3-4] タブ状態取得エラー (試行 ${retryCount + 1}):`,
+                error,
+              );
             }
             retryCount++;
           }
@@ -2657,7 +2772,7 @@ class StepIntegratedWindowService {
       );
 
       // デバッグログ：戻り値の詳細
-      log.debug("🔍 [createWindowWithPosition] ウィンドウ作成後の詳細:", {
+      log.debug("[3-4] 🔍 [createWindowWithPosition] ウィンドウ作成後の詳細:", {
         windowId: window.id,
         tabsCount: window.tabs?.length,
         firstTabId: window.tabs?.[0]?.id,
@@ -2774,7 +2889,9 @@ class StepIntegratedAiUrlManager {
 
     const url =
       urls[aiType] || urls[aiType?.toLowerCase()] || "https://claude.ai/";
-    log.debug(`🔗 [StepIntegratedAiUrlManager] URL取得: ${aiType} -> ${url}`);
+    log.debug(
+      `[3-4] 🔗 [StepIntegratedAiUrlManager] URL取得: ${aiType} -> ${url}`,
+    );
     return url;
   }
 }
@@ -3455,13 +3572,13 @@ async function generateTaskList(
 
     // デバッグ: タスク生成範囲を明示
     log.debug(
-      `[step4-tasklist.js] タスク生成範囲: ${dataStartRow} ~ ${lastPromptRow}`,
+      `[step3-tasklist.js] タスク生成範囲: ${dataStartRow} ~ ${lastPromptRow}`,
     );
     log.debug(
-      `[step4-tasklist.js] グループ${taskGroup.groupNumber}のプロンプト列: ${promptColumns}`,
+      `[step3-tasklist.js] グループ${taskGroup.groupNumber}のプロンプト列: ${promptColumns}`,
     );
     log.debug(
-      `[step4-tasklist.js] グループ${taskGroup.groupNumber}の回答列: ${answerColumns}`,
+      `[step3-tasklist.js] グループ${taskGroup.groupNumber}の回答列: ${answerColumns}`,
     );
 
     for (let row = dataStartRow; row <= lastPromptRow; row++) {
@@ -3470,7 +3587,7 @@ async function generateTaskList(
       // デバッグ: 各行の処理状況を出力
       if (row <= dataStartRow + 2) {
         // 最初の数行だけデバッグ出力
-        log.debug(`[step4-tasklist.js] 行${row}を処理中...`);
+        log.debug(`[step3-tasklist.js] 行${row}を処理中...`);
       }
 
       if (!rowData) continue;
@@ -4206,10 +4323,10 @@ if (typeof window !== "undefined") {
 // ExecuteLogger configuration
 // ========================================
 const ExecuteLogger = {
-  info: (...args) => log.debug(`[step4-tasklist.js]`, ...args),
-  debug: (...args) => log.debug(`[step4-tasklist.js] [DEBUG]`, ...args),
-  warn: (...args) => log.warn(`[step4-tasklist.js]`, ...args),
-  error: (...args) => log.error(`[step4-tasklist.js]`, ...args),
+  info: (...args) => log.debug(`[step3-tasklist.js]`, ...args),
+  debug: (...args) => log.debug(`[step3-tasklist.js] [DEBUG]`, ...args),
+  warn: (...args) => log.warn(`[step3-tasklist.js]`, ...args),
+  error: (...args) => log.error(`[step3-tasklist.js]`, ...args),
 };
 
 // ========================================
@@ -4970,7 +5087,7 @@ class WindowController {
         }
 
         // その他のエラーについてはデバッグ情報を記録
-        log.error("🔴 [DEBUG-TAB-ERROR] 詳細エラー情報:", {
+        log.error("[3-4] 🔴 [DEBUG-TAB-ERROR] 詳細エラー情報:", {
           errorMessage: error?.message || "メッセージなし",
           tabId: tabId,
           attempt: i + 1,
@@ -4980,13 +5097,17 @@ class WindowController {
         // 代替手法での情報取得
         try {
           const allTabs = await chrome.tabs.query({});
-          log.debug("📋 [DEBUG-ALL-TABS] 全タブ情報:", {
+          log.debug("[3-4] 📋 [DEBUG-ALL-TABS] 全タブ情報:", {
             totalTabs: allTabs.length,
             targetTabExists: allTabs.some((t) => t.id === tabId),
             tabIds: allTabs.map((t) => t.id),
           });
         } catch (queryError) {
-          log.error("❌ [DEBUG-QUERY-ERROR]:", queryError.message, queryError);
+          log.error(
+            "[3-4] ❌ [DEBUG-QUERY-ERROR]:",
+            queryError.message,
+            queryError,
+          );
         }
 
         ExecuteLogger.error(`❌ [Tab Ready Check] Error on attempt ${i + 1}:`, {
@@ -5041,7 +5162,9 @@ class WindowController {
     }
 
     // Step 2: 見つからない場合のみ従来の全チェック
-    log.debug(`🔍 [FastCheck] ${aiType}のフォールバック: 全ウィンドウチェック`);
+    log.debug(
+      `[3-4] 🔍 [FastCheck] ${aiType}のフォールバック: 全ウィンドウチェック`,
+    );
     return await this.performFullWindowCheck(aiType);
   }
 
@@ -5089,7 +5212,7 @@ class WindowController {
           };
         }
       } catch (error) {
-        log.debug(`❌ [FullCheck] ${key}チェックエラー:`, error.message);
+        log.debug(`[3-4] ❌ [FullCheck] ${key}チェックエラー:`, error.message);
       }
     }
 
@@ -7034,6 +7157,1411 @@ async function createTaskListFromGroup(groupData) {
 // ========================================
 // executeStep4 Function - Moved from step5-execute.js
 // ========================================
+class DynamicTaskSearch {
+  constructor() {
+    this.cache = {
+      spreadsheetData: null,
+      lastFetchTime: null,
+      cacheTimeout: 0, // 🔍 【修正】キャッシュを完全無効化（常に最新データ取得）
+    };
+
+    this.processingTasks = new Set(); // 処理中タスクのID管理
+    this.completedTasks = new Set(); // 完了タスクのID管理
+
+    // 【追加】currentGroup変更の監視
+    this.initializeCurrentGroupListener();
+  }
+
+  /**
+   * currentGroup変更監視リスナーの初期化
+   * 【追加】統一管理システムとの連携
+   */
+  initializeCurrentGroupListener() {
+    if (window.addCurrentGroupListener) {
+      const listener = (changeEvent) => {
+        log.warn(
+          "🔄 [DynamicTaskSearch] currentGroup変更:",
+          changeEvent.currentGroup?.groupNumber,
+        );
+
+        // グループ変更時にキャッシュをクリア
+        this.cache.spreadsheetData = null;
+        this.cache.lastFetchTime = null;
+
+        // 新しいグループに関連しない処理中タスクをクリア
+        if (
+          changeEvent.currentGroup?.groupNumber !==
+          changeEvent.previousGroup?.groupNumber
+        ) {
+          this.processingTasks.clear(); // 前のグループの処理中タスクをクリア
+        }
+      };
+
+      window.addCurrentGroupListener(listener);
+      this._currentGroupListener = listener; // クリーンアップ用に保存
+    } else {
+    }
+  }
+
+  /**
+   * スプレッドシートから最新データを取得（キャッシュ付き + リトライ機能）
+   * step3-loop.jsのreadFullSpreadsheetを参考に実装
+   * 【修正】書き込み完了後の最新データ取得を確実にするためリトライ機能追加
+   */
+  async fetchLatestSpreadsheetData(forceRefresh = false) {
+    const now = Date.now();
+
+    // 🔍 【修正】キャッシュ完全無効化 - 常に最新データを取得
+    if (
+      !forceRefresh &&
+      this.cache.spreadsheetData &&
+      this.cache.lastFetchTime &&
+      this.cache.cacheTimeout > 0 && // cacheTimeout=0なら常に新規取得
+      now - this.cache.lastFetchTime < this.cache.cacheTimeout
+    ) {
+      return this.cache.spreadsheetData;
+    }
+
+    console.log(`🔍 [DYNAMIC-SEARCH] キャッシュ無効化により最新データ取得`);
+
+    log.info("[3-4] 🔄 スプレッドシート最新データ取得中...");
+
+    // 【追加】書き込み完了後の最新データ取得のためのリトライ機能
+    let retryCount = 0;
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1秒待機
+
+    while (retryCount <= maxRetries) {
+      try {
+        // 依存関係チェック
+        if (!window.fetchWithTokenRefresh) {
+          throw new Error("fetchWithTokenRefresh が初期化されていません");
+        }
+
+        // グローバル状態から必要な情報を取得
+        const spreadsheetId = window.globalState?.spreadsheetId;
+        const authToken = window.globalState?.authToken;
+        const gid = window.globalState?.gid;
+
+        if (!spreadsheetId || !authToken) {
+          throw new Error("認証情報またはスプレッドシートIDが見つかりません");
+        }
+
+        // 【追加】書き込み完了待機：初回以外は待機してから取得
+        if (retryCount > 0) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        }
+
+        // シート名を取得
+        const sheetName = window.globalState.sheetName || `シート${gid || "0"}`;
+
+        // 全体データ取得（A1:Z1000）- シート名を含める
+        const range = `'${sheetName}'!A1:Z1000`;
+        const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+
+        const response = await window.fetchWithTokenRefresh(apiUrl, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `API応答エラー: ${response.status} ${response.statusText}`,
+          );
+        }
+
+        const data = await response.json();
+        const values = data.values || [];
+
+        // 【追加】データ変更確認：前回と比較して変更があるかチェック
+        const hasSignificantChange = this.validateDataFreshness(values);
+        if (retryCount > 0 && !hasSignificantChange) {
+          retryCount++;
+          continue;
+        }
+
+        // キャッシュ更新
+        this.cache.spreadsheetData = values;
+        this.cache.lastFetchTime = now;
+
+        log.info(
+          `✅ データ取得成功: ${values.length}行 (試行: ${retryCount + 1})`,
+        );
+        return values;
+      } catch (error) {
+        retryCount++;
+        if (retryCount > maxRetries) {
+          log.error("[3-4] ❌ スプレッドシートデータ取得エラー:", error);
+          throw error;
+        }
+        log.warn(
+          `⚠️ データ取得失敗、リトライ中... (${retryCount}/${maxRetries}):`,
+          error.message,
+        );
+      }
+    }
+  }
+
+  /**
+   * データの新しさを検証（書き込み完了の確認）
+   * 【追加】完了タスクの結果がスプレッドシートに反映されているかチェック
+   */
+  validateDataFreshness(newData) {
+    if (!this.cache.spreadsheetData || !newData) {
+      return true; // 初回取得またはデータなしの場合は有効とみなす
+    }
+
+    // 簡単な変更検出：行数または内容の変化をチェック
+    if (newData.length !== this.cache.spreadsheetData.length) {
+      return true;
+    }
+
+    // 最近完了したタスクのセルをチェック
+    for (const taskId of this.completedTasks) {
+      // taskIdの形式: "U9" -> U列9行
+      const match = taskId.match(/([A-Z]+)(\d+)/);
+      if (match) {
+        const [, column, row] = match;
+        const rowIndex = parseInt(row) - 1;
+        const colIndex = this.columnToIndex(column);
+
+        if (newData[rowIndex] && newData[rowIndex][colIndex]) {
+          const cellValue = newData[rowIndex][colIndex];
+          if (cellValue && !cellValue.startsWith("作業中")) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * 次の利用可能なタスクを1つ検索
+   * @returns {Object|null} 次のタスク、または null
+   */
+  async findNextTask() {
+    log.info("[3-4] 🔍 次のタスク検索開始");
+
+    try {
+      // 【修正】統一管理システムから現在のグループ番号を取得し、詳細情報を参照
+      const currentGroupNumber = window.getCurrentGroup
+        ? window.getCurrentGroup()?.groupNumber
+        : window.globalState?.currentGroup?.groupNumber;
+
+      if (!currentGroupNumber) {
+        log.warn("[3-4] ⚠️ 現在のグループ番号が見つかりません");
+        return null;
+      }
+
+      // 詳細なグループ情報をtaskGroupsから取得
+      const currentGroup = window.globalState?.taskGroups?.find(
+        (g) => g.groupNumber === currentGroupNumber,
+      );
+
+      if (!currentGroup) {
+        log.warn("[3-4] ⚠️ 詳細なグループ情報が見つかりません", {
+          currentGroupNumber,
+          availableGroups: window.globalState?.taskGroups?.map(
+            (g) => g.groupNumber,
+          ),
+        });
+        return null;
+      }
+
+      // 最新のスプレッドシートデータを取得
+      const spreadsheetData = await this.fetchLatestSpreadsheetData();
+
+      // グループの範囲内でタスクを検索
+      const availableTask = await this.searchTaskInGroup(
+        spreadsheetData,
+        currentGroup,
+      );
+
+      if (availableTask) {
+        log.info("[3-4] ✅ 利用可能なタスク発見:", {
+          taskId: availableTask.id,
+          row: availableTask.row,
+          column: availableTask.column,
+          aiType: availableTask.aiType,
+        });
+
+        // 処理中としてマーク
+        this.markTaskAsProcessing(availableTask);
+        return availableTask;
+      }
+
+      // 【修正】タスクが見つからない場合の制御移譲シグナル実装
+      log.info("[3-4] 📭 現在のグループ内に利用可能なタスクなし");
+
+      // グループ完了状態を確認・記録
+      const isGroupCompleted = await this.checkAndRecordGroupCompletion(
+        currentGroup,
+        spreadsheetData,
+      );
+
+      if (isGroupCompleted) {
+        log.info(
+          `🏁 グループ${currentGroup.groupNumber}完了 - step3メインループに制御移譲`,
+        );
+
+        // 【修正】統一移行協調システムを使用
+        await this.initiateGroupTransition(currentGroup);
+
+        // 【追加】グループ完了をglobalStateに記録（step3との協調用）
+        if (window.globalState) {
+          window.globalState.dynamicSearchStatus = {
+            groupCompleted: true,
+            completedGroupNumber: currentGroup.groupNumber,
+            transferControlToStep3: true,
+            timestamp: new Date().toISOString(),
+          };
+        }
+
+        // 【追加】step3メインループに制御移譲イベントを送信
+        this.notifyGroupCompletionToStep3(currentGroup);
+      } else {
+      }
+
+      return null;
+    } catch (error) {
+      log.error("[3-4] ❌ タスク検索エラー:", error);
+      return null;
+    }
+  }
+
+  /**
+   * グループ内でタスクを検索
+   * step3-loop.jsのcreateTaskListロジックを個別タスク用に改良
+   */
+  async searchTaskInGroup(spreadsheetData, taskGroup) {
+    const { columns, dataStartRow } = taskGroup;
+
+    if (!columns || !dataStartRow) {
+      log.error("[3-4] グループ情報が不完全");
+      return null;
+    }
+
+    // プロンプト列を確認
+    const promptColumns = columns.prompts || [];
+    const answerColumns = this.getAnswerColumns(columns.answer, taskGroup);
+
+    // 【無限ループ防止】カウンター追加
+    let tasksChecked = 0;
+    let completedTasksFound = 0;
+    let availableTasksFound = 0;
+    let skippedTasks = [];
+    const maxTasksToCheck = 200;
+
+    // グループの範囲を限定（最大70行までチェック）
+    const groupMaxRows = 100;
+    const endRow = Math.min(
+      dataStartRow + groupMaxRows - 1,
+      spreadsheetData.length,
+    );
+
+    // データ行を順番にチェック
+    for (let rowIndex = dataStartRow - 1; rowIndex < endRow; rowIndex++) {
+      const row = spreadsheetData[rowIndex];
+      if (!row) continue;
+
+      const rowNumber = rowIndex + 1; // 1-based行番号
+
+      // 各プロンプト列をチェック
+      for (const promptCol of promptColumns) {
+        const colIndex = this.columnToIndex(promptCol);
+        const promptValue = row[colIndex];
+
+        // プロンプトが存在しない場合はスキップ
+        if (!promptValue || !promptValue.trim()) continue;
+
+        // 対応する回答列をチェック
+        for (const answerCol of answerColumns) {
+          const answerIndex = this.columnToIndex(answerCol.column);
+          const answerValue = row[answerIndex] || "";
+
+          // タスクIDを生成
+          const taskId = `${answerCol.column}${rowNumber}`;
+
+          tasksChecked++;
+
+          // 【無限ループ防止】チェック数制限
+          if (tasksChecked > maxTasksToCheck) {
+            log.warn(
+              `⚠️ タスクチェック制限に達しました (${maxTasksToCheck}個)`,
+            );
+            return null;
+          }
+
+          // 完了済みタスクをカウント（詳細ログなしで高速チェック）
+          if (this.completedTasks.has(taskId)) {
+            completedTasksFound++;
+            continue; // スキップして次へ
+          }
+
+          // このタスクが処理可能かチェック
+          const isAvailable = await this.isTaskAvailable(taskId, answerValue);
+
+          if (isAvailable) {
+            availableTasksFound++;
+            // 【デバッグ追加】logCell生成確認
+            const logCellValue = taskGroup.columns?.log
+              ? `${taskGroup.columns.log}${rowNumber}`
+              : null;
+
+            log.warn("[3-4] 🔍 [DynamicSearch] タスク生成時のlogCell:", {
+              taskId: taskId,
+              logCellValue: logCellValue,
+              logCellType: typeof logCellValue,
+              taskGroupColumns: taskGroup.columns,
+              logColumnExists: taskGroup.columns?.log ? true : false,
+              logColumn: taskGroup.columns?.log || "未設定",
+              rowNumber: rowNumber,
+              finalTaskLogCell: logCellValue,
+              logCellCalculation: `${taskGroup.columns?.log}${rowNumber}`,
+            });
+
+            // 利用可能なタスクを返す
+            return {
+              id: taskId,
+              row: rowNumber,
+              column: answerCol.column,
+              prompt: promptValue.trim(),
+              aiType: answerCol.aiType,
+              spreadsheetId: window.globalState?.spreadsheetId,
+              gid: window.globalState?.gid,
+              groupNumber: taskGroup.groupNumber,
+              // 追加情報
+              cellRef: `${answerCol.column}${rowNumber}`,
+              answerCell: `${answerCol.column}${rowNumber}`,
+              logCell: logCellValue,
+            };
+          }
+        }
+      }
+    }
+
+    // 【無限ループ防止】統計情報ログ
+    log.info(`[3-4] 📊 タスク検索完了:`, {
+      チェック済み: tasksChecked,
+      完了済み発見: completedTasksFound,
+      利用可能タスク: availableTasksFound + "個",
+      グループ: taskGroup.groupNumber,
+    });
+
+    return null;
+  }
+
+  /**
+   * 回答列の情報を取得
+   * スプレッドシートのAI行から実際のAI種別を取得
+   */
+  getAnswerColumns(answerConfig, taskGroup) {
+    const columns = [];
+
+    if (typeof answerConfig === "object" && answerConfig !== null) {
+      // 通常の場合：primaryカラムとそのAI種別を取得
+      if (answerConfig.primary) {
+        const column = answerConfig.primary;
+        // 回答列に対応するプロンプト列を特定してからAI種別を取得
+        const promptColumn = this.getPromptColumnForAnswer(column, taskGroup);
+        const aiType = this.getAITypeForColumn(promptColumn);
+
+        if (!aiType) {
+          console.error(
+            `❌ [DynamicSearch] 列${column}のAI種別が取得できません`,
+            {
+              column,
+              taskGroup: taskGroup?.groupNumber,
+              availableAIData: window.globalState?.aiRowData,
+            },
+          );
+          throw new Error(
+            `列${column}のAI種別が特定できません。スプレッドシートのAI行を確認してください。`,
+          );
+        }
+
+        columns.push({ column: column, aiType: aiType });
+      }
+    } else if (typeof answerConfig === "string") {
+      // 文字列形式（通常パターン）
+      // 回答列に対応するプロンプト列を特定してからAI種別を取得
+      const promptColumn = this.getPromptColumnForAnswer(
+        answerConfig,
+        taskGroup,
+      );
+      const aiType = this.getAITypeForColumn(promptColumn);
+
+      if (!aiType) {
+        console.error(
+          `❌ [DynamicSearch] 列${answerConfig}のAI種別が取得できません`,
+        );
+        throw new Error(
+          `列${answerConfig}のAI種別が特定できません。スプレッドシートのAI行を確認してください。`,
+        );
+      }
+
+      columns.push({ column: answerConfig, aiType: aiType });
+    }
+
+    return columns;
+  }
+
+  /**
+   * 回答列に対応するプロンプト列を取得
+   */
+  getPromptColumnForAnswer(answerColumn, taskGroup) {
+    // タスクグループの列設定から対応関係を判定
+    const { columns } = taskGroup;
+
+    // プロンプト列が配列の場合、最後のプロンプト列を使用（通常パターン）
+    if (columns?.prompts && Array.isArray(columns.prompts)) {
+      const lastPromptColumn = columns.prompts[columns.prompts.length - 1];
+      console.log(
+        `✅ [DynamicSearch] 回答列${answerColumn}に対応するプロンプト列: ${lastPromptColumn}`,
+      );
+      return lastPromptColumn;
+    }
+
+    // フォールバック：回答列の1つ前の列をプロンプト列と仮定
+    const answerIndex = this.columnToIndex(answerColumn);
+    const promptIndex = answerIndex - 1;
+    const promptColumn = this.indexToColumn(promptIndex);
+    console.log(
+      `⚠️ [DynamicSearch] プロンプト列を推定: ${promptColumn} (回答列${answerColumn}の1つ前)`,
+    );
+    return promptColumn;
+  }
+
+  /**
+   * インデックスを列文字に変換
+   */
+  indexToColumn(index) {
+    let column = "";
+    while (index >= 0) {
+      column = String.fromCharCode((index % 26) + 65) + column;
+      index = Math.floor(index / 26) - 1;
+    }
+    return column;
+  }
+
+  /**
+   * 列からAI種別を取得（スプレッドシートのAI行を参照）
+   */
+  getAITypeForColumn(column) {
+    try {
+      // globalStateから保存されたAI行データを取得
+      const aiRowData = window.globalState?.aiRowData;
+      if (!aiRowData) {
+        console.error("❌ AI行データが取得できません");
+        return null;
+      }
+
+      // 列インデックスを計算
+      const colIndex = this.columnToIndex(column);
+
+      // AI行データから該当列のAI種別を取得
+      const aiValue = aiRowData[colIndex];
+
+      if (!aiValue) {
+        console.error(
+          `❌ プロンプト列${column}(インデックス${colIndex})のAI種別が空です`,
+        );
+        return null;
+      }
+
+      // AI種別を正規化（小文字に変換）
+      const normalizedAI = aiValue.toLowerCase().trim();
+
+      // 有効なAI種別かチェック
+      const validAITypes = ["claude", "chatgpt", "gemini", "genspark"];
+      if (!validAITypes.includes(normalizedAI)) {
+        console.error(`❌ 無効なAI種別: ${aiValue}`);
+        return null;
+      }
+
+      console.log(`✅ [DynamicSearch] 列${column}のAI種別: ${normalizedAI}`);
+      return normalizedAI;
+    } catch (error) {
+      console.error(`❌ AI種別取得エラー:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 🔍 【追加】指定されたAIを優先するAIタイプ配列を生成
+   * @param {Object} taskGroup - タスクグループ情報
+   * @returns {Array<string>} AI タイプの配列（指定AI優先順）
+   */
+  getAiTypesOrderByPreference(taskGroup) {
+    // Claudeをデフォルトで最優先に変更
+    const defaultOrder = ["claude", "chatgpt", "gemini"];
+
+    // タスクグループからAI指定があるかチェック
+    let preferredAI = null;
+
+    if (taskGroup?.aiPreference) {
+      preferredAI = taskGroup.aiPreference.toLowerCase();
+    } else if (taskGroup?.groupType?.includes("claude")) {
+      preferredAI = "claude";
+    } else if (taskGroup?.groupType?.includes("chatgpt")) {
+      preferredAI = "chatgpt";
+    } else if (taskGroup?.groupType?.includes("gemini")) {
+      preferredAI = "gemini";
+    }
+
+    // 指定されたAIを最初に配置
+    if (preferredAI && defaultOrder.includes(preferredAI)) {
+      const reorderedTypes = [
+        preferredAI,
+        ...defaultOrder.filter((ai) => ai !== preferredAI),
+      ];
+
+      log.debug(`[3-4] 🔍 [AI-SELECTION] AI優先順序を調整: ${preferredAI}優先`);
+
+      return reorderedTypes;
+    }
+
+    log.debug(`[3-4] 🔍 [AI-SELECTION] デフォルト順序を使用`);
+
+    return defaultOrder;
+  }
+
+  /**
+   * タスクが実行可能かチェック
+   * 【修正】重複実行防止のための厳密なチェック
+   */
+  async isTaskAvailable(taskId, cellValue) {
+    const startTimestamp = new Date().toISOString();
+    const callId = `${taskId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+    // 🔍 【詳細デバッグ】Group 2のタスク可用性詳細チェック
+    // 競合状態検知のための内部記録のみ（ログ出力削除）
+
+    // エラー相関トラッカーへのイベント記録
+    if (window.errorCorrelationTracker) {
+      window.errorCorrelationTracker.recordEvent(
+        "task_availability_check_start",
+        {
+          taskId,
+          callId,
+          cellValue: cellValue ? "has_content" : "empty",
+          completedTasksHas: this.completedTasks.has(taskId),
+          processingTasksHas: this.processingTasks.has(taskId),
+        },
+      );
+    }
+
+    // 【修正1】すでに完了済みならスキップ（優先度：最高）
+    if (this.completedTasks.has(taskId)) {
+      return false;
+    }
+
+    // 【修正2】現在処理中ならスキップ（優先度：最高）
+    if (this.processingTasks.has(taskId)) {
+      log.debug(`[3-4] ❌ タスク実行拒否 - 処理中: ${taskId}`);
+      return false;
+    }
+
+    // 【修正2.5】セル位置ベースの重複チェック（より確実な重複防止）
+    const cellPosition = this.extractCellPosition(taskId);
+    if (cellPosition) {
+      for (const processingTaskId of this.processingTasks) {
+        const processingCellPosition =
+          this.extractCellPosition(processingTaskId);
+        if (
+          processingCellPosition &&
+          processingCellPosition.column === cellPosition.column &&
+          processingCellPosition.row === cellPosition.row
+        ) {
+          log.debug(`[3-4] ❌ セル位置重複によりタスク実行拒否: ${taskId}`);
+          return false;
+        }
+      }
+    }
+
+    // 【修正3】最新データ再取得による二重確認
+    // セル値が空の場合、スプレッドシートから最新値を再確認
+    if (!cellValue || !cellValue.trim()) {
+      log.debug(`[3-4] ⚠️ セル空検出 - 最新データ再確認: ${taskId}`);
+
+      try {
+        // 最新のスプレッドシートデータを強制取得
+        const latestData = await this.fetchLatestSpreadsheetData(true); // forceRefresh=true
+
+        // 該当セルの最新値を確認
+        const match = taskId.match(/([A-Z]+)(\d+)/);
+        if (match && latestData) {
+          const [, column, row] = match;
+          const rowIndex = parseInt(row) - 1;
+          const colIndex = this.columnToIndex(column);
+
+          if (latestData[rowIndex] && latestData[rowIndex][colIndex]) {
+            const latestCellValue = latestData[rowIndex][colIndex];
+
+            // 最新セル値の内部確認
+
+            // 最新データに内容がある場合は実行拒否
+            if (latestCellValue && latestCellValue.trim()) {
+              if (latestCellValue.startsWith("作業中")) {
+                return false;
+              }
+
+              // 実際の回答がある場合
+              this.completedTasks.add(taskId); // 完了済みとしてマーク
+              log.debug(`[3-4] ✅ 最新確認で回答発見 - 重複防止: ${taskId}`);
+              return false;
+            }
+          }
+        }
+      } catch (error) {
+        log.debug(`[3-4] ⚠️ 最新データ確認エラー: ${error.message}`);
+        // エラーの場合は慎重にスキップ
+        return false;
+      }
+    }
+
+    // セルに値がある場合
+    if (cellValue && cellValue.trim()) {
+      // 作業中マーカーの場合
+      if (cellValue.startsWith("作業中")) {
+        // 既存のTaskStatusManagerでタイムアウトチェック
+        if (window.TaskStatusManager) {
+          const taskInfo = this.extractTaskInfo(taskId);
+          if (taskInfo) {
+            const statusManager = new window.TaskStatusManager();
+            const isTimeout = statusManager.isTaskTimedOut(cellValue, taskInfo);
+            if (isTimeout) {
+              log.info(`[3-4] ⏰ タイムアウト検出 - 再実行可能: ${taskId}`);
+              return true; // タイムアウトしたので実行可能
+            }
+          }
+        }
+        return false; // タイムアウトしていないのでブロック
+      }
+
+      // すでに回答がある場合
+      this.completedTasks.add(taskId); // 完了済みとしてマーク
+      return false;
+    }
+
+    // 【修正4】最終確認：処理中状態を再度チェック
+    if (this.processingTasks.has(taskId)) {
+      log.debug(`[3-4] ❌ 最終チェックで処理中検出 - 重複防止: ${taskId}`);
+      return false;
+    }
+
+    // セルが本当に空の場合のみ実行可能
+    const result = true;
+    const endTimestamp = new Date().toISOString();
+
+    // 最終判定結果の内部記録のみ（ログ出力削除）
+
+    log.info(`[3-4] ✅ タスク実行許可: ${taskId}`);
+    return result;
+  }
+
+  /**
+   * タスクを処理中としてマーク
+   */
+  markTaskAsProcessing(task) {
+    this.processingTasks.add(task.id);
+    log.debug(`[3-4] ✅ タスク処理開始: ${task.id}`);
+
+    // window.currentTaskListも更新
+    if (window.currentTaskList && Array.isArray(window.currentTaskList)) {
+      const existingTask = window.currentTaskList.find((t) => t.id === task.id);
+      if (existingTask) {
+        existingTask.processing = true;
+      } else {
+        window.currentTaskList.push({
+          ...task,
+          processing: true,
+        });
+      }
+    }
+  }
+
+  /**
+   * タスク完了を登録
+   * 【修正】重複防止の強化とデータ整合性確保
+   */
+  registerTaskCompletion(taskId) {
+    // 重複完了登録の防止
+    if (this.completedTasks.has(taskId)) {
+      log.debug(`[3-4] ⚠️ 重複完了登録をスキップ: ${taskId}`);
+      return;
+    }
+
+    // 処理中リストから削除
+    this.processingTasks.delete(taskId);
+
+    // 完了リストに追加
+    this.completedTasks.add(taskId);
+
+    log.info(`[3-4] ✅ タスク完了登録: ${taskId}`);
+
+    // window.currentTaskListも更新
+    if (window.currentTaskList && Array.isArray(window.currentTaskList)) {
+      const task = window.currentTaskList.find((t) => t.id === taskId);
+      if (task) {
+        task.processing = false;
+        task.completed = true;
+        task.completedAt = new Date().toISOString(); // 完了時刻を記録
+      }
+    }
+
+    // 【修正】キャッシュクリアの強化
+    this.cache.spreadsheetData = null;
+    this.cache.lastFetchTime = null; // 完全リセット
+
+    // 【追加】グローバル状態への完了通知
+    if (window.globalState && window.globalState.completedTasksRegistry) {
+      window.globalState.completedTasksRegistry.add(taskId);
+    }
+  }
+
+  /**
+   * グループ完了状態を確認・記録
+   * 【追加】ハイブリッド協調モデル: グループ完了判定の実装
+   */
+  async checkAndRecordGroupCompletion(currentGroup, spreadsheetData) {
+    try {
+      const { columns, dataStartRow } = currentGroup;
+      if (!columns || !dataStartRow) {
+        log.warn("[3-4] ⚠️ グループ情報不完全", { currentGroup });
+        return false;
+      }
+
+      const promptColumns = columns.prompts || [];
+      const answerColumns = this.getAnswerColumns(columns.answer, currentGroup);
+
+      let totalTasks = 0;
+      let completedTasks = 0;
+      let debugRows = [];
+
+      // グループ範囲内の全タスクをチェック
+      // グループの終了行を決定（グループサイズまたはデータ終端）
+      const maxRowsToCheck = 100; // グループの最大行数
+      const endRow = Math.min(
+        dataStartRow + maxRowsToCheck - 1,
+        spreadsheetData.length,
+      );
+
+      for (let rowIndex = dataStartRow - 1; rowIndex < endRow; rowIndex++) {
+        const row = spreadsheetData[rowIndex];
+        if (!row) continue;
+
+        const rowNumber = rowIndex + 1;
+
+        // プロンプト存在確認
+        let hasPrompt = false;
+        let promptDetails = [];
+        for (const promptCol of promptColumns) {
+          const colIndex = this.columnToIndex(promptCol);
+          const promptValue = row[colIndex];
+          promptDetails.push({
+            column: promptCol,
+            index: colIndex,
+            value: promptValue ? promptValue.substring(0, 50) + "..." : "empty",
+          });
+          if (promptValue && promptValue.trim()) {
+            hasPrompt = true;
+            break;
+          }
+        }
+
+        if (!hasPrompt) continue;
+
+        // 各回答列の完了状態をチェック
+        let rowTasks = [];
+        for (const answerCol of answerColumns) {
+          totalTasks++;
+          const answerIndex = this.columnToIndex(answerCol.column);
+          const answerValue = row[answerIndex] || "";
+
+          const isCompleted =
+            answerValue &&
+            answerValue.trim() &&
+            !answerValue.startsWith("作業中");
+
+          if (isCompleted) {
+            completedTasks++;
+          }
+        }
+
+        debugRows.push({
+          rowNumber,
+          hasPrompt,
+          tasks: rowTasks.length,
+          completed: rowTasks.filter((t) => t.isCompleted).length,
+        });
+      }
+
+      const isCompleted = totalTasks > 0 && completedTasks === totalTasks;
+      const completionRate =
+        totalTasks > 0
+          ? ((completedTasks / totalTasks) * 100).toFixed(1)
+          : "0.0";
+
+      log.info(`[3-4] 📊 グループ${currentGroup.groupNumber}完了状態:`, {
+        totalTasks,
+        completedTasks,
+        completionRate: `${completionRate}%`,
+        isCompleted,
+      });
+
+      return isCompleted;
+    } catch (error) {
+      log.error("[3-4] ❌ グループ完了状態確認エラー:", error);
+      return false;
+    }
+  }
+
+  /**
+   * グループ移行の協調実行
+   * 【追加】統一移行協調システムを使用したグループ移行
+   */
+  async initiateGroupTransition(completedGroup) {
+    try {
+      log.info("[3-4] 🔀 [DynamicTaskSearch] グループ移行協調開始:", {
+        completedGroup: completedGroup.groupNumber,
+        initiator: "DynamicSearch",
+      });
+
+      // 統一移行協調システムが利用可能かチェック
+      if (!window.executeGroupTransition) {
+        log.warn(
+          "⚠️ [DynamicTaskSearch] グループ移行協調システム未利用可能 - 従来通知のみ",
+        );
+        return false;
+      }
+
+      // 次のグループを決定（step3-loop.jsと同じロジック）
+      const nextGroup = this.determineNextGroup(completedGroup);
+
+      if (!nextGroup) {
+        log.info("[3-4] 📋 [DynamicTaskSearch] 次のグループなし - 全体完了");
+        return true;
+      }
+
+      // 統一移行協調システムを使用して移行実行
+      const transitionSuccess = await window.executeGroupTransition(
+        completedGroup,
+        nextGroup,
+        "DynamicSearch",
+      );
+
+      if (transitionSuccess) {
+        log.info("[3-4] ✅ [DynamicTaskSearch] グループ移行協調成功:", {
+          from: completedGroup.groupNumber,
+          to: nextGroup.groupNumber,
+        });
+      } else {
+        log.warn("[3-4] ❌ [DynamicTaskSearch] グループ移行協調失敗:", {
+          from: completedGroup.groupNumber,
+          to: nextGroup.groupNumber,
+        });
+      }
+
+      return transitionSuccess;
+    } catch (error) {
+      log.error("[3-4] ❌ [DynamicTaskSearch] グループ移行協調エラー:", error);
+      return false;
+    }
+  }
+
+  /**
+   * 次のグループを決定
+   * 【追加】step3-loop.jsのグループ順序と整合性を保つ
+   */
+  determineNextGroup(currentGroup) {
+    try {
+      const taskGroups = window.globalState?.taskGroups;
+      if (!taskGroups || !Array.isArray(taskGroups)) {
+        log.warn("[3-4] ⚠️ [DynamicTaskSearch] taskGroups未定義");
+        return null;
+      }
+
+      // 現在のグループのインデックスを検索
+      const currentIndex = taskGroups.findIndex(
+        (group) => group.groupNumber === currentGroup.groupNumber,
+      );
+
+      if (currentIndex === -1) {
+        log.warn(
+          "⚠️ [DynamicTaskSearch] 現在のグループがtaskGroups内に見つからない",
+        );
+        return null;
+      }
+
+      // 次のグループを取得
+      const nextIndex = currentIndex + 1;
+      if (nextIndex >= taskGroups.length) {
+        log.info(
+          "📋 [DynamicTaskSearch] 最後のグループ完了 - 次のグループなし",
+        );
+        return null;
+      }
+
+      const nextGroup = taskGroups[nextIndex];
+
+      return nextGroup;
+    } catch (error) {
+      log.error("[3-4] ❌ [DynamicTaskSearch] 次のグループ決定エラー:", error);
+      return null;
+    }
+  }
+
+  /**
+   * step3メインループに制御移譲を通知
+   * 【追加】ハイブリッド協調モデル: step3との協調プロトコル
+   */
+  notifyGroupCompletionToStep3(completedGroup) {
+    try {
+      log.info(
+        `📡 step3メインループに制御移譲通知送信: グループ${completedGroup.groupNumber}`,
+      );
+
+      // 【方法1】カスタムイベントによる通知
+      if (typeof window !== "undefined" && window.dispatchEvent) {
+        const event = new CustomEvent("dynamicSearchGroupCompleted", {
+          detail: {
+            groupNumber: completedGroup.groupNumber,
+            groupType: completedGroup.groupType,
+            transferControl: true,
+            timestamp: new Date().toISOString(),
+            source: "DynamicSearch",
+          },
+        });
+        window.dispatchEvent(event);
+      }
+
+      // 【方法2】グローバル状態による通知
+      if (window.globalState) {
+        window.globalState.dynamicSearchNotification = {
+          type: "GROUP_COMPLETED",
+          groupNumber: completedGroup.groupNumber,
+          requestControlTransfer: true,
+          timestamp: new Date().toISOString(),
+        };
+      }
+
+      // 【方法3】直接コールバック（利用可能な場合）
+      if (typeof window.onDynamicSearchGroupCompleted === "function") {
+        window.onDynamicSearchGroupCompleted({
+          groupNumber: completedGroup.groupNumber,
+          groupData: completedGroup,
+        });
+      }
+    } catch (error) {
+      log.error("[3-4] ❌ step3制御移譲通知エラー:", error);
+    }
+  }
+
+  /**
+   * 列文字をインデックスに変換（A→0, B→1, C→2...）
+   */
+  columnToIndex(column) {
+    let index = 0;
+    for (let i = 0; i < column.length; i++) {
+      index = index * 26 + (column.charCodeAt(i) - 64);
+    }
+    return index - 1;
+  }
+
+  /**
+   * インデックスを列文字に変換（0→A, 1→B, 2→C...）
+   */
+  indexToColumn(index) {
+    let column = "";
+    let num = index;
+
+    while (num >= 0) {
+      column = String.fromCharCode(65 + (num % 26)) + column;
+      num = Math.floor(num / 26) - 1;
+      if (num < 0) break;
+    }
+
+    return column;
+  }
+
+  /**
+   * システムリセット（デバッグ用）
+   */
+  reset() {
+    this.processingTasks.clear();
+    this.completedTasks.clear();
+    this.cache.spreadsheetData = null;
+    this.cache.lastFetchTime = null;
+
+    // 【追加】currentGroupリスナーのクリーンアップ
+    if (this._currentGroupListener && window.removeCurrentGroupListener) {
+      window.removeCurrentGroupListener(this._currentGroupListener);
+      this._currentGroupListener = null;
+    }
+
+    log.info("[3-4] 🔄 DynamicTaskSearchをリセットしました");
+  }
+
+  /**
+   * タスクIDからセル位置を抽出するヘルパーメソッド
+   * @param {string} taskId - タスクID（例: "Y25", "task_2_25_1758775278465"）
+   * @returns {Object|null} - {column: string, row: number} または null
+   */
+  extractCellPosition(taskId) {
+    if (!taskId || typeof taskId !== "string") return null;
+
+    // パターン1: "Y25" 形式
+    const simpleMatch = taskId.match(/^([A-Z]+)(\d+)$/);
+    if (simpleMatch) {
+      return {
+        column: simpleMatch[1],
+        row: parseInt(simpleMatch[2], 10),
+      };
+    }
+
+    // パターン2: "task_2_25_1758775278465" 形式から行番号を抽出
+    const complexMatch = taskId.match(/task_\d+_(\d+)_\d+/);
+    if (complexMatch) {
+      const row = parseInt(complexMatch[1], 10);
+      // この場合、列は現在のグループのデータから取得する必要がある
+      const currentGroup = window.globalState?.currentGroup;
+      if (currentGroup && window.globalState?.taskGroups) {
+        const taskGroup = window.globalState.taskGroups.find(
+          (g) => g.groupNumber === currentGroup,
+        );
+        if (taskGroup && taskGroup.columns && taskGroup.columns.answer) {
+          return {
+            column: taskGroup.columns.answer,
+            row: row,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * タスクIDからタスク情報を抽出
+   * TaskStatusManager.isTaskTimedOut() に渡すための情報を生成
+   */
+  extractTaskInfo(taskId) {
+    const cellPosition = this.extractCellPosition(taskId);
+    if (!cellPosition) {
+      return null;
+    }
+
+    // 現在のグループ情報を取得
+    const currentGroupNumber = window.getCurrentGroup
+      ? window.getCurrentGroup()?.groupNumber
+      : window.globalState?.currentGroup?.groupNumber;
+
+    // タスク情報オブジェクトを構築
+    const taskInfo = {
+      id: taskId,
+      column: cellPosition.column,
+      row: cellPosition.row,
+      groupNumber: currentGroupNumber,
+      spreadsheetId: window.globalState?.spreadsheetId,
+    };
+
+    // 機能名を取得（タイムアウト判定に使用）
+    // スプレッドシートの機能列から取得する必要がある場合は追加実装
+    // 現在は基本情報のみ
+
+    return taskInfo;
+  }
+}
+
+// ========================================
+// Lazy Initialization関数
+// ========================================
+function getDynamicTaskSearchInstance() {
+  // 必要な依存関係がそろっているかチェック
+  if (!window.fetchWithTokenRefresh) {
+    log.warn(
+      "⚠️ fetchWithTokenRefresh が未初期化のため、DynamicTaskSearchを作成できません",
+    );
+    return null;
+  }
+
+  if (!window.globalState) {
+    log.warn(
+      "⚠️ globalState が未初期化のため、DynamicTaskSearchを作成できません",
+    );
+    return null;
+  }
+
+  // シングルトンインスタンスとして作成
+  if (!window.DynamicTaskSearch) {
+    window.DynamicTaskSearch = new DynamicTaskSearch();
+    log.info("[3-4] 📦 window.DynamicTaskSearch を遅延初期化");
+  }
+
+  return window.DynamicTaskSearch;
+}
+
+// ========================================
+// グローバル関数のエクスポート
+// ========================================
+if (typeof window !== "undefined") {
+  // 互換性のための関数エクスポート（遅延初期化対応）
+  window.findNextAvailableTaskDynamic = async function () {
+    const instance = getDynamicTaskSearchInstance();
+    if (!instance) {
+      log.error("[3-4] ❌ DynamicTaskSearchインスタンスを初期化できません");
+      return null;
+    }
+    return await instance.findNextTask();
+  };
+
+  window.registerTaskCompletionDynamic = function (taskId) {
+    log.info(
+      `[3-4] 🔍 [TASK-FLOW-TRACE] registerTaskCompletionDynamic呼び出し:`,
+      {
+        taskId: taskId,
+        taskIdType: typeof taskId,
+        呼び出し時刻: new Date().toISOString(),
+      },
+    );
+
+    const instance = getDynamicTaskSearchInstance();
+
+    log.info(`[3-4] 🔍 [TASK-FLOW-TRACE] DynamicTaskSearchインスタンス確認:`, {
+      taskId: taskId,
+      hasInstance: !!instance,
+      instanceType: typeof instance,
+      インスタンス確認時刻: new Date().toISOString(),
+    });
+
+    if (!instance) {
+      log.error(
+        `❌ [TASK-FLOW-TRACE] DynamicTaskSearchインスタンス初期化失敗:`,
+        {
+          taskId: taskId,
+          globalStateExists: !!window.globalState,
+          currentGroup: window.globalState?.currentGroup,
+          エラー時刻: new Date().toISOString(),
+        },
+      );
+      return null;
+    }
+
+    try {
+      const result = instance.registerTaskCompletion(taskId);
+      log.info(`[3-4] ✅ [TASK-FLOW-TRACE] タスク完了登録成功:`, {
+        taskId: taskId,
+        result: result,
+        登録成功時刻: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      log.error(`[3-4] ❌ [TASK-FLOW-TRACE] タスク完了登録エラー:`, {
+        taskId: taskId,
+        error: error.message,
+        stack: error.stack,
+        エラー発生時刻: new Date().toISOString(),
+      });
+      throw error;
+    }
+  };
+}
+
+// ========================================
+// モジュールエクスポート（Node.js環境用）
+// ========================================
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = DynamicTaskSearch;
+}
+
+// ========================================
+// SpecialTaskProcessor クラス
+// ========================================
+class SpecialTaskProcessor {
+  constructor() {
+    this.specialTypes = {
+      REPORT: "レポート化",
+      GENSPARK: "Genspark",
+      SCREENSHOT: "スクリーンショット",
+    };
+  }
+
+  /**
+   * 特別なタスクか判定
+   */
+  identifySpecialTask(task) {
+    const prompt = task.prompt || "";
+    const aiType = task.aiType || task.ai || "";
+
+    // レポート化タスク
+    if (
+      aiType.toLowerCase() === "report" ||
+      aiType === "レポート化" ||
+      prompt.includes("レポート化")
+    ) {
+      return {
+        isSpecial: true,
+        type: this.specialTypes.REPORT,
+        requiresData: true,
+      };
+    }
+
+    // Gensparkタスク
+    if (aiType.toLowerCase() === "genspark") {
+      return {
+        isSpecial: true,
+        type: this.specialTypes.GENSPARK,
+        requiresData: false,
+      };
+    }
+
+    // スクリーンショットタスク
+    if (
+      prompt.includes("スクリーンショット") ||
+      prompt.includes("画面キャプチャ")
+    ) {
+      return {
+        isSpecial: true,
+        type: this.specialTypes.SCREENSHOT,
+        requiresData: false,
+      };
+    }
+
+    return {
+      isSpecial: false,
+      type: null,
+      requiresData: false,
+    };
+  }
+
+  /**
+   * 特別タスクを実行
+   */
+  async executeSpecialTask(task, specialInfo, windowInfo) {
+    ExecuteLogger.info(`🔧 特別タスク実行: ${specialInfo.type}`);
+
+    switch (specialInfo.type) {
+      case this.specialTypes.REPORT:
+        return await this.executeReportTask(task, windowInfo);
+
+      case this.specialTypes.GENSPARK:
+        return await this.executeGensparkTask(task, windowInfo);
+
+      case this.specialTypes.SCREENSHOT:
+        return await this.executeScreenshotTask(task, windowInfo);
+
+      default:
+        return {
+          success: false,
+          error: `未対応の特別タスク: ${specialInfo.type}`,
+        };
+    }
+  }
+
+  /**
+   * レポート化タスクを実行
+   */
+  async executeReportTask(task, windowInfo) {
+    try {
+      // レポート自動化が利用可能か確認
+      if (!window.ReportAutomation) {
+        await window.aiAutomationLoader.loadAIFile("report");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      if (!window.ReportAutomation) {
+        throw new Error("レポート自動化が利用できません");
+      }
+
+      // スプレッドシートデータが必要
+      const spreadsheetData = task.spreadsheetData || {};
+      const result = await window.ReportAutomation.executeTask(
+        task,
+        spreadsheetData,
+      );
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: `レポートタスク実行エラー: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Gensparkタスクを実行
+   */
+  async executeGensparkTask(task, windowInfo) {
+    try {
+      // Genspark自動化が利用可能か確認
+      if (!window.GensparkAutomationV2) {
+        await window.aiAutomationLoader.loadAIFile("genspark");
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      if (!window.GensparkAutomationV2) {
+        throw new Error("Genspark自動化が利用できません");
+      }
+
+      const result = await window.GensparkAutomationV2.executeTask(task);
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        error: `Gensparkタスク実行エラー: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * スクリーンショットタスクを実行
+   */
+  async executeScreenshotTask(task, windowInfo) {
+    try {
+      ExecuteLogger.info("📸 スクリーンショット取得開始");
+
+      // Chrome APIでスクリーンショットを取得
+      const dataUrl = await new Promise((resolve, reject) => {
+        chrome.tabs.captureVisibleTab(
+          windowInfo.windowId,
+          { format: "png" },
+          (dataUrl) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+            } else {
+              resolve(dataUrl);
+            }
+          },
+        );
+      });
+
+      return {
+        success: true,
+        response: dataUrl,
+        metadata: {
+          type: "screenshot",
+          format: "png",
+          timestamp: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `スクリーンショット取得エラー: ${error.message}`,
+      };
+    }
+  }
+}
+
+// グローバルインスタンス作成
+window.specialTaskProcessor = new SpecialTaskProcessor();
 
 async function executeStep4(taskList) {
   // executeStep4関数定義開始
@@ -9150,7 +10678,7 @@ try {
     );
   }
 } catch (error) {
-  log.error("❌ [step4-tasklist.js] executeStep4関数公開エラー:", error);
+  log.error("[3-4] ❌ [step3-tasklist.js] executeStep4関数公開エラー:", error);
   if (typeof window !== "undefined") {
     window.step4FileError = error.message;
   }
@@ -9526,7 +11054,7 @@ async function executeTasks(tasks, taskGroup) {
     // DEBUG: executeStep4呼び出し前チェック
 
     if (!window.executeStep4) {
-      log.error("executeStep4が見つかりません！");
+      log.error("[3-4] executeStep4が見つかりません！");
       throw new Error("executeStep4関数が利用できません");
     }
 
@@ -9673,7 +11201,7 @@ async function executeTasks(tasks, taskGroup) {
       );
       return results || [];
     } catch (step4Error) {
-      log.error("executeStep4でエラーが発生:", step4Error.message);
+      log.error("[3-4] executeStep4でエラーが発生:", step4Error.message);
       throw step4Error;
     }
   } catch (error) {
@@ -9757,7 +11285,7 @@ if (typeof window !== "undefined") {
 // ファイル読み込み完了通知
 // ========================================
 try {
-  log.debug("✅ [step4-tasklist.js] ファイル読み込み完了", {
+  log.debug("[3-4] ✅ [step3-tasklist.js] ファイル読み込み完了", {
     executeStep4Defined: typeof executeStep4,
     windowExecuteStep4: typeof window.executeStep4,
     timestamp: new Date().toISOString(),
@@ -9774,7 +11302,10 @@ try {
     window.step4FileError = null;
   }
 } catch (error) {
-  log.error("❌ [step4-tasklist.js] ファイル読み込み完了時エラー:", error);
+  log.error(
+    "[3-4] ❌ [step3-tasklist.js] ファイル読み込み完了時エラー:",
+    error,
+  );
   if (typeof window !== "undefined") {
     window.step4FileError = error.message;
   }

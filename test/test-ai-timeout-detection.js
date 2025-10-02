@@ -8,9 +8,9 @@ const __dirname = path.dirname(__filename);
 
 console.log("🔍 AI動作検出機能のテスト開始...\n");
 
-// step4-tasklist.jsの実装をチェック
-const step4File = path.join(__dirname, "step4-tasklist.js");
-const step4Content = fs.readFileSync(step4File, "utf8");
+// step3-tasklist.jsの実装をチェック
+const step3File = path.join(__dirname, "step3-tasklist.js");
+const step3Content = fs.readFileSync(step3File, "utf8");
 
 const checks = [
   {
@@ -51,7 +51,7 @@ console.log("📊 実装チェック結果:");
 console.log("=".repeat(50));
 
 checks.forEach((check, index) => {
-  const passed = check.pattern.test(step4Content);
+  const passed = check.pattern.test(step3Content);
   const status = passed ? "✅" : "❌";
   console.log(`${index + 1}. ${status} ${check.name}`);
   console.log(`   ${check.description}`);
@@ -83,7 +83,7 @@ const removedChecks = [
 ];
 
 removedChecks.forEach((check, index) => {
-  const exists = check.pattern.test(step4Content);
+  const exists = check.pattern.test(step3Content);
   const passed = check.shouldExist ? exists : !exists;
   const status = passed ? "✅" : "❌";
   console.log(`${index + 1}. ${status} ${check.name}`);

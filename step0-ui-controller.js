@@ -56,7 +56,7 @@ window.scriptLoadTracker = {
     "step0-ui-controller.js": [
       "step1-setup.js",
       "step2-taskgroup.js",
-      "step4-tasklist.js",
+      "step3-tasklist.js",
     ],
   },
   addScript: function (scriptName) {
@@ -88,21 +88,21 @@ window.addEventListener("load", function () {
 });
 
 // ========================================
-// Section 2: ウィンドウサービス機能を削除 - step4-tasklist.jsで一元管理
+// Section 2: ウィンドウサービス機能を削除 - step3-tasklist.jsで一元管理
 // ========================================
 
 // ========================================
-// WindowService は step4-tasklist.js で一元管理
+// WindowService は step3-tasklist.js で一元管理
 // ========================================
 log.debug(
-  "🔧 [step0-ui-controller] ウィンドウ管理は step4-tasklist.js の StepIntegratedWindowService で行います",
+  "🔧 [step0-ui-controller] ウィンドウ管理は step3-tasklist.js の StepIntegratedWindowService で行います",
 );
 
 // ========================================
-// WindowController の初期化はstep4-tasklist.jsで行う
+// WindowController の初期化はstep3-tasklist.jsで行う
 // ========================================
-// step4-tasklist.jsでWindowControllerクラスが定義されるまで待機
-log.debug("⏳ [step0-ui-controller] WindowController初期化をstep4に委譲");
+// step3-tasklist.jsでWindowControllerクラスが定義されるまで待機
+log.debug("⏳ [step0-ui-controller] WindowController初期化をstep3に委譲");
 
 // ========================================
 // Section 3: メインUI制御機能 (旧 ui-controller.js)

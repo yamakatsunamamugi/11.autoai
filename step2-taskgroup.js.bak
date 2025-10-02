@@ -1766,7 +1766,7 @@ async function checkCompletionStatus(taskGroup) {
         prompts列設定: taskGroup.columns.prompts,
       },
     );
-    log.info(`[2-2-2]📊 グループ${taskGroup.groupNumber}: プロンプト=${promptCount}`);
+    log.info(`📊 グループ${taskGroup.groupNumber}: プロンプト=${promptCount}`);
 
     // ========================================
     // Step 5-1-2: 回答列の確認
@@ -1885,7 +1885,7 @@ async function checkCompletionStatus(taskGroup) {
       LoopLogger.info(`[step5-loop.js] [Step 5-1-2] 取得範囲: ${answerRange}`);
 
       // 【問題特定ログ】通常パターンでのスプレッドシート読み込み前ログ
-      log.debug(`[2-2-2][DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み開始:`, {
+      log.debug(`[DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み開始:`, {
         answerRange: answerRange,
         answerColumn: answerColumn,
         taskGroupNumber: taskGroup.groupNumber,
@@ -1896,7 +1896,7 @@ async function checkCompletionStatus(taskGroup) {
       const answerValues = await readSpreadsheet(answerRange);
 
       // 【問題特定ログ】通常パターンでのスプレッドシート読み込み後ログ
-      log.debug(`[2-2-2][DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み完了:`, {
+      log.debug(`[DEBUG-PROBLEM-TRACE] 通常パターン回答データ読み込み完了:`, {
         answerRange: answerRange,
         answerValues存在: !!answerValues,
         answerValuesValues存在: !!(answerValues && answerValues.values),
@@ -1980,7 +1980,7 @@ async function checkCompletionStatus(taskGroup) {
 
             // APIキャッシュ問題の疑いがある場合、追加検証
             if (matchingWrite && matchingWrite.isVerified && !cellValue) {
-              log.warn(`[2-2-2]🚨 [CACHE-ISSUE-DETECTED] APIキャッシュ問題の疑い:`, {
+              log.warn(`🚨 [CACHE-ISSUE-DETECTED] APIキャッシュ問題の疑い:`, {
                 cellRef: `${answerColumn}${actualRow}`,
                 expectedFromWrite: `${matchingWrite.textLength}文字`,
                 actualFromRead: `${cellValue.length}文字`,
@@ -2034,7 +2034,7 @@ async function checkCompletionStatus(taskGroup) {
     );
 
     // 【問題特定ログ】完了判定前の詳細状態
-    log.debug(`[2-2-2][DEBUG-PROBLEM-TRACE] 完了判定前の最終状態:`, {
+    log.debug(`[DEBUG-PROBLEM-TRACE] 完了判定前の最終状態:`, {
       promptCount: promptCount,
       answerCount: answerCount,
       difference: promptCount - answerCount,
@@ -2049,7 +2049,7 @@ async function checkCompletionStatus(taskGroup) {
     const completedTasks = [];
 
     // 🔄 【修正】キャッシュを使わず直接APIから最新データ取得
-    log.debug(`[2-2-2]🔍 [CACHE-FIX] 個別タスク検証のためAPI直接読み取り開始`, {
+    log.debug(`🔍 [CACHE-FIX] 個別タスク検証のためAPI直接読み取り開始`, {
       completionCheckId,
       taskGroupNumber: taskGroup.groupNumber,
       dataStartRow: taskGroup.dataStartRow,
@@ -2136,7 +2136,7 @@ async function checkCompletionStatus(taskGroup) {
     const maxCol = promptCol > answerCol ? promptCol : answerCol;
     const batchRange = `${sheetPrefix}${minCol}${startRow}:${maxCol}${endRow}`;
 
-    log.debug(`[2-2-2]📊 [BATCH-READ] バッチ読み取り開始:`, {
+    log.debug(`📊 [BATCH-READ] バッチ読み取り開始:`, {
       range: batchRange,
       rowCount: promptCount,
       startRow: startRow,
@@ -2194,7 +2194,7 @@ async function checkCompletionStatus(taskGroup) {
 
         // デバッグ用：読み込まれたセルを表示
         if (taskGroup.groupNumber === 2) {
-          log.debug(`[2-2-2]🔍 [GROUP-2-CELLS] Group 2のセルアドレス確認:`);
+          log.debug(`🔍 [GROUP-2-CELLS] Group 2のセルアドレス確認:`);
           spreadsheetData.debugPrintCells(5);
         }
       } else {
@@ -2203,7 +2203,7 @@ async function checkCompletionStatus(taskGroup) {
     } catch (batchError) {
       console.error(`❌ [BATCH-READ] バッチ読み取りエラー:`, batchError);
       // エラー時は個別読み取りにフォールバック（レート制限対策付き）
-      log.info(`[2-2-2]🔄 [BATCH-READ] 個別読み取りにフォールバック`);
+      log.info(`🔄 [BATCH-READ] 個別読み取りにフォールバック`);
 
       // APIレート制限対策：個別読み取りを小さいバッチに分割
       const BATCH_SIZE = 5; // 5行ずつ処理
@@ -2264,7 +2264,7 @@ async function checkCompletionStatus(taskGroup) {
               readError.message?.includes("429") ||
               readError.message?.includes("Quota exceeded")
             ) {
-              log.info(`[2-2-2]⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`);
+              log.info(`⏳ [RATE-LIMIT] APIレート制限検出、長めの待機中...`);
               await new Promise((resolve) => setTimeout(resolve, 5000)); // 5秒待機
             }
           }
@@ -2272,7 +2272,7 @@ async function checkCompletionStatus(taskGroup) {
       }
     }
 
-    log.debug(`[2-2-2]🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析`, {
+    log.debug(`🔍 [COMPLETION-CHECK-DETAILS] 個別タスク詳細分析`, {
       completionCheckId,
       taskGroupNumber: taskGroup.groupNumber,
       totalTasks: promptCount,
@@ -2287,7 +2287,7 @@ async function checkCompletionStatus(taskGroup) {
     const isComplete = promptCount > 0 && promptCount === answerCount;
 
     // 🔍 【強化】完了判定結果の詳細ログ
-    log.debug(`[2-2-2]🔍 [COMPLETION-CHECK-RESULT] 完了判定結果`, {
+    log.debug(`🔍 [COMPLETION-CHECK-RESULT] 完了判定結果`, {
       completionCheckId,
       isComplete: isComplete,
       promptCount: promptCount,
@@ -2304,7 +2304,7 @@ async function checkCompletionStatus(taskGroup) {
     });
 
     // 【問題特定ログ】完了判定結果の詳細
-    log.debug(`[2-2-2][DEBUG-PROBLEM-TRACE] 完了判定結果:`, {
+    log.debug(`[DEBUG-PROBLEM-TRACE] 完了判定結果:`, {
       isComplete: isComplete,
       promptCount: promptCount,
       answerCount: answerCount,
@@ -2400,7 +2400,7 @@ if (typeof window !== 'undefined' && !window.step2Executed) {
     if (window.setupResult || localStorage.getItem('step1Result')) {
       executeStep2TaskGroups();
     } else {
-      log.debug('[2-2-2]ステップ1の完了待機中...');
+      log.debug('ステップ1の完了待機中...');
       setTimeout(waitForStep1, 1000);
     }
   };
@@ -2414,4 +2414,4 @@ if (typeof window !== 'undefined' && !window.step2Executed) {
 }
 */
 
-log.debug("[2-2-2][step2-taskgroup.js] ✅ Step2関数定義完了（自動実行無効）");
+log.debug("[step2-taskgroup.js] ✅ Step2関数定義完了（自動実行無効）");

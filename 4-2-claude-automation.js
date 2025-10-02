@@ -1,3 +1,22 @@
+/**
+ * @fileoverview Claude Automation V2 - 統合版（ステップ構造整理版）
+ *
+ * 【ステップ構成】
+ * Step 4-0: 初期化（セレクタ、RetryManager、ヘルパー関数）
+ * Step 4-1: 重複実行チェック
+ * Step 4-2: テキスト入力
+ * Step 4-3: モデル選択（条件付き）
+ * Step 4-4: 機能選択（条件付き、Deep Research対応）
+ * Step 4-5: メッセージ送信
+ * Step 4-6: 送信時刻記録
+ * Step 4-7: 応答待機（通常/Canvas/Deep Researchモード）
+ * Step 4-8: テキスト取得
+ * Step 4-9: 完了時刻記録
+ *
+ * @version 2.0.0
+ * @updated 2025-10-02 ステップ番号順序整理、Step 4-1/4-6/4-9を関数化
+ */
+
 // 全体を即時実行関数でラップ
 (function () {
   try {
@@ -2129,9 +2148,7 @@
     });
 
     if (claudeSelectors["1_テキスト入力欄"].selectors.length === 0) {
-      log.error(
-        "❌ 【Step 4-0-4】致命的エラー: 入力欄セレクタが空です！",
-      );
+      log.error("❌ 【Step 4-0-4】致命的エラー: 入力欄セレクタが空です！");
     }
 
     // ========================================
@@ -3700,9 +3717,7 @@
 
       try {
         // Step 4-7-1-1: 送信後、回答停止ボタンが出てくるまで待機
-        log.debug(
-          "\n【Step 4-7-1】送信後、回答停止ボタンが出てくるまで待機",
-        );
+        log.debug("\n【Step 4-7-1】送信後、回答停止ボタンが出てくるまで待機");
 
         let stopButtonFound = false;
         let waitCount = 0;
@@ -3732,9 +3747,7 @@
 
         // Step 4-7-1-2: 回答停止ボタンが消滅するまで待機（初回）
         if (stopButtonFound) {
-          log.debug(
-            "\n【Step 4-7-2】回答停止ボタンが消滅するまで待機（初回）",
-          );
+          log.debug("\n【Step 4-7-2】回答停止ボタンが消滅するまで待機（初回）");
           let stopButtonGone = false;
           waitCount = 0;
           const maxDisappearWait =
@@ -3878,6 +3891,273 @@
         throw error;
       }
     };
+
+    // ========================================
+    // Step 4-1: 重複実行チェック（新規関数化）
+    // ========================================
+
+    /**
+     * タスクの重複実行をチェックし、実行可能か判定する
+     * @param {string} taskId - タスクID
+     * @returns {Object} { canExecute: boolean, error?: string, details?: Object }
+     */
+    async function checkDuplicateExecution(taskId) {
+      // 重複実行チェック（グローバル状態を使用）
+      const currentStatus = getExecutionStatus();
+
+      // windowレベルの状態を再確認（異なるコンテキストからの実行を検出）
+      if (window.CLAUDE_TASK_EXECUTING || currentStatus.isExecuting) {
+        // タイムアウトチェック（15分間実行状態が続いていたらリセット）
+        const timeSinceStart = currentStatus.taskStartTime
+          ? Date.now() - currentStatus.taskStartTime
+          : 0;
+        if (timeSinceStart > 15 * 60 * 1000) {
+          log.warn(
+            `⏰ タスク ${currentStatus.currentTaskId} は15分以上実行中 - リセット`,
+          );
+          setExecutionState(false);
+          return { canExecute: true };
+        } else {
+          if (currentStatus.currentTaskId === taskId) {
+            log.warn(
+              `⚠️ [DUPLICATE-EXECUTION] タスクID ${taskId} は既に実行中です (コンテキスト: ${typeof chrome !== "undefined" && chrome.runtime ? chrome.runtime.id : "unknown"})`,
+            );
+            return {
+              canExecute: false,
+              error: "Task already executing",
+              details: {
+                inProgress: true,
+                taskId: taskId,
+                executionStatus: currentStatus,
+              },
+            };
+          }
+
+          log.warn(
+            `⚠️ [BUSY] 別のタスク（${currentStatus.currentTaskId}）が実行中です。新しいタスク（${taskId}）は拒否されました`,
+          );
+          log.debug(`実行中タスク情報:`, {
+            currentTaskId: currentStatus.currentTaskId,
+            duration: Math.round(timeSinceStart / 1000),
+            context:
+              typeof chrome !== "undefined" && chrome.runtime
+                ? chrome.runtime.id
+                : "unknown",
+          });
+          return {
+            canExecute: false,
+            error: "Another task is in progress",
+            details: {
+              busyWith: currentStatus.currentTaskId,
+              requestedTaskId: taskId,
+              executionStatus: currentStatus,
+            },
+          };
+        }
+      }
+
+      // 実行状態を設定
+      setExecutionState(true, taskId);
+      return { canExecute: true };
+    }
+
+    // ========================================
+    // Step 4-6: 送信時刻記録（新規関数化）
+    // ========================================
+
+    /**
+     * 送信時刻をbackground.jsに記録する
+     * @param {string} taskId - タスクID
+     * @param {Date} sendTime - 送信時刻
+     * @param {Object} taskData - タスクデータ
+     * @param {string} modelName - モデル名
+     * @param {string} featureName - 機能名
+     * @returns {Promise<void>}
+     */
+    async function recordSendTime(
+      taskId,
+      sendTime,
+      taskData,
+      modelName,
+      featureName,
+    ) {
+      log.debug("🔍 送信時刻記録開始 - ", sendTime.toISOString());
+
+      // DetailedLogManagerに送信時刻を記録
+      if (window.parent && window.parent.detailedLogManager) {
+        try {
+          window.parent.detailedLogManager.recordSendTime(
+            taskId,
+            window.location.href,
+          );
+          log.debug("📡 DetailedLogManagerに送信時刻を記録:", taskId);
+        } catch (logError) {
+          log.warn("⚠️ DetailedLogManager送信時刻記録エラー:", logError);
+        }
+      } else if (window.top && window.top.detailedLogManager) {
+        try {
+          window.top.detailedLogManager.recordSendTime(
+            taskId,
+            window.location.href,
+          );
+          log.debug("📡 DetailedLogManagerに送信時刻を記録:", taskId);
+        } catch (logError) {
+          log.warn("⚠️ DetailedLogManager送信時刻記録エラー:", logError);
+        }
+      }
+
+      // Chrome拡張機能のメッセージ送信で記録
+      if (chrome.runtime && chrome.runtime.sendMessage) {
+        // シート名を追加
+        const sheetName = taskData.sheetName;
+        if (!sheetName) {
+          throw new Error("シート名が指定されていません");
+        }
+        const fullLogCell = taskData.logCell?.includes("!")
+          ? taskData.logCell
+          : `'${sheetName}'!${taskData.logCell}`;
+
+        const messageToSend = {
+          type: "recordSendTime",
+          taskId: taskId,
+          sendTime: sendTime.toISOString(),
+          taskInfo: {
+            aiType: "Claude",
+            model: modelName || "不明",
+            function: featureName || "通常",
+            cellInfo: taskData.cellInfo,
+          },
+          logCell: fullLogCell,
+        };
+
+        // Promise化してタイムアウト処理を追加
+        const sendMessageWithTimeout = () => {
+          return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              console.warn("⚠️ [Claude] 送信時刻記録タイムアウト");
+              resolve(null);
+            }, 5000); // 5秒でタイムアウト
+
+            try {
+              // 拡張機能のコンテキストが有効か確認
+              if (!chrome.runtime?.id) {
+                console.warn("⚠️ [Claude] 拡張機能のコンテキストが無効です");
+                clearTimeout(timeout);
+                resolve(null);
+                return;
+              }
+
+              chrome.runtime.sendMessage(messageToSend, (response) => {
+                clearTimeout(timeout);
+                if (chrome.runtime.lastError) {
+                  if (
+                    chrome.runtime.lastError.message.includes("port closed")
+                  ) {
+                    console.warn(
+                      "⚠️ [Claude] メッセージポートが閉じられました（送信は成功している可能性があります）",
+                    );
+                  } else {
+                    console.warn(
+                      "⚠️ [Claude] 送信時刻記録エラー:",
+                      chrome.runtime.lastError.message,
+                    );
+                  }
+                  resolve(null);
+                } else if (response) {
+                  console.log("✅ [Claude] 送信時刻記録成功", response);
+                  resolve(response);
+                } else {
+                  console.warn("⚠️ [Claude] 送信時刻記録: レスポンスなし");
+                  resolve(null);
+                }
+              });
+            } catch (error) {
+              clearTimeout(timeout);
+              console.error("❌ [Claude] 送信時刻記録失敗:", error);
+              resolve(null);
+            }
+          });
+        };
+
+        // 非同期で実行（ブロックしない）
+        await sendMessageWithTimeout();
+      }
+
+      log.debug(`📤 送信時刻記録完了: ${sendTime.toISOString()}`);
+    }
+
+    // ========================================
+    // Step 4-9: 完了時刻記録（新規関数化）
+    // ========================================
+
+    /**
+     * タスク完了時刻をbackground.jsに記録する
+     * @param {string} taskId - タスクID
+     * @param {string} conversationUrl - 会話URL
+     * @param {Object} taskData - タスクデータ
+     * @param {string} modelName - モデル名
+     * @param {string} featureName - 機能名
+     * @returns {Promise<void>}
+     */
+    async function recordCompletionTime(
+      taskId,
+      conversationUrl,
+      taskData,
+      modelName,
+      featureName,
+    ) {
+      try {
+        // シート名付きlogCellを準備
+        const sheetName = taskData.sheetName;
+        if (!sheetName) {
+          throw new Error("シート名が指定されていません");
+        }
+        const fullLogCell = taskData.logCell?.includes("!")
+          ? taskData.logCell
+          : `'${sheetName}'!${taskData.logCell}`;
+
+        // Promise化してエラーハンドリングを改善
+        const sendCompletionMessage = () => {
+          return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              log.warn("⚠️ recordCompletionTime送信タイムアウト");
+              resolve(null);
+            }, 5000);
+
+            chrome.runtime.sendMessage(
+              {
+                type: "recordCompletionTime",
+                taskId: taskId,
+                completionTime: new Date().toISOString(),
+                taskInfo: {
+                  aiType: "Claude",
+                  model: modelName,
+                  function: featureName,
+                  url: conversationUrl,
+                },
+                logCell: fullLogCell,
+              },
+              (response) => {
+                clearTimeout(timeout);
+                if (!chrome.runtime.lastError) {
+                  log.debug(
+                    "✅ recordCompletionTime送信完了:",
+                    taskId,
+                    "URL:",
+                    conversationUrl,
+                  );
+                }
+                resolve(response);
+              },
+            );
+          });
+        };
+
+        await sendCompletionMessage();
+      } catch (error) {
+        log.warn("⚠️ recordCompletionTime送信エラー:", error);
+      }
+    }
 
     // ========================================
     // 🚨 統合エラーハンドリングシステム（多層監視システム）
@@ -4117,7 +4397,7 @@
     // ========================================
 
     async function executeTask(taskData) {
-      // executeTask関数実行開始
+      log.info("🚀 【Step 4-0】Claude タスク実行開始", taskData);
 
       // executeTask関数受信時のtaskData確認
       console.log("🔍 [executeTask関数受信時のtaskData確認]", {
@@ -4149,57 +4429,18 @@
       // 🔧 [SIMPLIFIED] 元のタスクIDを使用（データ一貫性のため）
       const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
 
-      // 重複実行チェック（グローバル状態を使用）
-      const currentStatus = getExecutionStatus();
-
-      // windowレベルの状態を再確認（異なるコンテキストからの実行を検出）
-      if (window.CLAUDE_TASK_EXECUTING || currentStatus.isExecuting) {
-        // タイムアウトチェック（15分間実行状態が続いていたらリセット）
-        const timeSinceStart = currentStatus.taskStartTime
-          ? Date.now() - currentStatus.taskStartTime
-          : 0;
-        if (timeSinceStart > 15 * 60 * 1000) {
-          log.warn(
-            `⏰ タスク ${currentStatus.currentTaskId} は15分以上実行中 - リセット`,
-          );
-          setExecutionState(false);
-        } else {
-          if (currentStatus.currentTaskId === taskId) {
-            log.warn(
-              `⚠️ [DUPLICATE-EXECUTION] タスクID ${taskId} は既に実行中です (コンテキスト: ${typeof chrome !== "undefined" && chrome.runtime ? chrome.runtime.id : "unknown"})`,
-            );
-            return {
-              success: false,
-              error: "Task already executing",
-              inProgress: true,
-              taskId: taskId,
-              executionStatus: currentStatus,
-            };
-          }
-
-          log.warn(
-            `⚠️ [BUSY] 別のタスク（${currentStatus.currentTaskId}）が実行中です。新しいタスク（${taskId}）は拒否されました`,
-          );
-          log.debug(`実行中タスク情報:`, {
-            currentTaskId: currentStatus.currentTaskId,
-            duration: Math.round(timeSinceStart / 1000),
-            context:
-              typeof chrome !== "undefined" && chrome.runtime
-                ? chrome.runtime.id
-                : "unknown",
-          });
-          return {
-            success: false,
-            error: "Another task is in progress",
-            busyWith: currentStatus.currentTaskId,
-            requestedTaskId: taskId,
-            executionStatus: currentStatus,
-          };
-        }
+      // ========================================
+      // Step 4-1: 重複実行チェック
+      // ========================================
+      log.info("【Step 4-1】重複実行チェック");
+      const duplicateCheckResult = await checkDuplicateExecution(taskId);
+      if (!duplicateCheckResult.canExecute) {
+        return {
+          success: false,
+          error: duplicateCheckResult.error,
+          ...duplicateCheckResult.details,
+        };
       }
-
-      // 実行状態を設定
-      setExecutionState(true, taskId);
 
       log.debug("📋 受信したタスクデータ:", {
         model: taskData.model || "未指定",
@@ -4270,6 +4511,7 @@
         // ========================================
         // 📝 Step 4-2: テキスト入力
         // ========================================
+        log.info("【Step 4-2】テキスト入力");
 
         log.debug(`📝 Text input (${prompt.length} chars)...`);
         ClaudeLogManager.logStep("Step2-TextInput", "テキスト入力開始");
@@ -4364,13 +4606,13 @@
         // ========================================
         // 🤖 Step 4-3: モデル選択
         // ========================================
-        // 統合ログ: モデル選択開始
         const cellInfo =
           taskData.cellReference ||
           taskData.cellInfo ||
           taskData.cell ||
           "不明";
         if (modelName && modelName !== "" && modelName !== "設定なし") {
+          log.info("【Step 4-3】モデル選択:", modelName);
           log.debug(
             "%c【Step 4-3-1】モデル選択開始",
             "color: #FF9800; font-weight: bold;",
@@ -4722,9 +4964,8 @@
         // ========================================
         // ⚙️ Step 4-4: 機能選択
         // ========================================
-        // 🔧 [FEATURE-DEBUG] 機能選択パラメータ詳細
-
         if (featureName && featureName !== "" && featureName !== "設定なし") {
+          log.info("【Step 4-4】機能選択:", featureName);
           log.debug(
             "%c【Step 4-4-1】機能選択開始",
             "color: #9C27B0; font-weight: bold;",
@@ -4760,9 +5001,7 @@
               }
 
               // メニューを閉じる（Deep Research用）
-              log.debug(
-                "\n【Step 4-4-4】Deep Research用: メニューを閉じる",
-              );
+              log.debug("\n【Step 4-4-4】Deep Research用: メニューを閉じる");
               featureMenuBtn.click();
               await wait(1000);
 
@@ -4929,6 +5168,7 @@
         // ========================================
         // 📤 Step 4-5: メッセージ送信
         // ========================================
+        log.info("【Step 4-5】メッセージ送信");
 
         log.debug(
           "%c【Step 4-5-1】メッセージ送信開始",
@@ -5012,337 +5252,18 @@
 
           // 送信ボタンの状態変化確認
         }, 1000);
-        log.debug("🔍 送信時刻記録開始 - ", sendTime.toISOString());
 
-        // 🔧 [SIMPLIFIED] 元のタスクIDを使用（データ一貫性のため）
-        // taskId は関数の最初で既に宣言済み
-
-        // DetailedLogManagerに送信時刻を記録
-        if (window.parent && window.parent.detailedLogManager) {
-          try {
-            window.parent.detailedLogManager.recordSendTime(
-              taskId,
-              window.location.href,
-            );
-            log.debug("📡 DetailedLogManagerに送信時刻を記録:", taskId);
-          } catch (logError) {
-            log.warn("⚠️ DetailedLogManager送信時刻記録エラー:", logError);
-          }
-        } else if (window.top && window.top.detailedLogManager) {
-          try {
-            window.top.detailedLogManager.recordSendTime(
-              taskId,
-              window.location.href,
-            );
-            log.debug("📡 DetailedLogManagerに送信時刻を記録:", taskId);
-          } catch (logError) {
-            log.warn("⚠️ DetailedLogManager送信時刻記録エラー:", logError);
-          }
-        }
-
-        // 🔧 データ一貫性バリデーション
-        if (taskData._validateLogCell && !taskData._validateLogCell()) {
-          console.warn(
-            "⚠️ [VALIDATION] logCellバリデーションに失敗しましたが、処理を続行します",
-          );
-        }
-
-        try {
-          // Chrome拡張コンテキスト検証を強化
-          const isExtensionContextValid = () => {
-            try {
-              return !!(
-                chrome &&
-                chrome.runtime &&
-                chrome.runtime.sendMessage &&
-                chrome.runtime.id &&
-                !chrome.runtime.lastError
-              );
-            } catch (e) {
-              return false;
-            }
-          };
-
-          // フォールバック用ローカル記録関数
-          const recordSendTimeLocally = (taskId, sendTime, taskInfo) => {
-            try {
-              const localRecord = {
-                taskId,
-                sendTime,
-                taskInfo,
-                timestamp: new Date().toISOString(),
-                method: "local_fallback",
-              };
-
-              // sessionStorageに記録（ページリロードまで保持）
-              const existingRecords = JSON.parse(
-                sessionStorage.getItem("sendTimeRecords") || "[]",
-              );
-              existingRecords.push(localRecord);
-              sessionStorage.setItem(
-                "sendTimeRecords",
-                JSON.stringify(existingRecords.slice(-100)),
-              ); // 最新100件まで
-
-              log.debug(
-                "📝 [FALLBACK] ローカルストレージに送信時刻を記録:",
-                localRecord,
-              );
-              return { success: true, method: "local_fallback" };
-            } catch (err) {
-              log.warn("⚠️ [FALLBACK-ERROR] ローカル記録も失敗:", err.message);
-              return { error: "local_fallback_failed", message: err.message };
-            }
-          };
-
-          // Chrome拡張機能のメッセージ送信で直接記録
-          if (isExtensionContextValid()) {
-            log.debug("📡 [DEBUG] chrome.runtime.sendMessage呼び出し開始", {
-              taskId: taskId,
-              sendTime: sendTime.toISOString(),
-              timestamp: new Date().toISOString(),
-            });
-
-            // エラー分類関数
-            const classifyError = (error) => {
-              if (!error) return { type: "none", isTransient: false };
-
-              const message = error.message || error;
-
-              // 一時的エラー（リトライ可能）
-              if (message.includes("message port closed")) {
-                return {
-                  type: "port_closed",
-                  isTransient: true,
-                  description: "メッセージポート切断",
-                };
-              }
-              if (message.includes("timeout")) {
-                return {
-                  type: "timeout",
-                  isTransient: true,
-                  description: "タイムアウト",
-                };
-              }
-              if (message.includes("connection lost")) {
-                return {
-                  type: "connection_lost",
-                  isTransient: true,
-                  description: "接続切断",
-                };
-              }
-              if (message.includes("runtime_error")) {
-                return {
-                  type: "runtime_error",
-                  isTransient: true,
-                  description: "ランタイムエラー",
-                };
-              }
-
-              // 致命的エラー（リトライ不可）
-              if (message.includes("extension context invalidated")) {
-                return {
-                  type: "context_invalidated",
-                  isTransient: false,
-                  description: "拡張機能コンテキスト無効",
-                };
-              }
-              if (message.includes("service worker terminated")) {
-                return {
-                  type: "service_worker_terminated",
-                  isTransient: false,
-                  description: "サービスワーカー終了",
-                };
-              }
-
-              // その他のエラー（リトライ1回のみ）
-              return {
-                type: "unknown",
-                isTransient: true,
-                description: "不明なエラー",
-              };
-            };
-
-            // リトライ付きsendMessage実行関数
-            const sendMessageWithRetry = async (maxRetries = 3) => {
-              for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                log.debug(`📡 [RETRY] 送信試行 ${attempt}/${maxRetries}`, {
-                  taskId,
-                });
-
-                const result = await sendMessageWithTimeout();
-
-                if (!result.error) {
-                  if (attempt > 1) {
-                    log.debug(`✅ [RETRY] ${attempt}回目で成功`, { taskId });
-                  }
-                  return result;
-                }
-
-                const errorInfo = classifyError(result);
-                if (errorInfo.isTransient && attempt < maxRetries) {
-                  const delay = Math.min(1000 * Math.pow(2, attempt - 1), 3000); // 指数バックオフ（最大3秒）
-                  log.debug(`⏱️ [RETRY] ${delay}ms待機後に再試行`, {
-                    taskId,
-                    attempt,
-                    errorType: errorInfo.type,
-                    description: errorInfo.description,
-                    error: result.error,
-                  });
-                  await new Promise((resolve) => setTimeout(resolve, delay));
-                } else {
-                  log.debug(`❌ [RETRY] 最終試行失敗または非一時的エラー`, {
-                    taskId,
-                    attempt,
-                    errorType: errorInfo.type,
-                    description: errorInfo.description,
-                    error: result.error,
-                    isTransient: errorInfo.isTransient,
-                  });
-                  return result;
-                }
-              }
-            };
-
-            // タイムアウト付きでsendMessageを実行
-            const sendMessageWithTimeout = () =>
-              new Promise((resolve) => {
-                const timeout = setTimeout(() => {
-                  log.debug(
-                    "⏱️ [TIMEOUT] sendMessageがタイムアウト（3秒経過）",
-                  );
-                  resolve({
-                    error: "timeout",
-                    message: "sendMessage timeout after 3000ms",
-                  });
-                }, 3000); // 3秒でタイムアウト
-
-                console.log("🔍 [sendMessage実行前のtaskData確認]", {
-                  taskDataExists: !!taskData,
-                  taskDataLogCell: taskData?.logCell,
-                  taskDataLogCellType: typeof taskData?.logCell,
-                  taskDataKeys: taskData ? Object.keys(taskData) : [],
-                  sendMessageAboutToSend: true,
-                  taskId: taskId,
-                });
-
-                // シート名を追加（taskDataから取得）
-                const sheetName = taskData.sheetName;
-                if (!sheetName) {
-                  throw new Error("シート名が指定されていません");
-                }
-                const fullLogCell = taskData.logCell?.includes("!")
-                  ? taskData.logCell
-                  : `'${sheetName}'!${taskData.logCell}`;
-
-                const messageToSend = {
-                  type: "recordSendTime",
-                  taskId: taskId,
-                  sendTime: sendTime.toISOString(),
-                  taskInfo: {
-                    aiType: "Claude",
-                    model: modelName || "不明",
-                    function: featureName || "通常",
-                    // URLは応答完了時に取得するため、ここでは記録しない
-                    cellInfo: taskData.cellInfo, // cellInfo を追加
-                  },
-                  logCell: fullLogCell, // シート名付きログセル
-                };
-
-                try {
-                  console.log("🔍 [chrome.runtime.sendMessage実行直前]", {
-                    chromeRuntimeExists: !!chrome.runtime,
-                    sendMessageExists: !!chrome.runtime.sendMessage,
-                    messageToSendExists: !!messageToSend,
-                    aboutToSendMessage: true,
-                  });
-
-                  chrome.runtime.sendMessage(messageToSend, (response) => {
-                    clearTimeout(timeout);
-
-                    // chrome.runtime.lastErrorをチェック
-                    if (chrome.runtime.lastError) {
-                      log.debug(
-                        "ℹ️ chrome.runtime.lastError（継続処理）:",
-                        chrome.runtime.lastError.message,
-                      );
-                      resolve({
-                        error: "runtime_error",
-                        message: chrome.runtime.lastError.message,
-                      });
-                    } else {
-                      log.debug("📨 [DEBUG] sendMessage応答受信:", response);
-                      resolve(response || { success: true });
-                    }
-                  });
-                } catch (syncError) {
-                  clearTimeout(timeout);
-                  log.debug(
-                    "ℹ️ [SYNC-ERROR] sendMessage同期エラー（継続処理）:",
-                    syncError.message,
-                  );
-                  resolve({ error: "sync_error", message: syncError.message });
-                }
-              });
-
-            const response = await sendMessageWithRetry();
-
-            if (response.error) {
-              log.debug(
-                `ℹ️ [FIXED] 送信時刻記録失敗（タスク実行は継続） [${response.error}]:`,
-                {
-                  error: response.error,
-                  message: response.message,
-                  taskId: taskId,
-                  fallbackAttempt: "開始",
-                },
-              );
-
-              // フォールバック実行
-              const fallbackResult = recordSendTimeLocally(
-                taskId,
-                sendTime.toISOString(),
-                {
-                  aiType: "Claude",
-                  model: modelName || "不明",
-                  function: featureName || "通常",
-                  cellInfo: taskData.cellInfo,
-                },
-              );
-
-              if (fallbackResult.success) {
-                log.debug("✅ [FALLBACK] ローカル記録でカバー完了");
-              }
-            } else {
-              log.debug("✅ [FIXED] 送信時刻記録成功（background.jsで処理）:", {
-                taskId: taskId,
-                sendTime: sendTime.toISOString(),
-                response: response,
-                timestamp: new Date().toISOString(),
-              });
-            }
-          } else {
-            log.debug("ℹ️ Chrome拡張コンテキストが無効（フォールバック実行）");
-
-            // 拡張機能コンテキスト無効時はフォールバック実行
-            const fallbackResult = recordSendTimeLocally(
-              taskId,
-              sendTime.toISOString(),
-              {
-                aiType: "Claude",
-                model: modelName || "不明",
-                function: featureName || "通常",
-                cellInfo: taskData.cellInfo,
-              },
-            );
-
-            if (fallbackResult.success) {
-              log.debug("✅ [FALLBACK] 拡張無効時のローカル記録完了");
-            }
-          }
-        } catch (error) {
-          log.debug("❌ 送信時刻記録エラー:", error.message);
-        }
+        // ========================================
+        // Step 4-6: 送信時刻記録
+        // ========================================
+        log.info("【Step 4-6】送信時刻記録");
+        await recordSendTime(
+          taskId,
+          sendTime,
+          taskData,
+          modelName,
+          featureName,
+        );
 
         log.debug("✅ メッセージ送信完了");
         log.debug(`📤 実際の送信時刻: ${sendTime.toISOString()}`);
@@ -5425,6 +5346,7 @@
         // ========================================
         // ⏳ Step 4-7: 応答待機
         // ========================================
+        log.info("【Step 4-7】応答待機開始");
 
         log.debug(
           "%c【Step 4-7-1】応答待機開始",
@@ -6041,6 +5963,7 @@
         // ========================================
         // 📥 Step 4-8: 結果取得
         // ========================================
+        log.info("【Step 4-8】テキスト取得");
         log.debug(
           "%c【Step 4-8-1】テキスト取得処理開始",
           "color: #3F51B5; font-weight: bold;",
@@ -6456,34 +6379,19 @@
         // 実行状態を解除
         setExecutionState(false);
 
-        // タスク完了時刻をBackground Scriptに記録（URL情報を含む）
-        try {
-          // シート名付きlogCellを準備（taskDataから取得）
-          const sheetName = taskData.sheetName;
-          if (!sheetName) {
-            throw new Error("シート名が指定されていません");
-          }
-          const fullLogCell = taskData.logCell?.includes("!")
-            ? taskData.logCell
-            : `'${sheetName}'!${taskData.logCell}`;
+        // ========================================
+        // Step 4-9: 完了時刻記録
+        // ========================================
+        log.info("【Step 4-9】完了時刻記録");
+        await recordCompletionTime(
+          taskId,
+          currentUrl,
+          taskData,
+          displayedModel || result.model || modelName,
+          displayedFunction || result.function || featureName,
+        );
 
-          chrome.runtime.sendMessage({
-            type: "recordCompletionTime",
-            taskId: taskId,
-            completionTime: new Date().toISOString(),
-            taskInfo: {
-              aiType: "Claude",
-              model: displayedModel || result.model || modelName,
-              function: displayedFunction || result.function || featureName,
-              url: currentUrl, // 会話URLを含める
-            },
-            logCell: fullLogCell, // シート名付きログセル
-          });
-          log.debug("✅ recordCompletionTime送信完了:", taskId);
-        } catch (error) {
-          log.warn("⚠️ recordCompletionTime送信エラー:", error);
-        }
-
+        log.info("✅ 【Step 4-0】Claude タスク実行完了");
         return result;
       } catch (error) {
         // エラー時も実行状態を解除
@@ -6546,7 +6454,7 @@
           );
         }
 
-        log.error("❌ [ClaudeV2] タスク実行エラー:", error.message);
+        log.error("❌ 【Step 4-0】Claude タスク実行エラー:", error.message);
         log.error("スタックトレース:", error.stack);
 
         const result = {

@@ -88,7 +88,7 @@
       "resources": [
         "step1-setup.js",
         "step2-taskgroup.js",
-        "step4-tasklist.js",
+        "step3-tasklist.js",
         "common-error-handler.js",
         "4-1-chatgpt-automation.js",
         "4-2-claude-automation.js",

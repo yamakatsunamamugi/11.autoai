@@ -6,7 +6,7 @@ chrome.runtime.onInstalled.addListener(() => {
   // log.debug("✅ Extension installed/updated");
 });
 
-// タブ更新時の処理を削除 - step4-tasklist.jsで統一管理
+// タブ更新時の処理を削除 - step3-tasklist.jsで統一管理
 // Content Script注入はタスク実行時にのみ行う
 
 // ========================================
