@@ -26,6 +26,13 @@
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
+// スプレッドシート範囲設定
+const SPREADSHEET_RANGE_CONFIG = {
+  MAX_COLUMN: "ZZ",
+  MAX_ROW: 10000,
+  GROUP_MAX_ROWS: 1000,
+};
+
 // Chrome Storageからログレベルを取得（非同期）
 let CURRENT_LOG_LEVEL = LOG_LEVEL.WARN; // デフォルト値（簡潔な動作確認用）
 
@@ -188,6 +195,18 @@ async function executeStep2TaskGroups() {
     // 未完了グループがなければ終了
     if (!leftmostIncompleteGroup) {
       log.info("[2-1]🎉 [step2-taskgroup.js] 全グループ完了 - 処理終了");
+
+      // Wake Lock解放（全グループ完了時）
+      if (window.releaseSleep && typeof window.releaseSleep === "function") {
+        try {
+          log.info("[2-1]🔓 [step2-taskgroup.js] Wake Lock解放を実行");
+          await window.releaseSleep();
+          log.info("[2-1]✅ [step2-taskgroup.js] Wake Lock解放完了");
+        } catch (error) {
+          log.error("[2-1]❌ [step2-taskgroup.js] Wake Lock解放エラー:", error);
+        }
+      }
+
       return {
         success: true,
         hasNextGroup: false,
@@ -1573,7 +1592,7 @@ async function checkCompletionStatus(taskGroup) {
 
     // タスクグループの範囲のデータを取得して行制御を抽出
     // 注意：B列に行制御命令が入っているため、B列を含む範囲を取得する必要がある
-    const controlCheckRange = `'${sheetName}'!B${taskGroup.dataStartRow}:B1000`;
+    const controlCheckRange = `'${sheetName}'!B${taskGroup.dataStartRow}:B${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
     let controlData;
     try {
       controlData = await readSpreadsheet(controlCheckRange);
@@ -1633,7 +1652,7 @@ async function checkCompletionStatus(taskGroup) {
     const startCol = taskGroup.columns.prompts[0];
     const endCol =
       taskGroup.columns.prompts[taskGroup.columns.prompts.length - 1];
-    const promptRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
+    const promptRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
     log.info(
       `[2-2-2][step2-taskgroup.js] [Step 5-1-1] 取得範囲: ${promptRange}`,
       {
@@ -1794,7 +1813,7 @@ async function checkCompletionStatus(taskGroup) {
       // 3列をまとめて取得（行ベースで処理するため）
       const startCol = columns[0]; // ChatGPT列
       const endCol = columns[2]; // Gemini列
-      answerRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}1000`;
+      answerRange = `'${sheetName}'!${startCol}${taskGroup.dataStartRow}:${endCol}${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
 
       log.info(
         `[2-2-2][step2-taskgroup.js] [Step 5-1-2] 3種類AI回答範囲: ${answerRange}`,
@@ -1870,7 +1889,7 @@ async function checkCompletionStatus(taskGroup) {
 
       // 【シンプル化】primary列を使用して範囲を生成
       const answerColumn = taskGroup.columns.answer.primary || "C";
-      answerRange = `'${sheetName}'!${answerColumn}${taskGroup.dataStartRow}:${answerColumn}1000`;
+      answerRange = `'${sheetName}'!${answerColumn}${taskGroup.dataStartRow}:${answerColumn}${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
       log.info(
         `[2-2-2][step2-taskgroup.js] [Step 5-1-2] 取得範囲: ${answerRange}`,
       );

@@ -29,9 +29,6 @@
 // ログレベル定義
 const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 
-// グループ最大行数定義（全箇所で統一使用）
-const GROUP_MAX_ROWS = 1000;
-
 // バッチ処理改善設定（個別完了処理を有効化）
 const BATCH_PROCESSING_CONFIG = {
   ENABLE_ASYNC_BATCH: true, // 非同期バッチ処理を有効化
@@ -3497,7 +3494,7 @@ async function generateTaskList(
           const sheetName =
             window.globalState?.sheetName ||
             `シート${window.globalState?.gid || "0"}`;
-          const range = `'${sheetName}'!A1:ZZ${GROUP_MAX_ROWS}`;
+          const range = `'${sheetName}'!A1:${SPREADSHEET_RANGE_CONFIG.MAX_COLUMN}${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
           const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${options.spreadsheetId}/values/${encodeURIComponent(range)}`;
 
           try {
@@ -7299,8 +7296,8 @@ class DynamicTaskSearch {
         // シート名を取得
         const sheetName = window.globalState.sheetName || `シート${gid || "0"}`;
 
-        // 全体データ取得 - groupMaxRowsを使用
-        const maxCol = this.getMaxUsedColumn() || "ZZ";
+        // グループ範囲データ取得 - groupMaxRowsを使用
+        const maxCol = SPREADSHEET_RANGE_CONFIG.MAX_COLUMN;
         const range = `'${sheetName}'!A1:${maxCol}${this.groupMaxRows}`;
         const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
 
@@ -10949,8 +10946,8 @@ async function readSpreadsheet(range, retryCount = 0) {
     const spreadsheetId = window.globalState.spreadsheetId;
     const accessToken = window.globalState.authToken;
 
-    // Google Sheets API呼び出し（既存のapiHeadersを活用）
-    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`;
+    // Google Sheets API呼び出し（空白セルを含めて取得）
+    const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
     const headers = window.globalState.apiHeaders || {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
@@ -11022,7 +11019,7 @@ async function readFullSpreadsheet() {
       window.globalState.sheetName || `シート${window.globalState.gid || "0"}`;
 
     // 全体範囲を取得
-    const fullRange = `'${sheetName}'!A1:ZZ${GROUP_MAX_ROWS}`;
+    const fullRange = `'${sheetName}'!A1:${SPREADSHEET_RANGE_CONFIG.MAX_COLUMN}${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
     const data = await readSpreadsheet(fullRange);
 
     if (!data || !data.values) {

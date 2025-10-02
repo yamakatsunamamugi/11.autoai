@@ -347,6 +347,75 @@ async function preventSleep() {
 }
 
 // ========================================
+// 1-2-X: スリープ防止解除（全タスク完了時）
+// ========================================
+async function releaseSleep() {
+  log.info("========");
+  log.info("[step1-setup.js→Step1-2-X] スリープ防止解除開始");
+  log.info("========");
+
+  try {
+    let releasedCount = 0;
+
+    // 1. Wake Lock APIの解放
+    if (window.wakeLock) {
+      try {
+        await window.wakeLock.release();
+        log.info("[step1-setup.js] [Step 1-2-X] ✅ Wake Lock解放成功");
+        window.wakeLock = null;
+        releasedCount++;
+      } catch (err) {
+        log.error(
+          `[step1-setup.js] [Step 1-2-X] Wake Lock解放エラー: ${err.message}`,
+        );
+      }
+    }
+
+    // 2. NoSleepライブラリの無効化
+    if (window.noSleep) {
+      try {
+        window.noSleep.disable();
+        log.info("[step1-setup.js] [Step 1-2-X] ✅ NoSleep無効化成功");
+        window.noSleep = null;
+        releasedCount++;
+      } catch (err) {
+        log.error(
+          `[step1-setup.js] [Step 1-2-X] NoSleep無効化エラー: ${err.message}`,
+        );
+      }
+    }
+
+    // 3. keepAliveインターバルの停止
+    if (window.keepAliveInterval) {
+      try {
+        clearInterval(window.keepAliveInterval);
+        log.info(
+          "[step1-setup.js] [Step 1-2-X] ✅ keepAliveインターバル停止成功",
+        );
+        window.keepAliveInterval = null;
+        releasedCount++;
+      } catch (err) {
+        log.error(
+          `[step1-setup.js] [Step 1-2-X] keepAliveインターバル停止エラー: ${err.message}`,
+        );
+      }
+    }
+
+    log.info("[step1-setup.js] [Step 1-2-X] ✅ スリープ防止解除完了");
+    log.info(`  - 解放した機能数: ${releasedCount}`);
+    log.info("  - 画面は通常の設定でオフになります");
+
+    return {
+      success: true,
+      releasedCount: releasedCount,
+    };
+  } catch (error) {
+    log.error("[step1-setup.js→Step1-2-X] ❌ スリープ防止解除エラー:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ========================================
 // 1-3: API関連の初期化
 // ========================================
 async function initializeAPI() {
@@ -1515,6 +1584,7 @@ if (typeof window !== "undefined") {
   window.executeStep1 = executeStep1;
   window.checkInternetConnection = checkInternetConnection;
   window.preventSleep = preventSleep;
+  window.releaseSleep = releaseSleep;
   window.initializeAPI = initializeAPI;
   window.findSpecialRows = findSpecialRows;
   window.setupColumnStructure = setupColumnStructure;
