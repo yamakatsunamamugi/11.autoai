@@ -1685,6 +1685,7 @@ async function checkCompletionStatus(taskGroup) {
     // 値があるプロンプト行をカウント（行ベース：複数列でも1行は1タスク）
     let promptCount = 0;
     let promptDetails = [];
+    let rowControlSkipCount = 0; // 行制御でスキップされた行数
     if (promptValues && promptValues.values) {
       log.info(
         `[2-2-2][step2-taskgroup.js] [Step 5-1-1] プロンプトデータ取得成功: ${promptValues.values.length}行`,
@@ -1709,9 +1710,7 @@ async function checkCompletionStatus(taskGroup) {
             if (
               !window.Step3TaskList.shouldProcessRow(actualRow, rowControls)
             ) {
-              log.debug(
-                `[2-2-2][step2-taskgroup.js] 行${actualRow}は行制御によりスキップ`,
-              );
+              rowControlSkipCount++;
               continue;
             }
           }
@@ -1746,6 +1745,13 @@ async function checkCompletionStatus(taskGroup) {
               (firstPromptContent.length > 30 ? "..." : ""),
           });
         }
+      }
+
+      // 行制御スキップのサマリーログ
+      if (rowControlSkipCount > 0) {
+        log.info(
+          `[2-2-2][step2-taskgroup.js] 行制御により${rowControlSkipCount}行をスキップしました`,
+        );
       }
     } else {
       log.error(
