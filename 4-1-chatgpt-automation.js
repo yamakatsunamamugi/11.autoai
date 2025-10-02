@@ -2477,33 +2477,150 @@ async function reportSelectorError(selectorKey, error, selectors) {
   }
 
   /**
-   * 🎯 ChatGPT機能選択処理
+   * 🎯 ChatGPT機能選択処理 - RetryManager統合
    * @description 指定された機能名の機能を選択
    * @param {string} functionName - 選択する機能名（例: "Code Interpreter", "Browse with Bing"）
    * @returns {Promise<boolean>} 選択成功フラグ
    * @throws {Error} 機能が見つからない場合
    */
   async function selectFunctionChatGPT(functionName) {
-    const funcMenuBtn = await findElement(
-      SELECTORS.menuButton,
-      "機能メニューボタン",
+    const retryManager = new ChatGPTRetryManager();
+    const result = await retryManager.executeWithRetry(
+      async () => {
+        const funcMenuBtn = await findElement(
+          SELECTORS.menuButton,
+          "機能メニューボタン",
+        );
+        await openFunctionMenu(funcMenuBtn);
+
+        const funcMenu = await findElement(
+          SELECTORS.mainMenu,
+          "メインメニュー",
+        );
+        if (!funcMenu) throw new Error("機能メニューが開きません");
+
+        // メニューアイテムから検索
+        const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
+        for (const item of menuItems) {
+          if (getCleanText(item).includes(functionName)) {
+            item.click();
+            await sleep(1000);
+            return { success: true };
+          }
+        }
+
+        throw new Error(`機能 '${functionName}' が見つかりません`);
+      },
+      "ChatGPT機能選択",
+      { functionName },
     );
-    await openFunctionMenu(funcMenuBtn);
 
-    const funcMenu = await findElement(SELECTORS.mainMenu, "メインメニュー");
-    if (!funcMenu) throw new Error("機能メニューが開きません");
-
-    // メニューアイテムから検索
-    const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
-    for (const item of menuItems) {
-      if (getCleanText(item).includes(functionName)) {
-        item.click();
-        await sleep(1000);
-        return true;
-      }
+    if (!result.success) {
+      throw new Error(result.error?.message || "機能選択失敗");
     }
 
-    throw new Error(`機能 '${functionName}' が見つかりません`);
+    return true;
+  }
+
+  /**
+   * 🎯 ChatGPTテキスト入力処理 - RetryManager統合
+   * @description テキストを入力欄に入力
+   * @param {string} text - 入力するテキスト
+   * @returns {Promise<boolean>} 入力成功フラグ
+   * @throws {Error} 入力欄が見つからない場合
+   */
+  async function inputTextChatGPT(text) {
+    const retryManager = new ChatGPTRetryManager();
+    const result = await retryManager.executeWithRetry(
+      async () => {
+        // テキスト入力欄を探す
+        let input = await getElementWithWait(
+          SELECTORS.textInput,
+          "テキスト入力欄",
+          10000,
+        );
+
+        if (!input) {
+          // 最後の手段として広範囲検索
+          const allEditableElements = document.querySelectorAll(
+            '[contenteditable="true"], textarea, input[type="text"]',
+          );
+          for (const elem of allEditableElements) {
+            if (isElementInteractable(elem)) {
+              input = elem;
+              break;
+            }
+          }
+        }
+
+        if (!input) {
+          throw new Error("テキスト入力欄が見つかりません");
+        }
+
+        // テキスト入力
+        if (
+          input.classList.contains("ProseMirror") ||
+          input.classList.contains("ql-editor")
+        ) {
+          input.innerHTML = "";
+          const p = document.createElement("p");
+          p.textContent = text;
+          input.appendChild(p);
+          input.classList.remove("ql-blank");
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        } else {
+          input.textContent = text;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+
+        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+        return { success: true };
+      },
+      "ChatGPTテキスト入力",
+      { textLength: text?.length || 0 },
+    );
+
+    if (!result.success) {
+      throw new Error(result.error?.message || "テキスト入力失敗");
+    }
+
+    return true;
+  }
+
+  /**
+   * 🎯 ChatGPTメッセージ送信処理 - RetryManager統合
+   * @description 送信ボタンをクリック
+   * @returns {Promise<boolean>} 送信成功フラグ
+   * @throws {Error} 送信ボタンが見つからない場合
+   */
+  async function sendMessageChatGPT() {
+    const retryManager = new ChatGPTRetryManager();
+    const result = await retryManager.executeWithRetry(
+      async () => {
+        const sendBtn = await findElement(
+          SELECTORS.sendButton,
+          "送信ボタン",
+          5,
+        );
+
+        if (!sendBtn) {
+          throw new Error("送信ボタンが見つかりません");
+        }
+
+        sendBtn.click();
+        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+        return { success: true };
+      },
+      "ChatGPTメッセージ送信",
+      {},
+    );
+
+    if (!result.success) {
+      throw new Error(result.error?.message || "メッセージ送信失敗");
+    }
+
+    return true;
   }
 
   // ========================================
