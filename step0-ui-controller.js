@@ -248,7 +248,12 @@ async function bringWindowToFront(moveToPrimary = false) {
 const urlInputsContainer = document.getElementById("url-inputs-container");
 const saveUrlDialog = document.getElementById("saveUrlDialog");
 const saveUrlTitle = document.getElementById("saveUrlTitle");
-const saveUrlTags = document.getElementById("saveUrlTags");
+const saveUrlTagInput = document.getElementById("saveUrlTagInput");
+const saveUrlTagsContainer = document.getElementById("saveUrlTagsContainer");
+const saveUrlSuggestedTagsContainer = document.getElementById(
+  "saveUrlSuggestedTagsContainer",
+);
+const saveUrlSuggestedTags = document.getElementById("saveUrlSuggestedTags");
 const saveUrlMemo = document.getElementById("saveUrlMemo");
 const confirmSaveUrlBtn = document.getElementById("confirmSaveUrlBtn");
 const cancelSaveUrlBtn = document.getElementById("cancelSaveUrlBtn");
@@ -586,10 +591,144 @@ function attachRowEventListeners(row) {
 // 保存ダイアログを表示
 function showSaveUrlDialog(url) {
   saveUrlTitle.value = "";
-  saveUrlTags.value = "";
+  saveUrlTagInput.value = "";
   saveUrlMemo.value = "";
   saveUrlDialog.style.display = "block";
   saveUrlTitle.focus();
+
+  // タグ管理用の配列
+  const currentTags = [];
+
+  // 全URLから既存タグを収集（重複排除）
+  const allExistingTags = new Set();
+  Object.values(savedUrls).forEach((urlData) => {
+    if (urlData.tags && Array.isArray(urlData.tags)) {
+      urlData.tags.forEach((tag) => allExistingTags.add(tag));
+    }
+  });
+
+  // タグ表示を更新
+  function renderTags() {
+    saveUrlTagsContainer.innerHTML = "";
+    if (currentTags.length === 0) {
+      const emptyMessage = document.createElement("span");
+      emptyMessage.style.cssText = "color: #999; font-size: 12px;";
+      emptyMessage.textContent = "タグがありません";
+      saveUrlTagsContainer.appendChild(emptyMessage);
+    } else {
+      currentTags.forEach((tag) => {
+        const color = assignTagColor(tag);
+        const tagBadge = document.createElement("span");
+        tagBadge.style.cssText = `
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: ${color.bg};
+          color: ${color.text};
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 12px;
+          cursor: pointer;
+        `;
+        tagBadge.innerHTML = `🏷️ ${tag} <span style="margin-left: 2px; font-weight: bold;">×</span>`;
+        tagBadge.title = "クリックして削除";
+        tagBadge.addEventListener("click", () => {
+          const index = currentTags.indexOf(tag);
+          if (index > -1) {
+            currentTags.splice(index, 1);
+            renderTags();
+            renderSuggestedTags();
+          }
+        });
+        saveUrlTagsContainer.appendChild(tagBadge);
+      });
+    }
+  }
+
+  // 候補タグ表示を更新
+  function renderSuggestedTags() {
+    saveUrlSuggestedTags.innerHTML = "";
+    const hasUnusedTags = Array.from(allExistingTags).some(
+      (tag) => !currentTags.includes(tag),
+    );
+
+    if (hasUnusedTags) {
+      saveUrlSuggestedTagsContainer.style.display = "block";
+      allExistingTags.forEach((tag) => {
+        if (!currentTags.includes(tag)) {
+          const color = assignTagColor(tag);
+          const tagBtn = document.createElement("button");
+          tagBtn.style.cssText = `
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: ${color.bg};
+            color: ${color.text};
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            border: 1px solid ${color.text}40;
+            cursor: pointer;
+            transition: all 0.2s;
+          `;
+          tagBtn.innerHTML = `🏷️ ${tag} <span style="font-weight: bold;">+</span>`;
+          tagBtn.title = "クリックして追加";
+          tagBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (!currentTags.includes(tag)) {
+              currentTags.push(tag);
+              renderTags();
+              renderSuggestedTags();
+            }
+          });
+          tagBtn.addEventListener("mouseenter", () => {
+            tagBtn.style.transform = "scale(1.05)";
+            tagBtn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+          });
+          tagBtn.addEventListener("mouseleave", () => {
+            tagBtn.style.transform = "scale(1)";
+            tagBtn.style.boxShadow = "none";
+          });
+          saveUrlSuggestedTags.appendChild(tagBtn);
+        }
+      });
+    } else {
+      saveUrlSuggestedTagsContainer.style.display = "none";
+    }
+  }
+
+  renderTags();
+  renderSuggestedTags();
+
+  // カンマまたはTabキーでタグを追加、Enterで保存
+  saveUrlTagInput.onkeydown = (e) => {
+    if (e.key === "," || e.key === "Tab") {
+      e.preventDefault();
+      const newTag = saveUrlTagInput.value.trim().replace(/,+$/, ""); // 末尾のカンマを削除
+      if (newTag && !currentTags.includes(newTag)) {
+        currentTags.push(newTag);
+        renderTags();
+        renderSuggestedTags();
+        saveUrlTagInput.value = "";
+        showFeedback(`タグ "${newTag}" を追加しました`, "success");
+      } else if (currentTags.includes(newTag)) {
+        showFeedback(`タグ "${newTag}" は既に追加されています`, "error");
+        saveUrlTagInput.value = "";
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // 入力中のテキストがあれば先にタグとして追加
+      const newTag = saveUrlTagInput.value.trim();
+      if (newTag && !currentTags.includes(newTag)) {
+        currentTags.push(newTag);
+        renderTags();
+        renderSuggestedTags();
+        saveUrlTagInput.value = "";
+      }
+      // 保存ボタンをクリック
+      confirmSaveUrlBtn.click();
+    }
+  };
 
   // 保存ボタンのイベント
   confirmSaveUrlBtn.onclick = async () => {
@@ -599,28 +738,20 @@ function showSaveUrlDialog(url) {
       return;
     }
 
-    // タグを解析（カンマ区切り）
-    const tagsInput = saveUrlTags.value.trim();
-    const tags = tagsInput
-      ? tagsInput
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0)
-      : [];
-
     // メモを取得
     const memo = saveUrlMemo.value.trim();
 
     // URLを保存（v4形式）
     savedUrls[title] = {
       url: url,
-      tags: tags,
+      tags: currentTags,
       favorite: false,
       memo: memo,
     };
     await savUrlsToStorage();
 
-    const tagInfo = tags.length > 0 ? ` (タグ: ${tags.join(", ")})` : "";
+    const tagInfo =
+      currentTags.length > 0 ? ` (タグ: ${currentTags.join(", ")})` : "";
     showFeedback(`"${title}" として保存しました${tagInfo}`, "success");
     saveUrlDialog.style.display = "none";
   };
@@ -655,10 +786,18 @@ function showEditUrlDialog(
     box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5);
     z-index: 10000;
     min-width: 450px;
+    max-width: 600px;
   `;
 
-  const tagsString = Array.isArray(oldTags) ? oldTags.join(", ") : "";
   const memoText = oldMemo || "";
+
+  // 全URLから既存タグを収集
+  const allExistingTags = new Set();
+  Object.values(savedUrls).forEach((urlData) => {
+    if (urlData.tags && Array.isArray(urlData.tags)) {
+      urlData.tags.forEach((tag) => allExistingTags.add(tag));
+    }
+  });
 
   editDialog.innerHTML = `
     <h3 style="margin-top: 0;">URLを編集</h3>
@@ -666,9 +805,20 @@ function showEditUrlDialog(
     <input type="text" id="editUrlTitle" value="${oldTitle}" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
     <label style="display: block; margin-bottom: 5px; font-size: 14px;">URL:</label>
     <input type="text" id="editUrlValue" value="${oldUrl}" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
+
     <label style="display: block; margin-bottom: 5px; font-size: 14px;">タグ:</label>
-    <input type="text" id="editUrlTags" value="${tagsString}" placeholder="タグをカンマ区切りで入力" style="width: 100%; padding: 8px; margin-bottom: 5px; border: 1px solid #ddd; border-radius: 4px;">
-    <div style="font-size: 11px; color: #666; margin-bottom: 10px;">💡 カンマ（,）で区切って複数タグを入力できます</div>
+    <input type="text" id="editUrlTagInput" placeholder="タグ名を入力してEnterキーで追加" style="width: 100%; padding: 8px; margin-bottom: 5px; border: 1px solid #ddd; border-radius: 4px;">
+    <div style="font-size: 11px; color: #666; margin-bottom: 10px;">💡 入力してEnterキーを押すとタグが追加されます</div>
+    <div id="editUrlTagsContainer" style="min-height: 40px; padding: 8px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+      <!-- タグがここに表示される -->
+    </div>
+    <div id="editUrlSuggestedTagsContainer" style="display: none; margin-bottom: 10px;">
+      <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #666;">よく使うタグから選択:</label>
+      <div id="editUrlSuggestedTags" style="display: flex; flex-wrap: wrap; gap: 6px;">
+        <!-- 候補タグがここに表示される -->
+      </div>
+    </div>
+
     <label style="display: block; margin-bottom: 5px; font-size: 14px;">メモ（オプション）:</label>
     <textarea id="editUrlMemo" placeholder="このURLについてのメモを入力..." style="width: 100%; min-height: 80px; padding: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; font-family: inherit;">${memoText}</textarea>
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
@@ -681,13 +831,144 @@ function showEditUrlDialog(
 
   const editTitleInput = document.getElementById("editUrlTitle");
   const editUrlInput = document.getElementById("editUrlValue");
-  const editTagsInput = document.getElementById("editUrlTags");
+  const editUrlTagInput = document.getElementById("editUrlTagInput");
+  const editUrlTagsContainer = document.getElementById("editUrlTagsContainer");
+  const editUrlSuggestedTagsContainer = document.getElementById(
+    "editUrlSuggestedTagsContainer",
+  );
+  const editUrlSuggestedTags = document.getElementById("editUrlSuggestedTags");
   const editMemoInput = document.getElementById("editUrlMemo");
   const confirmEditBtn = document.getElementById("confirmEditUrlBtn");
   const cancelEditBtn = document.getElementById("cancelEditUrlBtn");
 
+  // 現在のタグを管理
+  const currentTags = Array.isArray(oldTags) ? [...oldTags] : [];
+
+  // タグ表示を更新
+  function renderTags() {
+    editUrlTagsContainer.innerHTML = "";
+    if (currentTags.length === 0) {
+      const emptyMessage = document.createElement("span");
+      emptyMessage.style.cssText = "color: #999; font-size: 12px;";
+      emptyMessage.textContent = "タグがありません";
+      editUrlTagsContainer.appendChild(emptyMessage);
+    } else {
+      currentTags.forEach((tag) => {
+        const color = assignTagColor(tag);
+        const tagBadge = document.createElement("span");
+        tagBadge.style.cssText = `
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: ${color.bg};
+          color: ${color.text};
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 12px;
+          cursor: pointer;
+        `;
+        tagBadge.innerHTML = `🏷️ ${tag} <span style="margin-left: 2px; font-weight: bold;">×</span>`;
+        tagBadge.title = "クリックして削除";
+        tagBadge.addEventListener("click", () => {
+          const index = currentTags.indexOf(tag);
+          if (index > -1) {
+            currentTags.splice(index, 1);
+            renderTags();
+            renderSuggestedTags();
+          }
+        });
+        editUrlTagsContainer.appendChild(tagBadge);
+      });
+    }
+  }
+
+  // 候補タグ表示を更新
+  function renderSuggestedTags() {
+    editUrlSuggestedTags.innerHTML = "";
+    const hasUnusedTags = Array.from(allExistingTags).some(
+      (tag) => !currentTags.includes(tag),
+    );
+
+    if (hasUnusedTags) {
+      editUrlSuggestedTagsContainer.style.display = "block";
+      allExistingTags.forEach((tag) => {
+        if (!currentTags.includes(tag)) {
+          const color = assignTagColor(tag);
+          const tagBtn = document.createElement("button");
+          tagBtn.style.cssText = `
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: ${color.bg};
+            color: ${color.text};
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            border: 1px solid ${color.text}40;
+            cursor: pointer;
+            transition: all 0.2s;
+          `;
+          tagBtn.innerHTML = `🏷️ ${tag} <span style="font-weight: bold;">+</span>`;
+          tagBtn.title = "クリックして追加";
+          tagBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (!currentTags.includes(tag)) {
+              currentTags.push(tag);
+              renderTags();
+              renderSuggestedTags();
+            }
+          });
+          tagBtn.addEventListener("mouseenter", () => {
+            tagBtn.style.transform = "scale(1.05)";
+            tagBtn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+          });
+          tagBtn.addEventListener("mouseleave", () => {
+            tagBtn.style.transform = "scale(1)";
+            tagBtn.style.boxShadow = "none";
+          });
+          editUrlSuggestedTags.appendChild(tagBtn);
+        }
+      });
+    } else {
+      editUrlSuggestedTagsContainer.style.display = "none";
+    }
+  }
+
+  renderTags();
+  renderSuggestedTags();
+
   editTitleInput.focus();
   editTitleInput.select();
+
+  // カンマまたはTabキーでタグを追加、Enterで保存
+  editUrlTagInput.addEventListener("keydown", (e) => {
+    if (e.key === "," || e.key === "Tab") {
+      e.preventDefault();
+      const newTag = editUrlTagInput.value.trim().replace(/,+$/, ""); // 末尾のカンマを削除
+      if (newTag && !currentTags.includes(newTag)) {
+        currentTags.push(newTag);
+        renderTags();
+        renderSuggestedTags();
+        editUrlTagInput.value = "";
+        showFeedback(`タグ "${newTag}" を追加しました`, "success");
+      } else if (currentTags.includes(newTag)) {
+        showFeedback(`タグ "${newTag}" は既に追加されています`, "error");
+        editUrlTagInput.value = "";
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // 入力中のテキストがあれば先にタグとして追加
+      const newTag = editUrlTagInput.value.trim();
+      if (newTag && !currentTags.includes(newTag)) {
+        currentTags.push(newTag);
+        renderTags();
+        renderSuggestedTags();
+        editUrlTagInput.value = "";
+      }
+      // 保存ボタンをクリック
+      confirmEditBtn.click();
+    }
+  });
 
   // 保存ボタン
   confirmEditBtn.onclick = async () => {
@@ -704,15 +985,6 @@ function showEditUrlDialog(
       return;
     }
 
-    // タグを解析（カンマ区切り）
-    const tagsInput = editTagsInput.value.trim();
-    const tags = tagsInput
-      ? tagsInput
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0)
-      : [];
-
     // メモを取得
     const memo = editMemoInput.value.trim();
 
@@ -722,13 +994,14 @@ function showEditUrlDialog(
     // 新しいエントリを追加（v4形式）
     savedUrls[newTitle] = {
       url: newUrl,
-      tags: tags,
+      tags: currentTags,
       favorite: oldFavorite || false,
       memo: memo,
     };
     await savUrlsToStorage();
 
-    const tagInfo = tags.length > 0 ? ` (タグ: ${tags.join(", ")})` : "";
+    const tagInfo =
+      currentTags.length > 0 ? ` (タグ: ${currentTags.join(", ")})` : "";
     showFeedback(`"${newTitle}" として更新しました${tagInfo}`, "success");
     document.body.removeChild(editDialog);
     await showOpenUrlDialog(targetInput); // リストを再表示
@@ -743,6 +1016,249 @@ function showEditUrlDialog(
   editDialog.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       document.body.removeChild(editDialog);
+    }
+  });
+}
+
+// タグ編集ダイアログを表示（簡易版）
+function showQuickTagDialog(title, oldTags, targetInput) {
+  // タグ編集用のダイアログを作成
+  const tagDialog = document.createElement("div");
+  tagDialog.id = "quickTagDialog";
+  tagDialog.style.cssText = `
+    display: block;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5);
+    z-index: 10001;
+    min-width: 450px;
+    max-width: 600px;
+  `;
+
+  // 現在のタグをコピー
+  const currentTags = Array.isArray(oldTags) ? [...oldTags] : [];
+
+  // 全URLから既存タグを収集（重複排除）
+  const allExistingTags = new Set();
+  Object.values(savedUrls).forEach((urlData) => {
+    if (urlData.tags && Array.isArray(urlData.tags)) {
+      urlData.tags.forEach((tag) => allExistingTags.add(tag));
+    }
+  });
+
+  tagDialog.innerHTML = `
+    <h3 style="margin-top: 0;">🏷️ タグを編集</h3>
+    <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+      <strong style="color: #333;">${title}</strong>
+    </div>
+
+    <label style="display: block; margin-bottom: 5px; font-size: 14px;">新しいタグを追加:</label>
+    <div style="display: flex; gap: 8px; margin-bottom: 5px;">
+      <input type="text" id="quickTagInput" placeholder="タグ名を入力" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+      <button id="addQuickTagBtn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">+ 追加</button>
+    </div>
+    <div style="font-size: 11px; color: #666; margin-bottom: 10px;">💡 カンマ（,）・Tab・Enterキーまたは追加ボタンでタグ追加</div>
+
+    <div style="margin-bottom: 15px;">
+      <label style="display: block; margin-bottom: 5px; font-size: 14px;">現在のタグ:</label>
+      <div id="currentTagsContainer" style="min-height: 40px; padding: 8px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+        <!-- 現在のタグがここに表示される -->
+      </div>
+    </div>
+
+    ${
+      allExistingTags.size > 0
+        ? `
+    <div style="margin-bottom: 15px;">
+      <label style="display: block; margin-bottom: 5px; font-size: 14px;">よく使うタグから選択:</label>
+      <div id="suggestedTagsContainer" style="display: flex; flex-wrap: wrap; gap: 6px;">
+        <!-- 候補タグがここに表示される -->
+      </div>
+    </div>
+    `
+        : ""
+    }
+
+    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+      <button id="confirmQuickTagBtn" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">保存</button>
+      <button id="cancelQuickTagBtn" class="btn btn-secondary" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">キャンセル</button>
+    </div>
+  `;
+
+  document.body.appendChild(tagDialog);
+
+  const quickTagInput = document.getElementById("quickTagInput");
+  const addQuickTagBtn = document.getElementById("addQuickTagBtn");
+  const currentTagsContainer = document.getElementById("currentTagsContainer");
+  const suggestedTagsContainer = document.getElementById(
+    "suggestedTagsContainer",
+  );
+  const confirmQuickTagBtn = document.getElementById("confirmQuickTagBtn");
+  const cancelQuickTagBtn = document.getElementById("cancelQuickTagBtn");
+
+  // 現在のタグを表示
+  function renderCurrentTags() {
+    currentTagsContainer.innerHTML = "";
+    if (currentTags.length === 0) {
+      const emptyMessage = document.createElement("span");
+      emptyMessage.style.cssText = "color: #999; font-size: 12px;";
+      emptyMessage.textContent = "タグがありません";
+      currentTagsContainer.appendChild(emptyMessage);
+    } else {
+      currentTags.forEach((tag) => {
+        const color = assignTagColor(tag);
+        const tagBadge = document.createElement("span");
+        tagBadge.style.cssText = `
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: ${color.bg};
+          color: ${color.text};
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 12px;
+          cursor: pointer;
+        `;
+        tagBadge.innerHTML = `🏷️ ${tag} <span style="margin-left: 2px; font-weight: bold;">×</span>`;
+        tagBadge.title = "クリックして削除";
+        tagBadge.addEventListener("click", () => {
+          const index = currentTags.indexOf(tag);
+          if (index > -1) {
+            currentTags.splice(index, 1);
+            renderCurrentTags();
+          }
+        });
+        currentTagsContainer.appendChild(tagBadge);
+      });
+    }
+  }
+
+  // 候補タグを表示
+  function renderSuggestedTags() {
+    if (!suggestedTagsContainer) return;
+    suggestedTagsContainer.innerHTML = "";
+    allExistingTags.forEach((tag) => {
+      if (!currentTags.includes(tag)) {
+        const color = assignTagColor(tag);
+        const tagBtn = document.createElement("button");
+        tagBtn.style.cssText = `
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: ${color.bg};
+          color: ${color.text};
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 12px;
+          border: 1px solid ${color.text}40;
+          cursor: pointer;
+          transition: all 0.2s;
+        `;
+        tagBtn.innerHTML = `🏷️ ${tag} <span style="font-weight: bold;">+</span>`;
+        tagBtn.title = "クリックして追加";
+        tagBtn.addEventListener("click", () => {
+          if (!currentTags.includes(tag)) {
+            currentTags.push(tag);
+            renderCurrentTags();
+            renderSuggestedTags();
+          }
+        });
+        tagBtn.addEventListener("mouseenter", () => {
+          tagBtn.style.transform = "scale(1.05)";
+          tagBtn.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
+        });
+        tagBtn.addEventListener("mouseleave", () => {
+          tagBtn.style.transform = "scale(1)";
+          tagBtn.style.boxShadow = "none";
+        });
+        suggestedTagsContainer.appendChild(tagBtn);
+      }
+    });
+  }
+
+  renderCurrentTags();
+  renderSuggestedTags();
+
+  quickTagInput.focus();
+
+  // 追加ボタンのクリックイベント
+  addQuickTagBtn.addEventListener("click", () => {
+    const newTag = quickTagInput.value.trim();
+    if (newTag && !currentTags.includes(newTag)) {
+      currentTags.push(newTag);
+      renderCurrentTags();
+      renderSuggestedTags();
+      quickTagInput.value = "";
+      quickTagInput.focus();
+      showFeedback(`タグ "${newTag}" を追加しました`, "success");
+    } else if (!newTag) {
+      showFeedback("タグ名を入力してください", "error");
+    } else if (currentTags.includes(newTag)) {
+      showFeedback(`タグ "${newTag}" は既に追加されています`, "error");
+      quickTagInput.value = "";
+      quickTagInput.focus();
+    }
+  });
+
+  // カンマまたはTabキーでタグを追加、Enterで保存
+  quickTagInput.addEventListener("keydown", (e) => {
+    if (e.key === "," || e.key === "Tab") {
+      e.preventDefault();
+      const newTag = quickTagInput.value.trim().replace(/,+$/, ""); // 末尾のカンマを削除
+      if (newTag && !currentTags.includes(newTag)) {
+        currentTags.push(newTag);
+        renderCurrentTags();
+        renderSuggestedTags();
+        quickTagInput.value = "";
+        showFeedback(`タグ "${newTag}" を追加しました`, "success");
+      } else if (currentTags.includes(newTag)) {
+        showFeedback(`タグ "${newTag}" は既に追加されています`, "error");
+        quickTagInput.value = "";
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // 入力中のテキストがあれば先にタグとして追加
+      const newTag = quickTagInput.value.trim();
+      if (newTag && !currentTags.includes(newTag)) {
+        currentTags.push(newTag);
+        renderCurrentTags();
+        renderSuggestedTags();
+        quickTagInput.value = "";
+      }
+      // 保存ボタンをクリック
+      confirmQuickTagBtn.click();
+    }
+  });
+
+  // 保存ボタン
+  confirmQuickTagBtn.onclick = async () => {
+    // タグを更新（既存のURLデータを保持）
+    if (savedUrls[title]) {
+      savedUrls[title].tags = currentTags;
+      await savUrlsToStorage();
+
+      const tagInfo =
+        currentTags.length > 0 ? ` (タグ: ${currentTags.join(", ")})` : "";
+      showFeedback(`"${title}" のタグを更新しました${tagInfo}`, "success");
+      document.body.removeChild(tagDialog);
+      await showOpenUrlDialog(targetInput); // リストを再表示
+    }
+  };
+
+  // キャンセルボタン
+  cancelQuickTagBtn.onclick = () => {
+    document.body.removeChild(tagDialog);
+  };
+
+  // Escキーでキャンセル
+  tagDialog.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      document.body.removeChild(tagDialog);
     }
   });
 }
@@ -877,6 +1393,17 @@ async function showOpenUrlDialog(targetInput) {
         showFeedback(`"${title}" を開きました`, "success");
       });
 
+      // タグ追加ボタン
+      const tagBtn = document.createElement("button");
+      tagBtn.style.cssText =
+        "padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+      tagBtn.textContent = "🏷️ タグ";
+      tagBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openUrlDialog.style.display = "none";
+        showQuickTagDialog(title, tags, targetInput);
+      });
+
       // 編集ボタン
       const editBtn = document.createElement("button");
       editBtn.style.cssText =
@@ -904,6 +1431,7 @@ async function showOpenUrlDialog(targetInput) {
       });
 
       buttonContainer.appendChild(openUrlBtn);
+      buttonContainer.appendChild(tagBtn);
       buttonContainer.appendChild(editBtn);
       buttonContainer.appendChild(deleteBtn);
 
