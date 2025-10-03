@@ -9850,8 +9850,8 @@ async function executeStep3(taskList) {
 
   // executeStep3関数定義完了
 
-  // グループ完了チェックは handleIndividualTaskCompletion 内で行われるため、
-  // ここでは何もしない（重複呼び出しを防止）
+  // バッチ処理完了後、グループ完了をチェックして次のグループに進む
+  await checkAndHandleGroupCompletion(0);
 
   return results;
 }
