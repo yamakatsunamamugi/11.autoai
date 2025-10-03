@@ -3157,7 +3157,7 @@ async function generateTaskList(
         });
 
         log.debug(
-          `[3-4] [DEBUG] タスク追加: 行${row + 1}, AI=${aiType}, hasAnswer状態不明`, // 1-basedの行番号
+          `[3-4] [DEBUG] タスク追加: 行${row + 1}, AI=${task.aiType}, hasAnswer状態不明`, // 1-basedの行番号
         );
         validTasks.push(task);
         tasksCreated++; // タスク作成数をインクリメント
@@ -7872,10 +7872,41 @@ async function executeStep3(taskList) {
 
     const expandedTaskList = [];
     for (const task of taskList) {
-      if (task.aiType === "3種類（ChatGPT・Gemini・Claude）") {
+      if (
+        task.aiType === "3type" ||
+        task.aiType === "3種類（ChatGPT・Gemini・Claude）"
+      ) {
         ExecuteLogger.info(
           `[step4-execute.js] Step 4-6-0-1: 3種類AIタスク検出！プロンプト: ${task.prompt?.substring(0, 30)}...`,
         );
+
+        // グループ情報から回答列を取得
+        const taskGroup = window.globalState.taskGroups?.find(
+          (g) => g.groupNumber === task.groupNumber,
+        );
+
+        if (!taskGroup || !taskGroup.columns?.answer) {
+          ExecuteLogger.error(
+            `[step4-execute.js] Step 4-6-0-1: グループ情報または回答列が見つかりません`,
+            { groupNumber: task.groupNumber, taskGroup },
+          );
+          expandedTaskList.push(task);
+          continue;
+        }
+
+        const answerCols = taskGroup.columns.answer;
+        const chatgptCol = answerCols.chatgpt;
+        const claudeCol = answerCols.claude;
+        const geminiCol = answerCols.gemini;
+
+        if (!chatgptCol || !claudeCol || !geminiCol) {
+          ExecuteLogger.error(
+            `[step4-execute.js] Step 4-6-0-1: 3種類AI用の回答列が不足しています`,
+            { chatgptCol, claudeCol, geminiCol, answerCols },
+          );
+          expandedTaskList.push(task);
+          continue;
+        }
 
         // 1つのタスクを3つに展開（元のai-task-executor.jsの動作を再現）
         const baseRow = task.row || task.cellInfo?.row;
@@ -7883,25 +7914,25 @@ async function executeStep3(taskList) {
           {
             ...task,
             aiType: "chatgpt",
-            column: "F",
-            cellInfo: { ...task.cellInfo, column: "F", row: baseRow },
-            originalAiType: "3種類（ChatGPT・Gemini・Claude）",
+            column: chatgptCol,
+            cellInfo: { ...task.cellInfo, column: chatgptCol, row: baseRow },
+            originalAiType: task.aiType,
             taskGroup: task.id || task.taskId, // グループ化用
           },
           {
             ...task,
             aiType: "claude",
-            column: "G",
-            cellInfo: { ...task.cellInfo, column: "G", row: baseRow },
-            originalAiType: "3種類（ChatGPT・Gemini・Claude）",
+            column: claudeCol,
+            cellInfo: { ...task.cellInfo, column: claudeCol, row: baseRow },
+            originalAiType: task.aiType,
             taskGroup: task.id || task.taskId, // グループ化用
           },
           {
             ...task,
             aiType: "gemini",
-            column: "H",
-            cellInfo: { ...task.cellInfo, column: "H", row: baseRow },
-            originalAiType: "3種類（ChatGPT・Gemini・Claude）",
+            column: geminiCol,
+            cellInfo: { ...task.cellInfo, column: geminiCol, row: baseRow },
+            originalAiType: task.aiType,
             taskGroup: task.id || task.taskId, // グループ化用
           },
         ];
