@@ -3710,10 +3710,10 @@ class WindowController {
     // 全ウィンドウの作成を並列実行
     const results = await Promise.all(windowPromises);
 
-    // 全ウィンドウ作成後に5秒待機（ページの完全読み込みを待つ）
+    // 全ウィンドウ作成後に初期化待機（ページの完全読み込みを待つ）
     if (results.some((r) => r.success)) {
       ExecuteLogger.info(
-        `⏳ 全ウィンドウのタブ準備待機中... (${BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT / 1000}秒)`,
+        `⏳ [WindowController.openWindows] Step 4-1-2: ウィンドウ作成後の初期化待機 (${BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT / 1000}秒)`,
       );
       await new Promise((resolve) =>
         setTimeout(resolve, BATCH_PROCESSING_CONFIG.WINDOW_CREATION_WAIT),
