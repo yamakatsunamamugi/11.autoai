@@ -1029,6 +1029,22 @@ async function applySkipConditions() {
           const promptText = promptValues[i] && promptValues[i][0];
           const answerText = answerValues[i] && answerValues[i][0];
 
+          // デバッグログ追加
+          console.error(`🔍 [DEBUG] グループ${group.groupNumber} 行${i + 1}:`, {
+            promptText: promptText
+              ? `"${String(promptText).substring(0, 50)}"`
+              : null,
+            answerText: answerText
+              ? `"${String(answerText).substring(0, 50)}"`
+              : null,
+            判定:
+              promptText && !answerText
+                ? "未処理"
+                : promptText && answerText
+                  ? "処理済"
+                  : "空行",
+          });
+
           // プロンプトがあって回答がない場合は処理対象
           if (promptText && !answerText) {
             hasUnprocessedTask = true;
@@ -1040,6 +1056,14 @@ async function applySkipConditions() {
 
         result.processedCount = processedCount;
         result.unprocessedCount = unprocessedCount;
+
+        // 判定結果のデバッグログ
+        console.error(`🔍 [DEBUG] グループ${group.groupNumber} 最終判定:`, {
+          processedCount,
+          unprocessedCount,
+          hasUnprocessedTask,
+          判定結果: !hasUnprocessedTask ? "スキップ" : "処理対象",
+        });
 
         // 有効なタスクグループの判定
         if (!hasUnprocessedTask) {
