@@ -288,6 +288,10 @@ let tagColors = {}; // タグごとの色設定
 const STORAGE_VERSION = 5; // v5: フォルダ機能追加
 const STORAGE_KEY = "autoai_urls_data";
 
+// 自動バックアップ設定
+const AUTO_BACKUP_KEY = "autoai_auto_backup_enabled";
+let autoBackupEnabled = true; // デフォルトで有効
+
 // タグ色のパレット
 const TAG_COLOR_PALETTE = [
   { bg: "#e3f2fd", text: "#1976d2" }, // 青
@@ -489,7 +493,7 @@ async function savUrlsToStorage() {
       lastUpdated: new Date().toISOString(),
     };
 
-    chrome.storage.sync.set({ [STORAGE_KEY]: data }, () => {
+    chrome.storage.sync.set({ [STORAGE_KEY]: data }, async () => {
       if (chrome.runtime.lastError) {
         // 容量オーバーの可能性
         if (chrome.runtime.lastError.message.includes("QUOTA_BYTES")) {
@@ -506,10 +510,51 @@ async function savUrlsToStorage() {
         log.debug(
           `💾 chrome.storage.syncに保存完了 (${Object.keys(savedUrls).length}件) - 複数デバイスで同期されます`,
         );
+        // 自動バックアップを実行
+        if (autoBackupEnabled) {
+          await autoBackupUrls();
+        }
         resolve();
       }
     });
   });
+}
+
+// 自動バックアップを実行
+async function autoBackupUrls() {
+  try {
+    const exportData = {
+      version: STORAGE_VERSION,
+      exportedAt: new Date().toISOString(),
+      exportedFrom: "AutoAI URL Manager (Auto Backup)",
+      urlCount: Object.keys(savedUrls).length,
+      urls: savedUrls,
+      tagColors: tagColors,
+    };
+
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, -5);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `autoai-urls-backup-${timestamp}.json`;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    log.debug(
+      `📦 自動バックアップ実行: ${Object.keys(savedUrls).length}件のURL`,
+    );
+  } catch (error) {
+    log.error("自動バックアップエラー:", error);
+  }
 }
 
 // フィードバック表示
@@ -1479,7 +1524,10 @@ async function showFolderManageMenu(folderName, x, y, targetInput) {
   });
   renameBtn.addEventListener("click", async () => {
     document.body.removeChild(menu);
-    const newName = prompt(`フォルダ名を変更:\n（階層フォルダの場合は「親/子」のように入力）`, folderName);
+    const newName = prompt(
+      `フォルダ名を変更:\n（階層フォルダの場合は「親/子」のように入力）`,
+      folderName,
+    );
     if (newName && newName.trim() !== "" && newName !== folderName) {
       const trimmedName = newName.trim();
       // フォルダ内のすべてのURLのfolderを更新
@@ -1490,7 +1538,10 @@ async function showFolderManageMenu(folderName, x, y, targetInput) {
       });
       await savUrlsToStorage();
       await showOpenUrlDialog(targetInput);
-      showFeedback(`フォルダ "${folderName}" を "${trimmedName}" にリネームしました`, "success");
+      showFeedback(
+        `フォルダ "${folderName}" を "${trimmedName}" にリネームしました`,
+        "success",
+      );
     }
   });
 
@@ -1509,7 +1560,11 @@ async function showFolderManageMenu(folderName, x, y, targetInput) {
   });
   deleteBtn.addEventListener("click", async () => {
     document.body.removeChild(menu);
-    if (confirm(`フォルダ "${folderName}" を削除しますか？\n（フォルダ内のURLはルートフォルダに移動されます）`)) {
+    if (
+      confirm(
+        `フォルダ "${folderName}" を削除しますか？\n（フォルダ内のURLはルートフォルダに移動されます）`,
+      )
+    ) {
       // フォルダ内のすべてのURLをルートフォルダに移動
       Object.values(savedUrls).forEach((urlData) => {
         if (urlData.folder === folderName) {
