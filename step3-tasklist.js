@@ -31,7 +31,7 @@ const LOG_LEVEL = { ERROR: 1, WARN: 2, INFO: 3, DEBUG: 4 };
 // バッチ処理改善設定（個別完了処理を有効化）
 const BATCH_PROCESSING_CONFIG = {
   ENABLE_ASYNC_BATCH: true, // 非同期バッチ処理を有効化
-  ENABLE_INDIVIDUAL_COMPLETION: false, // 個別タスク完了時の即座処理（processTaskResultと重複するため無効化）
+  ENABLE_INDIVIDUAL_COMPLETION: true, // 個別タスク完了時の即座処理（グループ完了チェックに必要）
   ENABLE_IMMEDIATE_SPREADSHEET: true, // 即座スプレッドシート記載
   ENABLE_IMMEDIATE_WINDOW_CLOSE: true, // 即座ウィンドウクローズ
   ENABLE_DYNAMIC_NEXT_TASK: true, // 動的次タスク開始を再有効化
