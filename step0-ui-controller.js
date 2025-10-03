@@ -851,21 +851,18 @@ function showSaveUrlDialog(url) {
   };
 
   // 新規フォルダボタンのイベント
-  newFolderBtn.onclick = (e) => {
+  newFolderBtn.onclick = async (e) => {
     e.preventDefault();
-    const folderName = prompt(
-      "新しいフォルダ名を入力してください:\n（階層フォルダの場合は「親/子」のように入力）",
-    );
-    if (folderName && folderName.trim() !== "") {
-      const trimmedName = folderName.trim();
+    const folderName = await showCreateFolderDialog();
+    if (folderName) {
       // 既存フォルダ一覧に追加
       const option = document.createElement("option");
-      option.value = trimmedName;
-      option.textContent = `📁 ${trimmedName}`;
+      option.value = folderName;
+      option.textContent = `📁 ${folderName}`;
       saveUrlFolder.appendChild(option);
       // 新しく作成したフォルダを選択
-      saveUrlFolder.value = trimmedName;
-      showFeedback(`フォルダ "${trimmedName}" を作成しました`, "success");
+      saveUrlFolder.value = folderName;
+      showFeedback(`フォルダ "${folderName}" を作成しました`, "success");
     }
   };
 }
@@ -1175,21 +1172,18 @@ function showEditUrlDialog(
   };
 
   // 新規フォルダボタン
-  newEditFolderBtn.onclick = (e) => {
+  newEditFolderBtn.onclick = async (e) => {
     e.preventDefault();
-    const folderName = prompt(
-      "新しいフォルダ名を入力してください:\n（階層フォルダの場合は「親/子」のように入力）",
-    );
-    if (folderName && folderName.trim() !== "") {
-      const trimmedName = folderName.trim();
+    const folderName = await showCreateFolderDialog();
+    if (folderName) {
       // 既存フォルダ一覧に追加
       const option = document.createElement("option");
-      option.value = trimmedName;
-      option.textContent = `📁 ${trimmedName}`;
+      option.value = folderName;
+      option.textContent = `📁 ${folderName}`;
       editUrlFolder.appendChild(option);
       // 新しく作成したフォルダを選択
-      editUrlFolder.value = trimmedName;
-      showFeedback(`フォルダ "${trimmedName}" を作成しました`, "success");
+      editUrlFolder.value = folderName;
+      showFeedback(`フォルダ "${folderName}" を作成しました`, "success");
     }
   };
 
@@ -1440,6 +1434,187 @@ function showQuickTagDialog(title, oldTags, targetInput) {
   tagDialog.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       document.body.removeChild(tagDialog);
+    }
+  });
+}
+
+// フォルダ作成ダイアログを表示（Promise版）
+function showCreateFolderDialog() {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById("createFolderDialog");
+    const folderNameInput = document.getElementById("createFolderName");
+    const folderPreview = document.getElementById("folderPreview");
+    const folderPreviewContent = document.getElementById(
+      "folderPreviewContent",
+    );
+    const folderValidation = document.getElementById("folderValidation");
+    const existingFoldersList = document.getElementById("existingFoldersList");
+    const confirmBtn = document.getElementById("confirmCreateFolderBtn");
+    const cancelBtn = document.getElementById("cancelCreateFolderBtn");
+
+    // 既存フォルダ一覧を表示
+    const folders = getAllFolders();
+    if (folders.length === 0) {
+      existingFoldersList.innerHTML =
+        '<div style="color: #999; font-size: 13px; text-align: center;">フォルダがまだありません</div>';
+    } else {
+      existingFoldersList.innerHTML = folders
+        .map((folder) => {
+          const hierarchyParts = folder.split("/");
+          const indent = "  ".repeat(hierarchyParts.length - 1);
+          const displayName = hierarchyParts[hierarchyParts.length - 1];
+          return `<div style="padding: 4px 8px; font-size: 13px; color: #555; border-bottom: 1px solid #e9ecef;">${indent}📁 ${folder}</div>`;
+        })
+        .join("");
+    }
+
+    // バリデーション関数
+    function validateFolderName(name) {
+      if (!name || name.trim() === "") {
+        return {
+          valid: false,
+          message: "フォルダ名を入力してください",
+          type: "error",
+        };
+      }
+
+      const trimmedName = name.trim();
+
+      // 禁止文字チェック
+      const invalidChars = /[<>:"|?*\\]/;
+      if (invalidChars.test(trimmedName)) {
+        return {
+          valid: false,
+          message: '使用できない文字が含まれています: < > : " | ? * \\',
+          type: "error",
+        };
+      }
+
+      // 既存フォルダとの重複チェック
+      if (folders.includes(trimmedName)) {
+        return {
+          valid: false,
+          message: "このフォルダは既に存在します",
+          type: "error",
+        };
+      }
+
+      // 階層フォルダのチェック
+      if (trimmedName.includes("/")) {
+        const parts = trimmedName.split("/");
+        const emptyParts = parts.filter((p) => p.trim() === "");
+        if (emptyParts.length > 0) {
+          return {
+            valid: false,
+            message: "フォルダ名に空の部分があります",
+            type: "error",
+          };
+        }
+      }
+
+      return {
+        valid: true,
+        message: "このフォルダ名は使用できます",
+        type: "success",
+      };
+    }
+
+    // プレビュー更新関数
+    function updatePreview(name) {
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        folderPreview.style.display = "none";
+        return;
+      }
+
+      if (trimmedName.includes("/")) {
+        const parts = trimmedName.split("/").filter((p) => p.trim() !== "");
+        const previewHtml = parts.map((part) => `📁 ${part}`).join(" → ");
+        folderPreviewContent.innerHTML = previewHtml;
+        folderPreview.style.display = "block";
+      } else {
+        folderPreviewContent.innerHTML = `📁 ${trimmedName}`;
+        folderPreview.style.display = "block";
+      }
+    }
+
+    // リアルタイムバリデーションとプレビュー
+    folderNameInput.addEventListener("input", (e) => {
+      const name = e.target.value;
+      updatePreview(name);
+
+      if (name.trim() === "") {
+        folderValidation.style.display = "none";
+        confirmBtn.disabled = true;
+        folderNameInput.style.borderColor = "#ddd";
+        return;
+      }
+
+      const validation = validateFolderName(name);
+      folderValidation.style.display = "block";
+      folderValidation.querySelector("div").textContent = validation.message;
+
+      if (validation.type === "success") {
+        folderValidation.style.background = "#d4edda";
+        folderValidation.style.borderLeft = "4px solid #28a745";
+        folderValidation.querySelector("div").style.color = "#155724";
+        folderNameInput.style.borderColor = "#28a745";
+        confirmBtn.disabled = false;
+      } else {
+        folderValidation.style.background = "#f8d7da";
+        folderValidation.style.borderLeft = "4px solid #dc3545";
+        folderValidation.querySelector("div").style.color = "#721c24";
+        folderNameInput.style.borderColor = "#dc3545";
+        confirmBtn.disabled = true;
+      }
+    });
+
+    // ダイアログ初期化
+    folderNameInput.value = "";
+    folderValidation.style.display = "none";
+    folderPreview.style.display = "none";
+    confirmBtn.disabled = true;
+    folderNameInput.style.borderColor = "#ddd";
+    dialog.style.display = "block";
+    folderNameInput.focus();
+
+    // 確定ボタン
+    const confirmHandler = () => {
+      const folderName = folderNameInput.value.trim();
+      const validation = validateFolderName(folderName);
+
+      if (validation.valid) {
+        cleanup();
+        resolve(folderName);
+      }
+    };
+
+    // キャンセルボタン
+    const cancelHandler = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    // Enterキーで確定
+    const keyHandler = (e) => {
+      if (e.key === "Enter" && !confirmBtn.disabled) {
+        confirmHandler();
+      } else if (e.key === "Escape") {
+        cancelHandler();
+      }
+    };
+
+    // イベントリスナー登録
+    confirmBtn.addEventListener("click", confirmHandler);
+    cancelBtn.addEventListener("click", cancelHandler);
+    folderNameInput.addEventListener("keydown", keyHandler);
+
+    // クリーンアップ関数
+    function cleanup() {
+      dialog.style.display = "none";
+      confirmBtn.removeEventListener("click", confirmHandler);
+      cancelBtn.removeEventListener("click", cancelHandler);
+      folderNameInput.removeEventListener("keydown", keyHandler);
     }
   });
 }
@@ -1759,8 +1934,7 @@ async function showOpenUrlDialog(targetInput) {
             : "";
 
         contentArea.innerHTML = `
-        <strong>${title}</strong><br>
-        <small style="color: #666;">${url}</small>
+        <strong>${title}</strong>
         ${tagsHtml}
       `;
 
@@ -1904,6 +2078,20 @@ async function showOpenUrlDialog(targetInput) {
   cancelOpenUrlBtn.onclick = () => {
     openUrlDialog.style.display = "none";
   };
+
+  // フォルダ作成ボタンのイベント
+  const createFolderBtn = document.getElementById("createFolderFromListBtn");
+  if (createFolderBtn) {
+    createFolderBtn.onclick = async () => {
+      const folderName = await showCreateFolderDialog();
+      if (folderName) {
+        showFeedback(`フォルダ "${folderName}" を作成しました`, "success");
+        // ダイアログを閉じて再度開いて更新
+        openUrlDialog.style.display = "none";
+        await showOpenUrlDialog(targetInput);
+      }
+    };
+  }
 
   // エクスポートボタンのイベント
   const exportBtn = document.getElementById("exportUrlsBtn");
