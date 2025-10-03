@@ -906,7 +906,7 @@ async function findSpecialRows() {
 
         // URLからスプレッドシートIDとGIDを抽出
         const idMatch = spreadsheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
-        const gidMatch = spreadsheetUrl.match(/[#&]gid=([0-9]+)/);
+        const gidMatch = spreadsheetUrl.match(/[?#&]gid=([0-9]+)/);
 
         if (!idMatch) {
           throw new Error("無効なスプレッドシートURL");
