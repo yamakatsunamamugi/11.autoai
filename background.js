@@ -1384,15 +1384,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const result = await chrome.storage.local.get([taskLogKey]);
         const taskLogData = result[taskLogKey];
 
+        // デバッグログ：判定に使うデータを確認
+        console.log("🔍 [3TypeAI-Check] recordCompletionTime判定:", {
+          taskId: request.taskId,
+          hasTaskLogData: !!taskLogData,
+          savedAiType: taskLogData?.aiType,
+          requestAiType: request.taskInfo?.aiType,
+          includes3Type: taskLogData?.aiType?.includes("3種類"),
+        });
+
         // taskLogDataが存在し、元のaiTypeに"3種類"が含まれていれば3種類AI
         const is3TypeAI = taskLogData?.aiType?.includes("3種類");
 
         if (is3TypeAI) {
+          console.log("✅ [3TypeAI-Check] 3種類AI処理を実行");
           // 3種類AI専用処理
           await handle3TypeAICompletion(request, sendResponse);
           return;
         }
 
+        console.log("ℹ️ [3TypeAI-Check] 単一AI処理を実行");
         // 単一AIの場合は既存処理を実行
         await handleSingleAICompletion(request, sendResponse);
       } catch (error) {
