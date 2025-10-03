@@ -912,6 +912,8 @@ async function findSpecialRows() {
         // URLからスプレッドシートIDとGIDを抽出
         const idMatch = spreadsheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
         const gidMatch = spreadsheetUrl.match(/[?#&]gid=([0-9]+)/);
+        console.error("🔍 [DEBUG] idMatch:", idMatch);
+        console.error("🔍 [DEBUG] gidMatch:", gidMatch);
 
         if (!idMatch) {
           throw new Error("無効なスプレッドシートURL");
@@ -919,6 +921,12 @@ async function findSpecialRows() {
 
         spreadsheetId = idMatch[1];
         gid = gidMatch ? gidMatch[1] : "0"; // デフォルトGID
+        console.error(
+          "🔍 [DEBUG] 抽出結果 - spreadsheetId:",
+          spreadsheetId,
+          "gid:",
+          gid,
+        );
 
         // globalStateに保存
         window.globalState.spreadsheetId = spreadsheetId;
