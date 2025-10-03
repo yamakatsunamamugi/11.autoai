@@ -8546,8 +8546,7 @@ async function executeStep3(taskList) {
               );
             }
 
-            // 結果処理
-            await processTaskResult(task, result, taskId);
+            // 結果処理はhandleIndividualTaskCompletionで実行済み
 
             // デバッグ: 返す前の結果を詳細に確認
             const finalSuccess = result.success;
