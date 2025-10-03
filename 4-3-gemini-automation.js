@@ -1810,6 +1810,7 @@ const log = {
               cellInfo: taskData.cellInfo,
             },
             logCell: fullLogCell, // シート名付きログセル
+            originalAiType: taskData.aiType, // 3種類AI判定用
           };
 
           // Promise化してタイムアウト処理を追加

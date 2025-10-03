@@ -2890,6 +2890,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
               cellInfo: taskData.cellInfo,
             },
             logCell: fullLogCell, // シート名付きログセル
+            originalAiType: taskData.aiType, // 3種類AI判定用
           };
 
           try {

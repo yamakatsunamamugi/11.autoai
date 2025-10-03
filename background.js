@@ -1313,6 +1313,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           sendTime: request.sendTime,
           taskInfo: JSON.parse(JSON.stringify(request.taskInfo)), // ディープコピー
           logCell: request.logCell,
+          aiType: request.originalAiType, // 3種類AI判定用（元のtaskData.aiType）
         };
 
         // 🔍 保存前のURL確認ログ
@@ -1375,120 +1376,145 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       fullRequest: request,
     });
 
-    // 非同期処理を適切にラップして実行
+    // 3種類AI判定: まず3種類AI処理を試み、単一AIなら既存処理にフォールバック
+    // Chrome storageから送信時の情報を事前取得して判定
     (async () => {
       try {
-        // Chrome storageから送信時の情報を取得（Promise版で確実性向上）
-        const result = await chrome.storage.local.get([
-          `taskLog_${request.taskId}`,
-        ]);
-        const taskLogData = result[`taskLog_${request.taskId}`];
+        const taskLogKey = `taskLog_${request.taskId}`;
+        const result = await chrome.storage.local.get([taskLogKey]);
+        const taskLogData = result[taskLogKey];
 
-        // 🔍 取得後のURL確認ログ（強化版）
-        console.log("🔍 [DEBUG-STORAGE] 取得後のtaskLogData:", {
-          dataExists: !!taskLogData,
-          hasTaskInfo: !!taskLogData?.taskInfo,
-          hasUrl: !!taskLogData?.taskInfo?.url,
-          urlValue: taskLogData?.taskInfo?.url,
-          urlValueType: typeof taskLogData?.taskInfo?.url,
-          urlValueLength: taskLogData?.taskInfo?.url?.length,
-          taskInfoKeys: taskLogData?.taskInfo
-            ? Object.keys(taskLogData.taskInfo)
-            : [],
-          allDataKeys: taskLogData ? Object.keys(taskLogData) : [],
-          completeTaskInfo: taskLogData?.taskInfo,
-        });
+        // taskLogDataが存在し、元のaiTypeに"3種類"が含まれていれば3種類AI
+        const is3TypeAI = taskLogData?.aiType?.includes("3種類");
 
-        // 🔍 URL値の詳細分析
-        if (taskLogData?.taskInfo) {
-          console.log("🔍 [URL-DETAILED-CHECK] taskInfo詳細分析:", {
-            taskInfoStringified: JSON.stringify(taskLogData.taskInfo, null, 2),
-            urlProperty: taskLogData.taskInfo.url,
-            urlPropertyExists: "url" in taskLogData.taskInfo,
-            urlPropertyType: typeof taskLogData.taskInfo.url,
-            urlTruthyCheck: !!taskLogData.taskInfo.url,
-            urlEmptyCheck: taskLogData.taskInfo.url === "",
-            urlNullCheck: taskLogData.taskInfo.url === null,
-            urlUndefinedCheck: taskLogData.taskInfo.url === undefined,
-          });
+        if (is3TypeAI) {
+          // 3種類AI専用処理
+          await handle3TypeAICompletion(request, sendResponse);
+          return;
         }
 
-        if (taskLogData) {
-          // 完了時のメッセージにtaskInfo（URL含む）が含まれている場合は更新
-          if (request.taskInfo) {
-            console.log("🔄 [URL-UPDATE] 完了時のtaskInfo情報で更新中:", {
-              oldTaskInfo: taskLogData.taskInfo,
-              newTaskInfo: request.taskInfo,
-              hasNewUrl: !!request.taskInfo.url,
-            });
-
-            // 既存のtaskInfoを完了時の情報で更新（URLを含む）
-            taskLogData.taskInfo = {
-              ...taskLogData.taskInfo,
-              ...request.taskInfo,
-            };
-          }
-
-          // URL防御的チェック - もしURLが失われていたら警告
-          if (!taskLogData.taskInfo?.url) {
-            console.warn(
-              "⚠️ [URL-WARNING] 取得されたデータにURLが含まれていません!",
-              {
-                taskId: request.taskId,
-                taskInfo: taskLogData.taskInfo,
-              },
-            );
-          }
-
-          // 完了時刻を追加
-          taskLogData.completionTime =
-            request.completionTime || new Date().toISOString();
-
-          // スプレッドシートにログを記録
-          try {
-            console.log(
-              "📊 [BEFORE-RECORD] recordLogToSpreadsheet呼び出し前:",
-              {
-                taskId: request.taskId,
-                hasTaskInfo: !!taskLogData.taskInfo,
-                taskInfoUrl: taskLogData.taskInfo?.url,
-                taskInfoKeys: taskLogData.taskInfo
-                  ? Object.keys(taskLogData.taskInfo)
-                  : [],
-                fullTaskLogData: taskLogData,
-              },
-            );
-
-            await recordLogToSpreadsheet(taskLogData);
-            console.log("📊 タスク完了ログ記録成功:", request.taskId);
-
-            // 使用済みデータを削除
-            await chrome.storage.local.remove([`taskLog_${request.taskId}`]);
-          } catch (error) {
-            console.error("❌ タスク完了ログ記録エラー:", error);
-            // エラーが発生してもレスポンスは返す
-          }
-        } else {
-          console.warn("⚠️ 送信時刻データが見つかりません:", request.taskId);
-        }
-
-        // 成功レスポンスを送信
-        sendResponse({
-          success: true,
-          message: "Completion time recorded successfully",
-        });
-      } catch (storageError) {
-        console.error("❌ Chrome Storage取得エラー:", storageError);
-        // エラーレスポンスを送信
-        sendResponse({
-          success: false,
-          message: "Storage error occurred",
-          error: storageError.message,
-        });
+        // 単一AIの場合は既存処理を実行
+        await handleSingleAICompletion(request, sendResponse);
+      } catch (error) {
+        console.error("❌ recordCompletionTime処理エラー:", error);
+        sendResponse({ success: false, error: error.message });
       }
     })();
 
     return true; // 非同期レスポンス許可
+  }
+
+  // 注意: 以下は既存の非同期処理を新しい関数handleSingleAICompletionに移動
+  // （後方互換性のため関数として独立）
+
+  // 📝 単一AIタスク完了処理（既存ロジック）
+  async function handleSingleAICompletion(request, sendResponse) {
+    try {
+      // Chrome storageから送信時の情報を取得（Promise版で確実性向上）
+      const result = await chrome.storage.local.get([
+        `taskLog_${request.taskId}`,
+      ]);
+      const taskLogData = result[`taskLog_${request.taskId}`];
+
+      // 🔍 取得後のURL確認ログ（強化版）
+      console.log("🔍 [DEBUG-STORAGE] 取得後のtaskLogData:", {
+        dataExists: !!taskLogData,
+        hasTaskInfo: !!taskLogData?.taskInfo,
+        hasUrl: !!taskLogData?.taskInfo?.url,
+        urlValue: taskLogData?.taskInfo?.url,
+        urlValueType: typeof taskLogData?.taskInfo?.url,
+        urlValueLength: taskLogData?.taskInfo?.url?.length,
+        taskInfoKeys: taskLogData?.taskInfo
+          ? Object.keys(taskLogData.taskInfo)
+          : [],
+        allDataKeys: taskLogData ? Object.keys(taskLogData) : [],
+        completeTaskInfo: taskLogData?.taskInfo,
+      });
+
+      // 🔍 URL値の詳細分析
+      if (taskLogData?.taskInfo) {
+        console.log("🔍 [URL-DETAILED-CHECK] taskInfo詳細分析:", {
+          taskInfoStringified: JSON.stringify(taskLogData.taskInfo, null, 2),
+          urlProperty: taskLogData.taskInfo.url,
+          urlPropertyExists: "url" in taskLogData.taskInfo,
+          urlPropertyType: typeof taskLogData.taskInfo.url,
+          urlTruthyCheck: !!taskLogData.taskInfo.url,
+          urlEmptyCheck: taskLogData.taskInfo.url === "",
+          urlNullCheck: taskLogData.taskInfo.url === null,
+          urlUndefinedCheck: taskLogData.taskInfo.url === undefined,
+        });
+      }
+
+      if (taskLogData) {
+        // 完了時のメッセージにtaskInfo（URL含む）が含まれている場合は更新
+        if (request.taskInfo) {
+          console.log("🔄 [URL-UPDATE] 完了時のtaskInfo情報で更新中:", {
+            oldTaskInfo: taskLogData.taskInfo,
+            newTaskInfo: request.taskInfo,
+            hasNewUrl: !!request.taskInfo.url,
+          });
+
+          // 既存のtaskInfoを完了時の情報で更新（URLを含む）
+          taskLogData.taskInfo = {
+            ...taskLogData.taskInfo,
+            ...request.taskInfo,
+          };
+        }
+
+        // URL防御的チェック - もしURLが失われていたら警告
+        if (!taskLogData.taskInfo?.url) {
+          console.warn(
+            "⚠️ [URL-WARNING] 取得されたデータにURLが含まれていません!",
+            {
+              taskId: request.taskId,
+              taskInfo: taskLogData.taskInfo,
+            },
+          );
+        }
+
+        // 完了時刻を追加
+        taskLogData.completionTime =
+          request.completionTime || new Date().toISOString();
+
+        // スプレッドシートにログを記録
+        try {
+          console.log("📊 [BEFORE-RECORD] recordLogToSpreadsheet呼び出し前:", {
+            taskId: request.taskId,
+            hasTaskInfo: !!taskLogData.taskInfo,
+            taskInfoUrl: taskLogData.taskInfo?.url,
+            taskInfoKeys: taskLogData.taskInfo
+              ? Object.keys(taskLogData.taskInfo)
+              : [],
+            fullTaskLogData: taskLogData,
+          });
+
+          await recordLogToSpreadsheet(taskLogData);
+          console.log("📊 タスク完了ログ記録成功:", request.taskId);
+
+          // 使用済みデータを削除
+          await chrome.storage.local.remove([`taskLog_${request.taskId}`]);
+        } catch (error) {
+          console.error("❌ タスク完了ログ記録エラー:", error);
+          // エラーが発生してもレスポンスは返す
+        }
+      } else {
+        console.warn("⚠️ 送信時刻データが見つかりません:", request.taskId);
+      }
+
+      // 成功レスポンスを送信
+      sendResponse({
+        success: true,
+        message: "Completion time recorded successfully",
+      });
+    } catch (storageError) {
+      console.error("❌ Chrome Storage取得エラー:", storageError);
+      // エラーレスポンスを送信
+      sendResponse({
+        success: false,
+        message: "Storage error occurred",
+        error: storageError.message,
+      });
+    }
   }
 
   // 🔧 関数注入要求（4-2-claude-automation.js:5728から）
@@ -2095,6 +2121,148 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   return true; // 非同期レスポンスを許可
 });
+
+// ========================================
+// 3種類AI専用のログ記録処理
+// ========================================
+
+/**
+ * 3種類AIの完了処理
+ */
+async function handle3TypeAICompletion(request, sendResponse) {
+  try {
+    // AIタイプを識別（chatgpt, claude, gemini）
+    const aiType = request.taskInfo?.aiType?.toLowerCase() || "unknown";
+    const logCell = request.logCell;
+
+    if (!logCell) {
+      console.error("❌ [3TypeAI] ログセル位置が見つかりません");
+      sendResponse({ success: false, error: "logCell not found" });
+      return;
+    }
+
+    // Chrome storageから送信時の情報を取得
+    const taskLogKey = `taskLog_${request.taskId}`;
+    const result = await chrome.storage.local.get([taskLogKey]);
+    const taskLogData = result[taskLogKey];
+
+    if (!taskLogData) {
+      console.warn(
+        "⚠️ [3TypeAI] 送信時刻データが見つかりません:",
+        request.taskId,
+      );
+      sendResponse({ success: false, error: "taskLog not found" });
+      return;
+    }
+
+    // 完了時のメッセージにtaskInfo（URL含む）が含まれている場合は更新
+    if (request.taskInfo) {
+      taskLogData.taskInfo = {
+        ...taskLogData.taskInfo,
+        ...request.taskInfo,
+      };
+    }
+
+    // 完了時刻を追加
+    taskLogData.completionTime =
+      request.completionTime || new Date().toISOString();
+
+    // AI別のストレージキーを生成（logCellをサニタイズ）
+    const sanitizedLogCell = logCell.replace(/[^a-zA-Z0-9]/g, "_");
+    const storageKey = `multi_ai_log_${sanitizedLogCell}_${aiType}`;
+
+    console.log(`📝 [3TypeAI] ${aiType}の完了情報を保存:`, storageKey);
+
+    // このAIの完了情報を保存
+    await chrome.storage.local.set({
+      [storageKey]: taskLogData,
+    });
+
+    // 使用済みのtaskLogを削除
+    await chrome.storage.local.remove([taskLogKey]);
+
+    // 3つすべて揃ったかチェック
+    const chatgptKey = `multi_ai_log_${sanitizedLogCell}_chatgpt`;
+    const claudeKey = `multi_ai_log_${sanitizedLogCell}_claude`;
+    const geminiKey = `multi_ai_log_${sanitizedLogCell}_gemini`;
+
+    const allData = await chrome.storage.local.get([
+      chatgptKey,
+      claudeKey,
+      geminiKey,
+    ]);
+
+    const chatgptData = allData[chatgptKey];
+    const claudeData = allData[claudeKey];
+    const geminiData = allData[geminiKey];
+
+    console.log(`🔍 [3TypeAI] 完了状況チェック:`, {
+      chatgpt: !!chatgptData,
+      claude: !!claudeData,
+      gemini: !!geminiData,
+    });
+
+    // 3つすべて揃った場合
+    if (chatgptData && claudeData && geminiData) {
+      console.log("✅ [3TypeAI] 3つすべて揃いました - まとめてログ記録開始");
+
+      // まとめてログを記録
+      await write3TypeAILog(logCell, chatgptData, claudeData, geminiData);
+
+      // 一時保存データを削除
+      await chrome.storage.local.remove([chatgptKey, claudeKey, geminiKey]);
+
+      console.log("✅ [3TypeAI] ログ記録完了 - 一時データ削除完了");
+    } else {
+      console.log(
+        `⏳ [3TypeAI] ${aiType}の情報を保存しました - 他のAI完了待ち`,
+      );
+    }
+
+    sendResponse({ success: true, message: "3TypeAI completion recorded" });
+  } catch (error) {
+    console.error("❌ [3TypeAI] エラー:", error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * 3種類AIのログをまとめて記録
+ */
+async function write3TypeAILog(logCell, chatgptData, claudeData, geminiData) {
+  try {
+    // 既存のformatLogEntry関数を3回呼び出して、3つのログテキストを生成
+    const chatgptLog = formatLogEntry(chatgptData);
+    const claudeLog = formatLogEntry(claudeData);
+    const geminiLog = formatLogEntry(geminiData);
+
+    // 3つのログを結合
+    const combinedLog = `${chatgptLog}\n\n${claudeLog}\n\n${geminiLog}`;
+
+    console.log("📊 [3TypeAI] 結合ログ生成完了:", {
+      chatgptLength: chatgptLog.length,
+      claudeLength: claudeLog.length,
+      geminiLength: geminiLog.length,
+      combinedLength: combinedLog.length,
+    });
+
+    // Chrome storage からスプレッドシート情報を取得
+    const result = await chrome.storage.local.get(["spreadsheetId"]);
+
+    if (!result.spreadsheetId) {
+      throw new Error("スプレッドシートIDが設定されていません");
+    }
+
+    // 既存のupdateValue関数を使ってスプレッドシートに書き込み
+    const range = logCell;
+    await sheetsClient.updateValue(result.spreadsheetId, range, combinedLog);
+
+    console.log(`✅ [3TypeAI] ログ記録完了: ${range}`);
+  } catch (error) {
+    console.error("❌ [3TypeAI] ログ記録エラー:", error);
+    throw error;
+  }
+}
 
 // 注意: Content Script注入機能は廃止
 // manifest.json自動注入方式に移行済み
