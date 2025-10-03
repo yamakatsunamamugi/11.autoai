@@ -249,6 +249,7 @@ const urlInputsContainer = document.getElementById("url-inputs-container");
 const saveUrlDialog = document.getElementById("saveUrlDialog");
 const saveUrlTitle = document.getElementById("saveUrlTitle");
 const saveUrlTags = document.getElementById("saveUrlTags");
+const saveUrlMemo = document.getElementById("saveUrlMemo");
 const confirmSaveUrlBtn = document.getElementById("confirmSaveUrlBtn");
 const cancelSaveUrlBtn = document.getElementById("cancelSaveUrlBtn");
 const openUrlDialog = document.getElementById("openUrlDialog");
@@ -274,13 +275,54 @@ const aiSelectorMutationSystemBtn = document.getElementById(
 
 // 保存されたURLを管理するオブジェクト
 let savedUrls = {};
+let tagColors = {}; // タグごとの色設定
 
 // データ構造のバージョン
-const STORAGE_VERSION = 3; // v3: タグ機能追加
+const STORAGE_VERSION = 4; // v4: お気に入り・メモ・タグ色分け機能追加
 const STORAGE_KEY = "autoai_urls_data";
 
-// 古いデータ構造を新しい形式に変換（タグ対応）
-function migrateToV3(urls) {
+// タグ色のパレット
+const TAG_COLOR_PALETTE = [
+  { bg: "#e3f2fd", text: "#1976d2" }, // 青
+  { bg: "#f3e5f5", text: "#7b1fa2" }, // 紫
+  { bg: "#e8f5e9", text: "#388e3c" }, // 緑
+  { bg: "#fff3e0", text: "#f57c00" }, // オレンジ
+  { bg: "#fce4ec", text: "#c2185b" }, // ピンク
+  { bg: "#e0f2f1", text: "#00796b" }, // ティール
+  { bg: "#fff9c4", text: "#f9a825" }, // 黄色
+  { bg: "#ede7f6", text: "#5e35b1" }, // 深紫
+  { bg: "#e1f5fe", text: "#0277bd" }, // 水色
+  { bg: "#ffebee", text: "#c62828" }, // 赤
+];
+
+// タグに色を割り当てる（まだ色が割り当てられていない場合）
+function assignTagColor(tag) {
+  if (!tagColors[tag]) {
+    // 既に使用されている色のインデックスを取得
+    const usedIndices = Object.values(tagColors);
+    // パレットから未使用の色を探す
+    let colorIndex = 0;
+    for (let i = 0; i < TAG_COLOR_PALETTE.length; i++) {
+      if (!usedIndices.includes(i)) {
+        colorIndex = i;
+        break;
+      }
+    }
+    // すべての色が使用されている場合は、タグ名のハッシュから色を選択
+    if (usedIndices.length >= TAG_COLOR_PALETTE.length) {
+      let hash = 0;
+      for (let i = 0; i < tag.length; i++) {
+        hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      colorIndex = Math.abs(hash) % TAG_COLOR_PALETTE.length;
+    }
+    tagColors[tag] = colorIndex;
+  }
+  return TAG_COLOR_PALETTE[tagColors[tag]];
+}
+
+// 古いデータ構造を新しい形式に変換（v4対応）
+function migrateToV4(urls) {
   const migrated = {};
 
   Object.entries(urls).forEach(([title, value]) => {
@@ -289,12 +331,16 @@ function migrateToV3(urls) {
       migrated[title] = {
         url: value,
         tags: [],
+        favorite: false,
+        memo: "",
       };
     } else if (value && typeof value === "object") {
-      // v2以降の形式
+      // v2/v3形式
       migrated[title] = {
         url: value.url || value,
         tags: value.tags || [],
+        favorite: value.favorite || false,
+        memo: value.memo || "",
       };
     }
   });
@@ -314,15 +360,24 @@ async function loadSavedUrls() {
           if (data.version === STORAGE_VERSION) {
             // 最新バージョンのデータ
             savedUrls = data.urls || {};
-          } else if (data.version === 2 || data.version === 1) {
-            // v1/v2からv3への移行
-            savedUrls = migrateToV3(data.urls || {});
-            log.info(`📦 v${data.version}からv3にデータ移行（タグ機能追加）`);
+            tagColors = data.tagColors || {};
+          } else if (
+            data.version === 3 ||
+            data.version === 2 ||
+            data.version === 1
+          ) {
+            // v1/v2/v3からv4への移行
+            savedUrls = migrateToV4(data.urls || {});
+            tagColors = data.tagColors || {};
+            log.info(
+              `📦 v${data.version}からv4にデータ移行（お気に入り・メモ機能追加）`,
+            );
             await savUrlsToStorage();
           } else {
             // バージョン不明（古い形式）
-            savedUrls = migrateToV3(data);
-            log.info("📦 古い形式からv3にデータ移行");
+            savedUrls = migrateToV4(data);
+            tagColors = {};
+            log.info("📦 古い形式からv4にデータ移行");
             await savUrlsToStorage();
           }
 
@@ -337,9 +392,10 @@ async function loadSavedUrls() {
           if (legacyData) {
             try {
               const legacyUrls = JSON.parse(legacyData);
-              savedUrls = migrateToV3(legacyUrls);
+              savedUrls = migrateToV4(legacyUrls);
+              tagColors = {};
               log.info(
-                `📦 localStorageから${Object.keys(savedUrls).length}件のURLを移行します（v3形式）`,
+                `📦 localStorageから${Object.keys(savedUrls).length}件のURLを移行します（v4形式）`,
               );
 
               // chrome.storage.syncに保存
@@ -373,6 +429,7 @@ async function savUrlsToStorage() {
     const data = {
       version: STORAGE_VERSION,
       urls: savedUrls,
+      tagColors: tagColors,
       lastUpdated: new Date().toISOString(),
     };
 
@@ -530,6 +587,7 @@ function attachRowEventListeners(row) {
 function showSaveUrlDialog(url) {
   saveUrlTitle.value = "";
   saveUrlTags.value = "";
+  saveUrlMemo.value = "";
   saveUrlDialog.style.display = "block";
   saveUrlTitle.focus();
 
@@ -550,10 +608,15 @@ function showSaveUrlDialog(url) {
           .filter((tag) => tag.length > 0)
       : [];
 
-    // URLを保存（v3形式）
+    // メモを取得
+    const memo = saveUrlMemo.value.trim();
+
+    // URLを保存（v4形式）
     savedUrls[title] = {
       url: url,
       tags: tags,
+      favorite: false,
+      memo: memo,
     };
     await savUrlsToStorage();
 
@@ -569,7 +632,14 @@ function showSaveUrlDialog(url) {
 }
 
 // URL編集ダイアログを表示
-function showEditUrlDialog(oldTitle, oldUrl, oldTags, targetInput) {
+function showEditUrlDialog(
+  oldTitle,
+  oldUrl,
+  oldTags,
+  oldFavorite,
+  oldMemo,
+  targetInput,
+) {
   // 編集用のダイアログを作成
   const editDialog = document.createElement("div");
   editDialog.id = "editUrlDialog";
@@ -588,6 +658,7 @@ function showEditUrlDialog(oldTitle, oldUrl, oldTags, targetInput) {
   `;
 
   const tagsString = Array.isArray(oldTags) ? oldTags.join(", ") : "";
+  const memoText = oldMemo || "";
 
   editDialog.innerHTML = `
     <h3 style="margin-top: 0;">URLを編集</h3>
@@ -597,7 +668,9 @@ function showEditUrlDialog(oldTitle, oldUrl, oldTags, targetInput) {
     <input type="text" id="editUrlValue" value="${oldUrl}" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
     <label style="display: block; margin-bottom: 5px; font-size: 14px;">タグ:</label>
     <input type="text" id="editUrlTags" value="${tagsString}" placeholder="タグをカンマ区切りで入力" style="width: 100%; padding: 8px; margin-bottom: 5px; border: 1px solid #ddd; border-radius: 4px;">
-    <div style="font-size: 11px; color: #666; margin-bottom: 15px;">💡 カンマ（,）で区切って複数タグを入力できます</div>
+    <div style="font-size: 11px; color: #666; margin-bottom: 10px;">💡 カンマ（,）で区切って複数タグを入力できます</div>
+    <label style="display: block; margin-bottom: 5px; font-size: 14px;">メモ（オプション）:</label>
+    <textarea id="editUrlMemo" placeholder="このURLについてのメモを入力..." style="width: 100%; min-height: 80px; padding: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; font-family: inherit;">${memoText}</textarea>
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
       <button id="confirmEditUrlBtn" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">保存</button>
       <button id="cancelEditUrlBtn" class="btn btn-secondary" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">キャンセル</button>
@@ -609,6 +682,7 @@ function showEditUrlDialog(oldTitle, oldUrl, oldTags, targetInput) {
   const editTitleInput = document.getElementById("editUrlTitle");
   const editUrlInput = document.getElementById("editUrlValue");
   const editTagsInput = document.getElementById("editUrlTags");
+  const editMemoInput = document.getElementById("editUrlMemo");
   const confirmEditBtn = document.getElementById("confirmEditUrlBtn");
   const cancelEditBtn = document.getElementById("cancelEditUrlBtn");
 
@@ -639,13 +713,18 @@ function showEditUrlDialog(oldTitle, oldUrl, oldTags, targetInput) {
           .filter((tag) => tag.length > 0)
       : [];
 
+    // メモを取得
+    const memo = editMemoInput.value.trim();
+
     // 古いエントリを削除
     delete savedUrls[oldTitle];
 
-    // 新しいエントリを追加（v3形式）
+    // 新しいエントリを追加（v4形式）
     savedUrls[newTitle] = {
       url: newUrl,
       tags: tags,
+      favorite: oldFavorite || false,
+      memo: memo,
     };
     await savUrlsToStorage();
 
@@ -682,12 +761,33 @@ async function showOpenUrlDialog(targetInput) {
     let selectedUrl = null;
     let selectedTitle = null;
 
-    Object.entries(savedUrls).forEach(([title, value]) => {
-      // v3形式とv1形式の両方に対応
+    // URLをソート（お気に入りを上に、その後タイトル順）
+    const sortedUrls = Object.entries(savedUrls).sort(
+      ([titleA, valueA], [titleB, valueB]) => {
+        const dataA = typeof valueA === "string" ? { favorite: false } : valueA;
+        const dataB = typeof valueB === "string" ? { favorite: false } : valueB;
+        const favA = dataA.favorite || false;
+        const favB = dataB.favorite || false;
+
+        // お気に入りを優先
+        if (favA && !favB) return -1;
+        if (!favA && favB) return 1;
+
+        // お気に入り状態が同じ場合はタイトル順
+        return titleA.localeCompare(titleB);
+      },
+    );
+
+    sortedUrls.forEach(([title, value]) => {
+      // v4形式とv3形式とv1形式の両方に対応
       const urlData =
-        typeof value === "string" ? { url: value, tags: [] } : value;
+        typeof value === "string"
+          ? { url: value, tags: [], favorite: false, memo: "" }
+          : value;
       const url = urlData.url;
       const tags = urlData.tags || [];
+      const favorite = urlData.favorite || false;
+      const memo = urlData.memo || "";
 
       const item = document.createElement("div");
       item.style.cssText =
@@ -700,6 +800,27 @@ async function showOpenUrlDialog(targetInput) {
       radioBtn.value = url;
       radioBtn.style.cssText = "margin-right: 5px;";
 
+      // スターボタン（お気に入り）
+      const starBtn = document.createElement("button");
+      starBtn.style.cssText =
+        "background: none; border: none; cursor: pointer; font-size: 20px; padding: 0; line-height: 1;";
+      starBtn.textContent = favorite ? "⭐" : "☆";
+      starBtn.title = favorite ? "お気に入りから削除" : "お気に入りに追加";
+      starBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        // お気に入り状態をトグル
+        savedUrls[title].favorite = !savedUrls[title].favorite;
+        await savUrlsToStorage();
+        // リストを再表示
+        await showOpenUrlDialog(targetInput);
+        showFeedback(
+          savedUrls[title].favorite
+            ? `"${title}" をお気に入りに追加しました`
+            : `"${title}" をお気に入りから削除しました`,
+          "success",
+        );
+      });
+
       // メインコンテンツエリア
       const contentArea = document.createElement("div");
       contentArea.style.cssText = "flex: 1; cursor: pointer;";
@@ -708,7 +829,12 @@ async function showOpenUrlDialog(targetInput) {
       const tagsHtml =
         tags.length > 0
           ? `<div style="margin-top: 4px;">
-             ${tags.map((tag) => `<span style="display: inline-block; background: #e3f2fd; color: #1976d2; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-right: 4px;">🏷️ ${tag}</span>`).join("")}
+             ${tags
+               .map((tag) => {
+                 const color = assignTagColor(tag);
+                 return `<span style="display: inline-block; background: ${color.bg}; color: ${color.text}; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-right: 4px;">🏷️ ${tag}</span>`;
+               })
+               .join("")}
            </div>`
           : "";
 
@@ -759,7 +885,7 @@ async function showOpenUrlDialog(targetInput) {
       editBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         openUrlDialog.style.display = "none";
-        showEditUrlDialog(title, url, tags, targetInput);
+        showEditUrlDialog(title, url, tags, favorite, memo, targetInput);
       });
 
       // 削除ボタン
@@ -782,6 +908,7 @@ async function showOpenUrlDialog(targetInput) {
       buttonContainer.appendChild(deleteBtn);
 
       item.appendChild(radioBtn);
+      item.appendChild(starBtn);
       item.appendChild(contentArea);
       item.appendChild(buttonContainer);
       savedUrlsList.appendChild(item);
