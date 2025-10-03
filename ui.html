@@ -67,10 +67,15 @@
             </div>
             
             <!-- 保存ダイアログ（モーダル風） -->
-            <div id="saveUrlDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5); z-index: 9999; min-width: 300px;">
+            <div id="saveUrlDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5); z-index: 9999; min-width: 400px;">
               <h3 style="margin-top: 0;">URLを保存</h3>
               <label style="display: block; margin-bottom: 5px; font-size: 14px;">タイトル:</label>
-              <input type="text" id="saveUrlTitle" placeholder="タイトルを入力" style="width: 100%; padding: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
+              <input type="text" id="saveUrlTitle" placeholder="タイトルを入力" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
+
+              <label style="display: block; margin-bottom: 5px; font-size: 14px;">タグ:</label>
+              <input type="text" id="saveUrlTags" placeholder="タグをカンマ区切りで入力（例: プロジェクトA, テスト, 重要）" style="width: 100%; padding: 8px; margin-bottom: 5px; border: 1px solid #ddd; border-radius: 4px;">
+              <div style="font-size: 11px; color: #666; margin-bottom: 15px;">💡 カンマ（,）で区切って複数タグを入力できます</div>
+
               <div style="display: flex; gap: 10px; justify-content: flex-end;">
                 <button id="confirmSaveUrlBtn" class="btn btn-primary">保存</button>
                 <button id="cancelSaveUrlBtn" class="btn btn-secondary">キャンセル</button>
@@ -78,11 +83,23 @@
             </div>
             
             <!-- 保存済みURL選択ダイアログ -->
-            <div id="openUrlDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5); z-index: 9999; min-width: 400px; max-height: 400px;">
+            <div id="openUrlDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5); z-index: 9999; min-width: 400px; max-height: 500px;">
               <h3 style="margin-top: 0;">保存済みURLを選択</h3>
               <div id="savedUrlsList" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px;">
                 <!-- 保存済みURLリストがここに表示される -->
               </div>
+
+              <!-- エクスポート/インポートボタン -->
+              <div style="display: flex; gap: 10px; margin-bottom: 15px; padding-top: 10px; border-top: 1px solid #ddd;">
+                <button id="exportUrlsBtn" class="btn btn-secondary" style="flex: 1; background: #17a2b8; color: white;">
+                  📤 エクスポート
+                </button>
+                <button id="importUrlsBtn" class="btn btn-secondary" style="flex: 1; background: #28a745; color: white;">
+                  📥 インポート
+                </button>
+              </div>
+              <input type="file" id="importFileInput" accept=".json" style="display: none;">
+
               <div style="display: flex; gap: 10px; justify-content: flex-end;">
                 <button id="confirmOpenUrlBtn" class="btn btn-primary">開く</button>
                 <button id="cancelOpenUrlBtn" class="btn btn-secondary">キャンセル</button>

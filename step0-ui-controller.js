@@ -248,6 +248,7 @@ async function bringWindowToFront(moveToPrimary = false) {
 const urlInputsContainer = document.getElementById("url-inputs-container");
 const saveUrlDialog = document.getElementById("saveUrlDialog");
 const saveUrlTitle = document.getElementById("saveUrlTitle");
+const saveUrlTags = document.getElementById("saveUrlTags");
 const confirmSaveUrlBtn = document.getElementById("confirmSaveUrlBtn");
 const cancelSaveUrlBtn = document.getElementById("cancelSaveUrlBtn");
 const openUrlDialog = document.getElementById("openUrlDialog");
@@ -274,26 +275,128 @@ const aiSelectorMutationSystemBtn = document.getElementById(
 // 保存されたURLを管理するオブジェクト
 let savedUrls = {};
 
-// ローカルストレージから保存されたURLを読み込み
-function loadSavedUrls() {
-  try {
-    const saved = localStorage.getItem("autoai_saved_urls");
-    if (saved) {
-      savedUrls = JSON.parse(saved);
+// データ構造のバージョン
+const STORAGE_VERSION = 3; // v3: タグ機能追加
+const STORAGE_KEY = "autoai_urls_data";
+
+// 古いデータ構造を新しい形式に変換（タグ対応）
+function migrateToV3(urls) {
+  const migrated = {};
+
+  Object.entries(urls).forEach(([title, value]) => {
+    if (typeof value === "string") {
+      // v1形式: { "タイトル": "URL" }
+      migrated[title] = {
+        url: value,
+        tags: [],
+      };
+    } else if (value && typeof value === "object") {
+      // v2以降の形式
+      migrated[title] = {
+        url: value.url || value,
+        tags: value.tags || [],
+      };
     }
-  } catch (error) {
-    log.error("保存されたURL読み込みエラー:", error);
-    savedUrls = {};
-  }
+  });
+
+  return migrated;
 }
 
-// URLをローカルストレージに保存
-function savUrlsToStorage() {
-  try {
-    localStorage.setItem("autoai_saved_urls", JSON.stringify(savedUrls));
-  } catch (error) {
-    log.error("URL保存エラー:", error);
-  }
+// chrome.storage.syncから保存されたURLを読み込み（非同期）
+async function loadSavedUrls() {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get([STORAGE_KEY], async (result) => {
+      try {
+        if (result[STORAGE_KEY]) {
+          // chrome.storage.syncにデータがある場合
+          const data = result[STORAGE_KEY];
+
+          if (data.version === STORAGE_VERSION) {
+            // 最新バージョンのデータ
+            savedUrls = data.urls || {};
+          } else if (data.version === 2 || data.version === 1) {
+            // v1/v2からv3への移行
+            savedUrls = migrateToV3(data.urls || {});
+            log.info(`📦 v${data.version}からv3にデータ移行（タグ機能追加）`);
+            await savUrlsToStorage();
+          } else {
+            // バージョン不明（古い形式）
+            savedUrls = migrateToV3(data);
+            log.info("📦 古い形式からv3にデータ移行");
+            await savUrlsToStorage();
+          }
+
+          log.debug(
+            `✅ chrome.storage.syncからURL読み込み完了 (${Object.keys(savedUrls).length}件)`,
+          );
+          resolve();
+        } else {
+          // chrome.storage.syncにデータがない場合、localStorageから移行
+          const legacyData = localStorage.getItem("autoai_saved_urls");
+
+          if (legacyData) {
+            try {
+              const legacyUrls = JSON.parse(legacyData);
+              savedUrls = migrateToV3(legacyUrls);
+              log.info(
+                `📦 localStorageから${Object.keys(savedUrls).length}件のURLを移行します（v3形式）`,
+              );
+
+              // chrome.storage.syncに保存
+              await savUrlsToStorage();
+
+              log.info(
+                "✅ chrome.storage.syncへの移行完了（複数デバイスで自動同期されます）",
+              );
+            } catch (parseError) {
+              log.error("localStorage データ解析エラー:", parseError);
+              savedUrls = {};
+            }
+          } else {
+            log.debug("保存されたURLデータなし（初回起動）");
+            savedUrls = {};
+          }
+          resolve();
+        }
+      } catch (error) {
+        log.error("保存されたURL読み込みエラー:", error);
+        savedUrls = {};
+        resolve();
+      }
+    });
+  });
+}
+
+// URLをchrome.storage.syncに保存（非同期）
+async function savUrlsToStorage() {
+  return new Promise((resolve, reject) => {
+    const data = {
+      version: STORAGE_VERSION,
+      urls: savedUrls,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    chrome.storage.sync.set({ [STORAGE_KEY]: data }, () => {
+      if (chrome.runtime.lastError) {
+        // 容量オーバーの可能性
+        if (chrome.runtime.lastError.message.includes("QUOTA_BYTES")) {
+          log.error("❌ 容量制限エラー: URLデータが100KBを超えています");
+          showFeedback(
+            "保存容量を超えました。古いURLを削除してください。",
+            "error",
+          );
+        } else {
+          log.error("URL保存エラー:", chrome.runtime.lastError);
+        }
+        reject(chrome.runtime.lastError);
+      } else {
+        log.debug(
+          `💾 chrome.storage.syncに保存完了 (${Object.keys(savedUrls).length}件) - 複数デバイスで同期されます`,
+        );
+        resolve();
+      }
+    });
+  });
 }
 
 // フィードバック表示
@@ -426,21 +529,36 @@ function attachRowEventListeners(row) {
 // 保存ダイアログを表示
 function showSaveUrlDialog(url) {
   saveUrlTitle.value = "";
+  saveUrlTags.value = "";
   saveUrlDialog.style.display = "block";
   saveUrlTitle.focus();
 
   // 保存ボタンのイベント
-  confirmSaveUrlBtn.onclick = () => {
+  confirmSaveUrlBtn.onclick = async () => {
     const title = saveUrlTitle.value.trim();
     if (!title) {
       showFeedback("タイトルを入力してください", "error");
       return;
     }
 
-    // URLを保存
-    savedUrls[title] = url;
-    savUrlsToStorage();
-    showFeedback(`"${title}" として保存しました`, "success");
+    // タグを解析（カンマ区切り）
+    const tagsInput = saveUrlTags.value.trim();
+    const tags = tagsInput
+      ? tagsInput
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
+      : [];
+
+    // URLを保存（v3形式）
+    savedUrls[title] = {
+      url: url,
+      tags: tags,
+    };
+    await savUrlsToStorage();
+
+    const tagInfo = tags.length > 0 ? ` (タグ: ${tags.join(", ")})` : "";
+    showFeedback(`"${title}" として保存しました${tagInfo}`, "success");
     saveUrlDialog.style.display = "none";
   };
 
@@ -451,7 +569,7 @@ function showSaveUrlDialog(url) {
 }
 
 // URL編集ダイアログを表示
-function showEditUrlDialog(oldTitle, oldUrl, targetInput) {
+function showEditUrlDialog(oldTitle, oldUrl, oldTags, targetInput) {
   // 編集用のダイアログを作成
   const editDialog = document.createElement("div");
   editDialog.id = "editUrlDialog";
@@ -466,15 +584,20 @@ function showEditUrlDialog(oldTitle, oldUrl, targetInput) {
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 0 0 9999px rgba(0,0,0,0.5);
     z-index: 10000;
-    min-width: 400px;
+    min-width: 450px;
   `;
+
+  const tagsString = Array.isArray(oldTags) ? oldTags.join(", ") : "";
 
   editDialog.innerHTML = `
     <h3 style="margin-top: 0;">URLを編集</h3>
     <label style="display: block; margin-bottom: 5px; font-size: 14px;">タイトル:</label>
     <input type="text" id="editUrlTitle" value="${oldTitle}" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
     <label style="display: block; margin-bottom: 5px; font-size: 14px;">URL:</label>
-    <input type="text" id="editUrlValue" value="${oldUrl}" style="width: 100%; padding: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px;">
+    <input type="text" id="editUrlValue" value="${oldUrl}" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
+    <label style="display: block; margin-bottom: 5px; font-size: 14px;">タグ:</label>
+    <input type="text" id="editUrlTags" value="${tagsString}" placeholder="タグをカンマ区切りで入力" style="width: 100%; padding: 8px; margin-bottom: 5px; border: 1px solid #ddd; border-radius: 4px;">
+    <div style="font-size: 11px; color: #666; margin-bottom: 15px;">💡 カンマ（,）で区切って複数タグを入力できます</div>
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
       <button id="confirmEditUrlBtn" class="btn btn-primary" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">保存</button>
       <button id="cancelEditUrlBtn" class="btn btn-secondary" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">キャンセル</button>
@@ -485,6 +608,7 @@ function showEditUrlDialog(oldTitle, oldUrl, targetInput) {
 
   const editTitleInput = document.getElementById("editUrlTitle");
   const editUrlInput = document.getElementById("editUrlValue");
+  const editTagsInput = document.getElementById("editUrlTags");
   const confirmEditBtn = document.getElementById("confirmEditUrlBtn");
   const cancelEditBtn = document.getElementById("cancelEditUrlBtn");
 
@@ -492,7 +616,7 @@ function showEditUrlDialog(oldTitle, oldUrl, targetInput) {
   editTitleInput.select();
 
   // 保存ボタン
-  confirmEditBtn.onclick = () => {
+  confirmEditBtn.onclick = async () => {
     const newTitle = editTitleInput.value.trim();
     const newUrl = editUrlInput.value.trim();
 
@@ -506,16 +630,29 @@ function showEditUrlDialog(oldTitle, oldUrl, targetInput) {
       return;
     }
 
+    // タグを解析（カンマ区切り）
+    const tagsInput = editTagsInput.value.trim();
+    const tags = tagsInput
+      ? tagsInput
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
+      : [];
+
     // 古いエントリを削除
     delete savedUrls[oldTitle];
 
-    // 新しいエントリを追加
-    savedUrls[newTitle] = newUrl;
-    savUrlsToStorage();
+    // 新しいエントリを追加（v3形式）
+    savedUrls[newTitle] = {
+      url: newUrl,
+      tags: tags,
+    };
+    await savUrlsToStorage();
 
-    showFeedback(`"${newTitle}" として更新しました`, "success");
+    const tagInfo = tags.length > 0 ? ` (タグ: ${tags.join(", ")})` : "";
+    showFeedback(`"${newTitle}" として更新しました${tagInfo}`, "success");
     document.body.removeChild(editDialog);
-    showOpenUrlDialog(targetInput); // リストを再表示
+    await showOpenUrlDialog(targetInput); // リストを再表示
   };
 
   // キャンセルボタン
@@ -532,8 +669,8 @@ function showEditUrlDialog(oldTitle, oldUrl, targetInput) {
 }
 
 // 保存済みURL選択ダイアログを表示
-function showOpenUrlDialog(targetInput) {
-  loadSavedUrls();
+async function showOpenUrlDialog(targetInput) {
+  await loadSavedUrls();
 
   // 保存済みURLリストを表示
   savedUrlsList.innerHTML = "";
@@ -545,7 +682,13 @@ function showOpenUrlDialog(targetInput) {
     let selectedUrl = null;
     let selectedTitle = null;
 
-    Object.entries(savedUrls).forEach(([title, url]) => {
+    Object.entries(savedUrls).forEach(([title, value]) => {
+      // v3形式とv1形式の両方に対応
+      const urlData =
+        typeof value === "string" ? { url: value, tags: [] } : value;
+      const url = urlData.url;
+      const tags = urlData.tags || [];
+
       const item = document.createElement("div");
       item.style.cssText =
         "padding: 8px; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 4px; display: flex; align-items: center; gap: 10px;";
@@ -560,9 +703,19 @@ function showOpenUrlDialog(targetInput) {
       // メインコンテンツエリア
       const contentArea = document.createElement("div");
       contentArea.style.cssText = "flex: 1; cursor: pointer;";
+
+      // タグを表示
+      const tagsHtml =
+        tags.length > 0
+          ? `<div style="margin-top: 4px;">
+             ${tags.map((tag) => `<span style="display: inline-block; background: #e3f2fd; color: #1976d2; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-right: 4px;">🏷️ ${tag}</span>`).join("")}
+           </div>`
+          : "";
+
       contentArea.innerHTML = `
         <strong>${title}</strong><br>
         <small style="color: #666;">${url}</small>
+        ${tagsHtml}
       `;
 
       // コンテンツクリックでラジオボタンを選択
@@ -606,7 +759,7 @@ function showOpenUrlDialog(targetInput) {
       editBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         openUrlDialog.style.display = "none";
-        showEditUrlDialog(title, url, targetInput);
+        showEditUrlDialog(title, url, tags, targetInput);
       });
 
       // 削除ボタン
@@ -614,12 +767,12 @@ function showOpenUrlDialog(targetInput) {
       deleteBtn.style.cssText =
         "padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
       deleteBtn.textContent = "削除";
-      deleteBtn.addEventListener("click", (e) => {
+      deleteBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         if (confirm(`"${title}" を削除してもよろしいですか？`)) {
           delete savedUrls[title];
-          savUrlsToStorage();
-          showOpenUrlDialog(targetInput); // リストを再表示
+          await savUrlsToStorage();
+          await showOpenUrlDialog(targetInput); // リストを再表示
           showFeedback(`"${title}" を削除しました`, "success");
         }
       });
@@ -653,6 +806,138 @@ function showOpenUrlDialog(targetInput) {
   cancelOpenUrlBtn.onclick = () => {
     openUrlDialog.style.display = "none";
   };
+
+  // エクスポートボタンのイベント
+  const exportBtn = document.getElementById("exportUrlsBtn");
+  if (exportBtn) {
+    exportBtn.onclick = () => {
+      exportUrlsToFile();
+    };
+  }
+
+  // インポートボタンのイベント
+  const importBtn = document.getElementById("importUrlsBtn");
+  const importFileInput = document.getElementById("importFileInput");
+  if (importBtn && importFileInput) {
+    importBtn.onclick = () => {
+      importFileInput.click();
+    };
+
+    importFileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        importUrlsFromFile(file, targetInput);
+        // ファイル選択をリセット
+        e.target.value = "";
+      }
+    };
+  }
+}
+
+// エクスポート機能：URLデータをJSONファイルとしてダウンロード
+function exportUrlsToFile() {
+  try {
+    const exportData = {
+      version: STORAGE_VERSION,
+      exportedAt: new Date().toISOString(),
+      exportedFrom: "AutoAI URL Manager",
+      urlCount: Object.keys(savedUrls).length,
+      urls: savedUrls,
+    };
+
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `autoai-urls-${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showFeedback(
+      `${Object.keys(savedUrls).length}件のURLをエクスポートしました`,
+      "success",
+    );
+    log.info(`✅ ${Object.keys(savedUrls).length}件のURLをエクスポート`);
+  } catch (error) {
+    log.error("エクスポートエラー:", error);
+    showFeedback("エクスポートに失敗しました", "error");
+  }
+}
+
+// インポート機能：JSONファイルからURLデータを読み込み
+async function importUrlsFromFile(file, targetInput) {
+  const reader = new FileReader();
+
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+
+      // データ検証
+      if (!data.urls || typeof data.urls !== "object") {
+        showFeedback("無効なファイル形式です", "error");
+        return;
+      }
+
+      const importCount = Object.keys(data.urls).length;
+      const currentCount = Object.keys(savedUrls).length;
+
+      // マージか上書きか選択
+      const message =
+        currentCount > 0
+          ? `${importCount}件のURLをインポートします。\n\n【OK】既存データに追加（マージ）\n【キャンセル】既存データを削除して上書き`
+          : `${importCount}件のURLをインポートします。`;
+
+      const shouldMerge = currentCount === 0 || confirm(message);
+
+      if (shouldMerge) {
+        // マージ（既存データに追加）
+        let addedCount = 0;
+        let updatedCount = 0;
+
+        Object.entries(data.urls).forEach(([title, value]) => {
+          if (savedUrls[title]) {
+            updatedCount++;
+          } else {
+            addedCount++;
+          }
+          savedUrls[title] = value;
+        });
+
+        await savUrlsToStorage();
+        await showOpenUrlDialog(targetInput);
+
+        showFeedback(
+          `インポート完了: ${addedCount}件追加、${updatedCount}件更新`,
+          "success",
+        );
+        log.info(
+          `✅ インポート完了: ${addedCount}件追加、${updatedCount}件更新`,
+        );
+      } else {
+        // 上書き（既存データを削除）
+        savedUrls = data.urls;
+        await savUrlsToStorage();
+        await showOpenUrlDialog(targetInput);
+
+        showFeedback(`${importCount}件のURLで上書きしました`, "success");
+        log.info(`✅ ${importCount}件のURLで上書き`);
+      }
+    } catch (error) {
+      log.error("インポートエラー:", error);
+      showFeedback("ファイルの読み込みに失敗しました", "error");
+    }
+  };
+
+  reader.onerror = () => {
+    log.error("ファイル読み込みエラー");
+    showFeedback("ファイルの読み込みに失敗しました", "error");
+  };
+
+  reader.readAsText(file);
 }
 
 // ========================================
@@ -874,11 +1159,11 @@ if (deleteAnswersBtn) {
 // ========================================
 
 // ページ読み込み時の初期化
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   log.debug("📋 [step0-ui-controller] 初期化開始");
 
   // 保存されたURLを読み込み
-  loadSavedUrls();
+  await loadSavedUrls();
 
   // 最初の行にイベントリスナーを追加
   const firstRow = urlInputsContainer.querySelector(".url-input-row");

@@ -12,6 +12,7 @@
     "tabs",
     "activeTab",
     "storage",
+    "unlimitedStorage",
     "identity",
     "system.display",
     "scripting",
