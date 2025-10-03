@@ -41,7 +41,9 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
   chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-    } else {
+      console.info(
+        `📋 [Step2 TaskGroup] ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]}`,
+      );
     }
   });
 }

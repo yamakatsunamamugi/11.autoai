@@ -107,7 +107,9 @@
       chrome.storage.local.get("logLevel", (result) => {
         if (result.logLevel) {
           CURRENT_LOG_LEVEL = parseInt(result.logLevel);
-        } else {
+          console.info(
+            `📋 [Claude Automation] ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]}`,
+          );
         }
       });
     }

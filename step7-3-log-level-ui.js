@@ -16,9 +16,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 保存ボタンのクリックイベント
   saveLogLevelBtn?.addEventListener("click", () => {
     const selectedLevel = parseInt(logLevelSelect.value);
+    const levelName = ["", "ERROR", "WARN", "INFO", "DEBUG"][selectedLevel];
 
     if (chrome && chrome.storage && chrome.storage.local) {
       chrome.storage.local.set({ logLevel: selectedLevel }, () => {
+        // ログレベル変更を出力
+        console.info(`📋 ログレベル変更: ${levelName} (${selectedLevel})`);
+
         // 成功メッセージを表示
         logLevelStatus.style.display = "inline";
         setTimeout(() => {

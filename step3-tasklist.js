@@ -124,6 +124,9 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
   chrome.storage.local.get("logLevel", (result) => {
     if (result.logLevel) {
       CURRENT_LOG_LEVEL = parseInt(result.logLevel);
+      console.info(
+        `📋 [Step3 TaskList] ログレベル設定: ${["", "ERROR", "WARN", "INFO", "DEBUG"][CURRENT_LOG_LEVEL]}`,
+      );
     }
   });
 
@@ -453,6 +456,22 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
   // Wake Lock解放はcheckAndHandleGroupCompletion内で全グループ完了時に実行
   // バッチ完了≠全グループ完了のため、ここでは解放しない
 
+  // 【追加】バッチ完了後にグループ完了チェック
+  // 3秒待機してから次グループへの移行を試みる
+  setTimeout(async () => {
+    try {
+      log.info(
+        "[3-0] 🔍 [GROUP-TRANSITION] バッチ完了後のグループ完了チェック開始",
+      );
+      await checkAndHandleGroupCompletion(0);
+    } catch (error) {
+      log.error(
+        "[3-0] ❌ [GROUP-TRANSITION] グループ完了チェックエラー:",
+        error,
+      );
+    }
+  }, 3000);
+
   return results;
 }
 
@@ -588,21 +607,7 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
         });
       }
 
-      // 【追加】グループ完了チェック（最後のタスクのみ）
-      // バッチ処理では複数タスクが並列実行されるため、
-      // 最後のタスク完了時のみグループ完了をチェック
-      if (taskIndex === 2 || taskIndex === "independent") {
-        setTimeout(async () => {
-          try {
-            await checkAndHandleGroupCompletion(taskIndex);
-          } catch (error) {
-            log.error(
-              `[3-0] ❌ [GROUP-TRANSITION] グループ完了チェックエラー[${taskIndex}]:`,
-              error,
-            );
-          }
-        }, 3000); // 3秒待機してグループ完了チェック
-      }
+      // グループ完了チェックは executeAsyncBatchProcessing で行われる
     } else {
       log.warn(
         `[3-0] ⚠️ [TASK-FLOW-TRACE] Phase 4スキップ - ENABLE_DYNAMIC_NEXT_TASK無効:`,
