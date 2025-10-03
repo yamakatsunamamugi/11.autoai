@@ -413,18 +413,45 @@ async function loadSavedUrls() {
             savedFolders = data.folders || [];
             tagColors = data.tagColors || {};
 
+            // nullや空文字を除去（データクリーニング）
+            const originalLength = savedFolders.length;
+            savedFolders = savedFolders.filter(
+              (f) => f !== null && f !== undefined && f.trim() !== "",
+            );
+
             // v6で savedFolders が空の場合は、既存フォルダを抽出（修正適用）
+            console.log(
+              `🔍 v6データロード: savedFolders.length=${savedFolders.length}, savedUrls=${Object.keys(savedUrls).length}件`,
+            );
+
+            if (originalLength !== savedFolders.length) {
+              console.log(
+                `🧹 データクリーニング: ${originalLength - savedFolders.length}個のnull/空を削除`,
+              );
+            }
+
             if (
               savedFolders.length === 0 &&
               Object.keys(savedUrls).length > 0
             ) {
               savedFolders = extractFoldersFromUrls(savedUrls);
+              console.log(
+                `📦 自動修正実行: ${savedFolders.length}件のフォルダを抽出`,
+                savedFolders,
+              );
               if (savedFolders.length > 0) {
                 log.info(
                   `📦 v6データ修正：既存フォルダ${savedFolders.length}件を抽出`,
                 );
                 await savUrlsToStorage();
               }
+            } else {
+              console.log(`✅ savedFolders既に存在（修正不要）:`, savedFolders);
+            }
+
+            // クリーニング後に保存（nullが削除された場合）
+            if (originalLength !== savedFolders.length) {
+              await savUrlsToStorage();
             }
           } else if (data.version === 5) {
             // v5からv6への移行（空フォルダ機能追加）
@@ -549,6 +576,15 @@ function getAllFolders() {
 // URLをchrome.storage.syncに保存（非同期）
 async function savUrlsToStorage() {
   return new Promise((resolve, reject) => {
+    // 保存前にsavedFoldersからnull/undefinedを除去（安全策）
+    savedFolders = savedFolders.filter(
+      (f) =>
+        f !== null &&
+        f !== undefined &&
+        typeof f === "string" &&
+        f.trim() !== "",
+    );
+
     const data = {
       version: STORAGE_VERSION,
       urls: savedUrls,
@@ -1552,6 +1588,12 @@ function showFolderManagementDialog() {
     function refreshFolderList() {
       const folders = getAllFolders();
 
+      // デバッグ情報をコンソールに出力
+      console.log("🔍 refreshFolderList デバッグ情報:");
+      console.log("  - getAllFolders():", folders);
+      console.log("  - savedFolders配列:", savedFolders);
+      console.log("  - savedUrls:", Object.keys(savedUrls).length, "件");
+
       // 親フォルダドロップダウンを更新
       parentFolderSelect.innerHTML =
         '<option value="">📁 ルートフォルダ（トップレベル）</option>';
@@ -1613,7 +1655,7 @@ function showFolderManagementDialog() {
             }
             // 子フォルダのパスも更新
             savedFolders.forEach((f, i) => {
-              if (f.startsWith(folder + "/")) {
+              if (f && f.startsWith(folder + "/")) {
                 savedFolders[i] = f.replace(folder, trimmedName);
               }
             });
@@ -1654,7 +1696,7 @@ function showFolderManagementDialog() {
             });
             // savedFoldersからも削除（子フォルダも含む）
             savedFolders = savedFolders.filter(
-              (f) => f !== folder && !f.startsWith(folder + "/"),
+              (f) => f && f !== folder && !f.startsWith(folder + "/"),
             );
             await savUrlsToStorage();
             refreshFolderList();
@@ -1671,6 +1713,11 @@ function showFolderManagementDialog() {
         // savedFolders内の実際のindexを取得
         const savedFolderIndex = savedFolders.indexOf(folder);
         const canMoveUp = savedFolderIndex > 0;
+
+        // デバッグログ
+        console.log(
+          `📁 "${folder}" - savedFolderIndex: ${savedFolderIndex}, canMoveUp: ${canMoveUp}`,
+        );
 
         upBtn.disabled = !canMoveUp;
         upBtn.style.cssText = canMoveUp
