@@ -705,7 +705,18 @@ async function immediateSpreadsheetUpdate(result, taskIndex) {
     );
 
     // スプレッドシート記載に必要な情報を確認
-    const responseText = this.extractResultText(result);
+    // 結果からテキストを抽出（extractResultTextのインライン実装）
+    let responseText = "";
+    if (result.response) {
+      responseText = result.response;
+    } else if (result.finalText) {
+      responseText = result.finalText;
+    } else if (result.content) {
+      responseText = result.content;
+    } else if (typeof result === "string") {
+      responseText = result;
+    }
+
     if (!result.column || !result.row || !responseText) {
       console.error(
         `❌ [仮説検証] スプレッドシート書き込み失敗 - 記載情報不足[${taskIndex}]:`,
@@ -10711,19 +10722,8 @@ async function executeStep3(taskList) {
 
   // executeStep3関数定義完了
 
-  // グループ完了チェックと次グループへの移行
-  // 全タスク完了後、利用可能なタスクがあるか確認し、なければグループ完了処理を実行
-  try {
-    ExecuteLogger.info(
-      "[3-0] 🔍 [GROUP-TRANSITION] バッチ完了後のグループ完了チェック開始",
-    );
-    await startNextTaskIfAvailable(0);
-  } catch (error) {
-    ExecuteLogger.error(
-      "[3-0] ❌ [GROUP-TRANSITION] グループ完了チェックエラー:",
-      error,
-    );
-  }
+  // グループ完了チェックは handleIndividualTaskCompletion 内で行われるため、
+  // ここでは何もしない（重複呼び出しを防止）
 
   return results;
 }
