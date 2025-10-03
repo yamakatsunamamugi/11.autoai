@@ -897,11 +897,6 @@ async function findSpecialRows() {
 
     // globalStateからURLまたはIDを取得
     if (window.globalState) {
-      console.error("🔍 [DEBUG] globalState存在確認:", window.globalState);
-      console.error(
-        "🔍 [DEBUG] spreadsheetUrl:",
-        window.globalState.spreadsheetUrl,
-      );
       // spreadsheetUrlが設定されている場合はそこからIDとGIDを抽出
       if (window.globalState.spreadsheetUrl) {
         const spreadsheetUrl = window.globalState.spreadsheetUrl;
@@ -912,8 +907,6 @@ async function findSpecialRows() {
         // URLからスプレッドシートIDとGIDを抽出
         const idMatch = spreadsheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
         const gidMatch = spreadsheetUrl.match(/[?#&]gid=([0-9]+)/);
-        console.error("🔍 [DEBUG] idMatch:", idMatch);
-        console.error("🔍 [DEBUG] gidMatch:", gidMatch);
 
         if (!idMatch) {
           throw new Error("無効なスプレッドシートURL");
@@ -921,12 +914,6 @@ async function findSpecialRows() {
 
         spreadsheetId = idMatch[1];
         gid = gidMatch ? gidMatch[1] : "0"; // デフォルトGID
-        console.error(
-          "🔍 [DEBUG] 抽出結果 - spreadsheetId:",
-          spreadsheetId,
-          "gid:",
-          gid,
-        );
 
         // globalStateに保存
         window.globalState.spreadsheetId = spreadsheetId;
@@ -1506,7 +1493,6 @@ function columnToIndex(column) {
 async function executeStep1(spreadsheetUrl) {
   // 関数呼び出し追跡のためのユニークID
   const callId = `CALL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  console.error("🔍 [DEBUG] executeStep1 呼び出し - URL引数:", spreadsheetUrl);
   log.info("========================================");
   log.info(`📋 [Step1] 処理対象スプレッドシート: ${spreadsheetUrl}`);
   log.info("========================================");
