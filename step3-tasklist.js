@@ -588,9 +588,21 @@ async function handleIndividualTaskCompletion(result, taskIndex) {
         });
       }
 
-      // 【削除】個別タスク完了時の次タスク探索を削除
-      // グループ完了チェックは checkAndHandleGroupCompletion で行われる
-      // 全タスク完了後に executeStep3 でバッチ処理が実行される
+      // 【追加】グループ完了チェック（最後のタスクのみ）
+      // バッチ処理では複数タスクが並列実行されるため、
+      // 最後のタスク完了時のみグループ完了をチェック
+      if (taskIndex === 2 || taskIndex === "independent") {
+        setTimeout(async () => {
+          try {
+            await checkAndHandleGroupCompletion(taskIndex);
+          } catch (error) {
+            log.error(
+              `[3-0] ❌ [GROUP-TRANSITION] グループ完了チェックエラー[${taskIndex}]:`,
+              error,
+            );
+          }
+        }, 3000); // 3秒待機してグループ完了チェック
+      }
     } else {
       log.warn(
         `[3-0] ⚠️ [TASK-FLOW-TRACE] Phase 4スキップ - ENABLE_DYNAMIC_NEXT_TASK無効:`,
@@ -9850,8 +9862,8 @@ async function executeStep3(taskList) {
 
   // executeStep3関数定義完了
 
-  // バッチ処理完了後、グループ完了をチェックして次のグループに進む
-  await checkAndHandleGroupCompletion(0);
+  // グループ完了チェックは handleIndividualTaskCompletion 内で行われるため
+  // ここでは何もしない（重複呼び出しを防止）
 
   return results;
 }
