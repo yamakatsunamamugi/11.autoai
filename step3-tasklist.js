@@ -1368,10 +1368,21 @@ async function checkAndHandleGroupCompletion(taskIndex) {
       },
     );
 
-    const currentGroup = window.globalState?.currentGroup;
-    if (!currentGroup) {
+    const currentGroupNumber = window.globalState?.currentGroup?.groupNumber;
+    if (!currentGroupNumber) {
       log.warn(
-        `[3-4] ⚠️ [GROUP-TRANSITION] 現在のグループ情報なし[${taskIndex}]`,
+        `[3-4] ⚠️ [GROUP-TRANSITION] 現在のグループ番号なし[${taskIndex}]`,
+      );
+      return;
+    }
+
+    // taskGroupsから完全なグループオブジェクトを取得（columns情報を含む）
+    const fullGroup = window.globalState?.taskGroups?.find(
+      (g) => g.groupNumber === currentGroupNumber,
+    );
+    if (!fullGroup) {
+      log.warn(
+        `[3-4] ⚠️ [GROUP-TRANSITION] グループ${currentGroupNumber}の詳細情報なし[${taskIndex}]`,
       );
       return;
     }
@@ -1384,13 +1395,13 @@ async function checkAndHandleGroupCompletion(taskIndex) {
       return;
     }
 
-    const isGroupCompleted = await window.checkCompletionStatus(currentGroup);
+    const isGroupCompleted = await window.checkCompletionStatus(fullGroup);
 
     log.info(
       `[3-4] 📊 [GROUP-TRANSITION] グループ完了判定結果[${taskIndex}]:`,
       {
         taskIndex: taskIndex,
-        groupNumber: currentGroup.groupNumber,
+        groupNumber: currentGroupNumber,
         isCompleted: isGroupCompleted,
         判定時刻: new Date().toISOString(),
       },
@@ -1398,7 +1409,7 @@ async function checkAndHandleGroupCompletion(taskIndex) {
 
     if (isGroupCompleted) {
       log.info(
-        `[3-4] 🏁 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}完了 - step2でタスクグループ再作成[${taskIndex}]`,
+        `[3-4] 🏁 [GROUP-TRANSITION] グループ${currentGroupNumber}完了 - step2でタスクグループ再作成[${taskIndex}]`,
       );
 
       // step2を呼び出して次のグループを準備（タスクグループ作成+未完了グループ選択）
@@ -1465,7 +1476,7 @@ async function checkAndHandleGroupCompletion(taskIndex) {
       }, 2000); // 2秒待機してからバッチ処理開始
     } else {
       log.info(
-        `[3-4] 📋 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}未完了 - 他タスクの完了待ち[${taskIndex}]`,
+        `[3-4] 📋 [GROUP-TRANSITION] グループ${currentGroupNumber}未完了 - 他タスクの完了待ち[${taskIndex}]`,
       );
     }
   } catch (error) {
