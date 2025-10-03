@@ -73,8 +73,11 @@
               <input type="text" id="saveUrlTitle" placeholder="タイトルを入力" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
 
               <label style="display: block; margin-bottom: 5px; font-size: 14px;">タグ:</label>
-              <input type="text" id="saveUrlTagInput" placeholder="タグ名を入力（カンマまたはTabで追加）" style="width: 100%; padding: 8px; margin-bottom: 5px; border: 1px solid #ddd; border-radius: 4px;">
-              <div style="font-size: 11px; color: #666; margin-bottom: 10px;">💡 カンマ（,）またはTabキーでタグ追加 / Enterキーで保存</div>
+              <div style="display: flex; gap: 8px; margin-bottom: 5px;">
+                <input type="text" id="saveUrlTagInput" placeholder="タグ名を入力" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button id="addSaveTagBtn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">+ 追加</button>
+              </div>
+              <div style="font-size: 11px; color: #666; margin-bottom: 10px;">💡 カンマ（,）・Tab・Enterキーまたは追加ボタンでタグ追加</div>
               <div id="saveUrlTagsContainer" style="min-height: 40px; padding: 8px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
                 <!-- タグがここに表示される -->
               </div>
@@ -83,6 +86,14 @@
                 <div id="saveUrlSuggestedTags" style="display: flex; flex-wrap: wrap; gap: 6px;">
                   <!-- 候補タグがここに表示される -->
                 </div>
+              </div>
+
+              <label style="display: block; margin-bottom: 5px; font-size: 14px;">フォルダ（オプション）:</label>
+              <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                <select id="saveUrlFolder" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                  <option value="">📁 ルートフォルダ</option>
+                </select>
+                <button id="newFolderBtn" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">+ 新規</button>
               </div>
 
               <label style="display: block; margin-bottom: 5px; font-size: 14px;">メモ（オプション）:</label>

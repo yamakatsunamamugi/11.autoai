@@ -254,6 +254,8 @@ const saveUrlSuggestedTagsContainer = document.getElementById(
   "saveUrlSuggestedTagsContainer",
 );
 const saveUrlSuggestedTags = document.getElementById("saveUrlSuggestedTags");
+const saveUrlFolder = document.getElementById("saveUrlFolder");
+const newFolderBtn = document.getElementById("newFolderBtn");
 const saveUrlMemo = document.getElementById("saveUrlMemo");
 const confirmSaveUrlBtn = document.getElementById("confirmSaveUrlBtn");
 const cancelSaveUrlBtn = document.getElementById("cancelSaveUrlBtn");
@@ -283,7 +285,7 @@ let savedUrls = {};
 let tagColors = {}; // タグごとの色設定
 
 // データ構造のバージョン
-const STORAGE_VERSION = 4; // v4: お気に入り・メモ・タグ色分け機能追加
+const STORAGE_VERSION = 5; // v5: フォルダ機能追加
 const STORAGE_KEY = "autoai_urls_data";
 
 // タグ色のパレット
@@ -353,6 +355,35 @@ function migrateToV4(urls) {
   return migrated;
 }
 
+// v4からv5への移行（フォルダ機能追加）
+function migrateToV5(urls) {
+  const migrated = {};
+
+  Object.entries(urls).forEach(([title, value]) => {
+    if (typeof value === "string") {
+      // 古い形式
+      migrated[title] = {
+        url: value,
+        tags: [],
+        favorite: false,
+        memo: "",
+        folder: "", // ルートフォルダ
+      };
+    } else if (value && typeof value === "object") {
+      // v4形式
+      migrated[title] = {
+        url: value.url || value,
+        tags: value.tags || [],
+        favorite: value.favorite || false,
+        memo: value.memo || "",
+        folder: value.folder || "", // 既存のfolder or ルート
+      };
+    }
+  });
+
+  return migrated;
+}
+
 // chrome.storage.syncから保存されたURLを読み込み（非同期）
 async function loadSavedUrls() {
   return new Promise((resolve) => {
@@ -363,26 +394,34 @@ async function loadSavedUrls() {
           const data = result[STORAGE_KEY];
 
           if (data.version === STORAGE_VERSION) {
-            // 最新バージョンのデータ
+            // 最新バージョンのデータ（v5）
             savedUrls = data.urls || {};
             tagColors = data.tagColors || {};
+          } else if (data.version === 4) {
+            // v4からv5への移行
+            savedUrls = migrateToV5(data.urls || {});
+            tagColors = data.tagColors || {};
+            log.info(`📦 v4からv5にデータ移行（フォルダ機能追加）`);
+            await savUrlsToStorage();
           } else if (
             data.version === 3 ||
             data.version === 2 ||
             data.version === 1
           ) {
-            // v1/v2/v3からv4への移行
-            savedUrls = migrateToV4(data.urls || {});
+            // v1/v2/v3からv5への移行
+            const v4Data = migrateToV4(data.urls || {});
+            savedUrls = migrateToV5(v4Data);
             tagColors = data.tagColors || {};
             log.info(
-              `📦 v${data.version}からv4にデータ移行（お気に入り・メモ機能追加）`,
+              `📦 v${data.version}からv5にデータ移行（フォルダ機能追加）`,
             );
             await savUrlsToStorage();
           } else {
             // バージョン不明（古い形式）
-            savedUrls = migrateToV4(data);
+            const v4Data = migrateToV4(data);
+            savedUrls = migrateToV5(v4Data);
             tagColors = {};
-            log.info("📦 古い形式からv4にデータ移行");
+            log.info("📦 古い形式からv5にデータ移行");
             await savUrlsToStorage();
           }
 
@@ -397,10 +436,11 @@ async function loadSavedUrls() {
           if (legacyData) {
             try {
               const legacyUrls = JSON.parse(legacyData);
-              savedUrls = migrateToV4(legacyUrls);
+              const v4Data = migrateToV4(legacyUrls);
+              savedUrls = migrateToV5(v4Data);
               tagColors = {};
               log.info(
-                `📦 localStorageから${Object.keys(savedUrls).length}件のURLを移行します（v4形式）`,
+                `📦 localStorageから${Object.keys(savedUrls).length}件のURLを移行します（v5形式）`,
               );
 
               // chrome.storage.syncに保存
@@ -426,6 +466,17 @@ async function loadSavedUrls() {
       }
     });
   });
+}
+
+// フォルダ一覧を取得（重複排除、ソート済み）
+function getAllFolders() {
+  const folders = new Set();
+  Object.values(savedUrls).forEach((urlData) => {
+    if (urlData.folder && urlData.folder.trim() !== "") {
+      folders.add(urlData.folder);
+    }
+  });
+  return Array.from(folders).sort();
 }
 
 // URLをchrome.storage.syncに保存（非同期）
@@ -596,6 +647,16 @@ function showSaveUrlDialog(url) {
   saveUrlDialog.style.display = "block";
   saveUrlTitle.focus();
 
+  // フォルダ一覧を更新
+  const folders = getAllFolders();
+  saveUrlFolder.innerHTML = '<option value="">📁 ルートフォルダ</option>';
+  folders.forEach((folder) => {
+    const option = document.createElement("option");
+    option.value = folder;
+    option.textContent = `📁 ${folder}`;
+    saveUrlFolder.appendChild(option);
+  });
+
   // タグ管理用の配列
   const currentTags = [];
 
@@ -700,6 +761,26 @@ function showSaveUrlDialog(url) {
   renderTags();
   renderSuggestedTags();
 
+  // 追加ボタンのクリックイベント
+  const addSaveTagBtn = document.getElementById("addSaveTagBtn");
+  addSaveTagBtn.addEventListener("click", () => {
+    const newTag = saveUrlTagInput.value.trim();
+    if (newTag && !currentTags.includes(newTag)) {
+      currentTags.push(newTag);
+      renderTags();
+      renderSuggestedTags();
+      saveUrlTagInput.value = "";
+      saveUrlTagInput.focus();
+      showFeedback(`タグ "${newTag}" を追加しました`, "success");
+    } else if (!newTag) {
+      showFeedback("タグ名を入力してください", "error");
+    } else if (currentTags.includes(newTag)) {
+      showFeedback(`タグ "${newTag}" は既に追加されています`, "error");
+      saveUrlTagInput.value = "";
+      saveUrlTagInput.focus();
+    }
+  });
+
   // カンマまたはTabキーでタグを追加、Enterで保存
   saveUrlTagInput.onkeydown = (e) => {
     if (e.key === "," || e.key === "Tab") {
@@ -738,27 +819,52 @@ function showSaveUrlDialog(url) {
       return;
     }
 
-    // メモを取得
+    // メモとフォルダを取得
     const memo = saveUrlMemo.value.trim();
+    const folder = saveUrlFolder.value.trim();
 
-    // URLを保存（v4形式）
+    // URLを保存（v5形式）
     savedUrls[title] = {
       url: url,
       tags: currentTags,
       favorite: false,
       memo: memo,
+      folder: folder,
     };
     await savUrlsToStorage();
 
     const tagInfo =
       currentTags.length > 0 ? ` (タグ: ${currentTags.join(", ")})` : "";
-    showFeedback(`"${title}" として保存しました${tagInfo}`, "success");
+    const folderInfo = folder ? ` (フォルダ: ${folder})` : "";
+    showFeedback(
+      `"${title}" として保存しました${tagInfo}${folderInfo}`,
+      "success",
+    );
     saveUrlDialog.style.display = "none";
   };
 
   // キャンセルボタンのイベント
   cancelSaveUrlBtn.onclick = () => {
     saveUrlDialog.style.display = "none";
+  };
+
+  // 新規フォルダボタンのイベント
+  newFolderBtn.onclick = (e) => {
+    e.preventDefault();
+    const folderName = prompt(
+      "新しいフォルダ名を入力してください:\n（階層フォルダの場合は「親/子」のように入力）",
+    );
+    if (folderName && folderName.trim() !== "") {
+      const trimmedName = folderName.trim();
+      // 既存フォルダ一覧に追加
+      const option = document.createElement("option");
+      option.value = trimmedName;
+      option.textContent = `📁 ${trimmedName}`;
+      saveUrlFolder.appendChild(option);
+      // 新しく作成したフォルダを選択
+      saveUrlFolder.value = trimmedName;
+      showFeedback(`フォルダ "${trimmedName}" を作成しました`, "success");
+    }
   };
 }
 
@@ -769,6 +875,7 @@ function showEditUrlDialog(
   oldTags,
   oldFavorite,
   oldMemo,
+  oldFolder,
   targetInput,
 ) {
   // 編集用のダイアログを作成
@@ -790,6 +897,7 @@ function showEditUrlDialog(
   `;
 
   const memoText = oldMemo || "";
+  const folderText = oldFolder || "";
 
   // 全URLから既存タグを収集
   const allExistingTags = new Set();
@@ -807,8 +915,11 @@ function showEditUrlDialog(
     <input type="text" id="editUrlValue" value="${oldUrl}" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
 
     <label style="display: block; margin-bottom: 5px; font-size: 14px;">タグ:</label>
-    <input type="text" id="editUrlTagInput" placeholder="タグ名を入力してEnterキーで追加" style="width: 100%; padding: 8px; margin-bottom: 5px; border: 1px solid #ddd; border-radius: 4px;">
-    <div style="font-size: 11px; color: #666; margin-bottom: 10px;">💡 入力してEnterキーを押すとタグが追加されます</div>
+    <div style="display: flex; gap: 8px; margin-bottom: 5px;">
+      <input type="text" id="editUrlTagInput" placeholder="タグ名を入力" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+      <button id="addEditTagBtn" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">+ 追加</button>
+    </div>
+    <div style="font-size: 11px; color: #666; margin-bottom: 10px;">💡 カンマ（,）・Tab・Enterキーまたは追加ボタンでタグ追加</div>
     <div id="editUrlTagsContainer" style="min-height: 40px; padding: 8px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
       <!-- タグがここに表示される -->
     </div>
@@ -817,6 +928,14 @@ function showEditUrlDialog(
       <div id="editUrlSuggestedTags" style="display: flex; flex-wrap: wrap; gap: 6px;">
         <!-- 候補タグがここに表示される -->
       </div>
+    </div>
+
+    <label style="display: block; margin-bottom: 5px; font-size: 14px;">フォルダ（オプション）:</label>
+    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+      <select id="editUrlFolder" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        <option value="">📁 ルートフォルダ</option>
+      </select>
+      <button id="newEditFolderBtn" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">+ 新規</button>
     </div>
 
     <label style="display: block; margin-bottom: 5px; font-size: 14px;">メモ（オプション）:</label>
@@ -832,14 +951,30 @@ function showEditUrlDialog(
   const editTitleInput = document.getElementById("editUrlTitle");
   const editUrlInput = document.getElementById("editUrlValue");
   const editUrlTagInput = document.getElementById("editUrlTagInput");
+  const addEditTagBtn = document.getElementById("addEditTagBtn");
   const editUrlTagsContainer = document.getElementById("editUrlTagsContainer");
   const editUrlSuggestedTagsContainer = document.getElementById(
     "editUrlSuggestedTagsContainer",
   );
   const editUrlSuggestedTags = document.getElementById("editUrlSuggestedTags");
+  const editUrlFolder = document.getElementById("editUrlFolder");
+  const newEditFolderBtn = document.getElementById("newEditFolderBtn");
   const editMemoInput = document.getElementById("editUrlMemo");
   const confirmEditBtn = document.getElementById("confirmEditUrlBtn");
   const cancelEditBtn = document.getElementById("cancelEditUrlBtn");
+
+  // フォルダ一覧を初期化
+  const folders = getAllFolders();
+  folders.forEach((folder) => {
+    const option = document.createElement("option");
+    option.value = folder;
+    option.textContent = `📁 ${folder}`;
+    editUrlFolder.appendChild(option);
+  });
+  // 現在のフォルダを選択
+  if (folderText) {
+    editUrlFolder.value = folderText;
+  }
 
   // 現在のタグを管理
   const currentTags = Array.isArray(oldTags) ? [...oldTags] : [];
@@ -940,6 +1075,25 @@ function showEditUrlDialog(
   editTitleInput.focus();
   editTitleInput.select();
 
+  // 追加ボタンのクリックイベント
+  addEditTagBtn.addEventListener("click", () => {
+    const newTag = editUrlTagInput.value.trim();
+    if (newTag && !currentTags.includes(newTag)) {
+      currentTags.push(newTag);
+      renderTags();
+      renderSuggestedTags();
+      editUrlTagInput.value = "";
+      editUrlTagInput.focus();
+      showFeedback(`タグ "${newTag}" を追加しました`, "success");
+    } else if (!newTag) {
+      showFeedback("タグ名を入力してください", "error");
+    } else if (currentTags.includes(newTag)) {
+      showFeedback(`タグ "${newTag}" は既に追加されています`, "error");
+      editUrlTagInput.value = "";
+      editUrlTagInput.focus();
+    }
+  });
+
   // カンマまたはTabキーでタグを追加、Enterで保存
   editUrlTagInput.addEventListener("keydown", (e) => {
     if (e.key === "," || e.key === "Tab") {
@@ -985,24 +1139,30 @@ function showEditUrlDialog(
       return;
     }
 
-    // メモを取得
+    // メモとフォルダを取得
     const memo = editMemoInput.value.trim();
+    const folder = editUrlFolder.value.trim();
 
     // 古いエントリを削除
     delete savedUrls[oldTitle];
 
-    // 新しいエントリを追加（v4形式）
+    // 新しいエントリを追加（v5形式）
     savedUrls[newTitle] = {
       url: newUrl,
       tags: currentTags,
       favorite: oldFavorite || false,
       memo: memo,
+      folder: folder,
     };
     await savUrlsToStorage();
 
     const tagInfo =
       currentTags.length > 0 ? ` (タグ: ${currentTags.join(", ")})` : "";
-    showFeedback(`"${newTitle}" として更新しました${tagInfo}`, "success");
+    const folderInfo = folder ? ` (フォルダ: ${folder})` : "";
+    showFeedback(
+      `"${newTitle}" として更新しました${tagInfo}${folderInfo}`,
+      "success",
+    );
     document.body.removeChild(editDialog);
     await showOpenUrlDialog(targetInput); // リストを再表示
   };
@@ -1010,6 +1170,25 @@ function showEditUrlDialog(
   // キャンセルボタン
   cancelEditBtn.onclick = () => {
     document.body.removeChild(editDialog);
+  };
+
+  // 新規フォルダボタン
+  newEditFolderBtn.onclick = (e) => {
+    e.preventDefault();
+    const folderName = prompt(
+      "新しいフォルダ名を入力してください:\n（階層フォルダの場合は「親/子」のように入力）",
+    );
+    if (folderName && folderName.trim() !== "") {
+      const trimmedName = folderName.trim();
+      // 既存フォルダ一覧に追加
+      const option = document.createElement("option");
+      option.value = trimmedName;
+      option.textContent = `📁 ${trimmedName}`;
+      editUrlFolder.appendChild(option);
+      // 新しく作成したフォルダを選択
+      editUrlFolder.value = trimmedName;
+      showFeedback(`フォルダ "${trimmedName}" を作成しました`, "success");
+    }
   };
 
   // Escキーでキャンセル
@@ -1263,6 +1442,102 @@ function showQuickTagDialog(title, oldTags, targetInput) {
   });
 }
 
+// フォルダ管理メニューを表示
+async function showFolderManageMenu(folderName, x, y, targetInput) {
+  // 既存のメニューがあれば削除
+  const existingMenu = document.getElementById("folderManageMenu");
+  if (existingMenu) {
+    document.body.removeChild(existingMenu);
+  }
+
+  const menu = document.createElement("div");
+  menu.id = "folderManageMenu";
+  menu.style.cssText = `
+    position: fixed;
+    left: ${x}px;
+    top: ${y}px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    z-index: 10001;
+    min-width: 150px;
+  `;
+
+  const renameBtn = document.createElement("div");
+  renameBtn.textContent = "📝 リネーム";
+  renameBtn.style.cssText = `
+    padding: 10px 15px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+  `;
+  renameBtn.addEventListener("mouseenter", () => {
+    renameBtn.style.background = "#f5f5f5";
+  });
+  renameBtn.addEventListener("mouseleave", () => {
+    renameBtn.style.background = "white";
+  });
+  renameBtn.addEventListener("click", async () => {
+    document.body.removeChild(menu);
+    const newName = prompt(`フォルダ名を変更:\n（階層フォルダの場合は「親/子」のように入力）`, folderName);
+    if (newName && newName.trim() !== "" && newName !== folderName) {
+      const trimmedName = newName.trim();
+      // フォルダ内のすべてのURLのfolderを更新
+      Object.values(savedUrls).forEach((urlData) => {
+        if (urlData.folder === folderName) {
+          urlData.folder = trimmedName;
+        }
+      });
+      await savUrlsToStorage();
+      await showOpenUrlDialog(targetInput);
+      showFeedback(`フォルダ "${folderName}" を "${trimmedName}" にリネームしました`, "success");
+    }
+  });
+
+  const deleteBtn = document.createElement("div");
+  deleteBtn.textContent = "🗑️ 削除";
+  deleteBtn.style.cssText = `
+    padding: 10px 15px;
+    cursor: pointer;
+    color: #dc3545;
+  `;
+  deleteBtn.addEventListener("mouseenter", () => {
+    deleteBtn.style.background = "#f5f5f5";
+  });
+  deleteBtn.addEventListener("mouseleave", () => {
+    deleteBtn.style.background = "white";
+  });
+  deleteBtn.addEventListener("click", async () => {
+    document.body.removeChild(menu);
+    if (confirm(`フォルダ "${folderName}" を削除しますか？\n（フォルダ内のURLはルートフォルダに移動されます）`)) {
+      // フォルダ内のすべてのURLをルートフォルダに移動
+      Object.values(savedUrls).forEach((urlData) => {
+        if (urlData.folder === folderName) {
+          urlData.folder = "";
+        }
+      });
+      await savUrlsToStorage();
+      await showOpenUrlDialog(targetInput);
+      showFeedback(`フォルダ "${folderName}" を削除しました`, "success");
+    }
+  });
+
+  menu.appendChild(renameBtn);
+  menu.appendChild(deleteBtn);
+  document.body.appendChild(menu);
+
+  // メニュー外クリックで閉じる
+  setTimeout(() => {
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        document.body.removeChild(menu);
+        document.removeEventListener("click", closeMenu);
+      }
+    };
+    document.addEventListener("click", closeMenu);
+  }, 0);
+}
+
 // 保存済みURL選択ダイアログを表示
 async function showOpenUrlDialog(targetInput) {
   await loadSavedUrls();
@@ -1277,74 +1552,177 @@ async function showOpenUrlDialog(targetInput) {
     let selectedUrl = null;
     let selectedTitle = null;
 
-    // URLをソート（お気に入りを上に、その後タイトル順）
-    const sortedUrls = Object.entries(savedUrls).sort(
-      ([titleA, valueA], [titleB, valueB]) => {
-        const dataA = typeof valueA === "string" ? { favorite: false } : valueA;
-        const dataB = typeof valueB === "string" ? { favorite: false } : valueB;
-        const favA = dataA.favorite || false;
-        const favB = dataB.favorite || false;
-
-        // お気に入りを優先
-        if (favA && !favB) return -1;
-        if (!favA && favB) return 1;
-
-        // お気に入り状態が同じ場合はタイトル順
-        return titleA.localeCompare(titleB);
-      },
-    );
-
-    sortedUrls.forEach(([title, value]) => {
-      // v4形式とv3形式とv1形式の両方に対応
+    // URLをフォルダごとにグループ化
+    const urlsByFolder = {};
+    Object.entries(savedUrls).forEach(([title, value]) => {
       const urlData =
         typeof value === "string"
-          ? { url: value, tags: [], favorite: false, memo: "" }
+          ? { url: value, tags: [], favorite: false, memo: "", folder: "" }
           : value;
-      const url = urlData.url;
-      const tags = urlData.tags || [];
-      const favorite = urlData.favorite || false;
-      const memo = urlData.memo || "";
+      const folder = urlData.folder || "";
 
-      const item = document.createElement("div");
-      item.style.cssText =
-        "padding: 8px; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 4px; display: flex; align-items: center; gap: 10px;";
+      if (!urlsByFolder[folder]) {
+        urlsByFolder[folder] = [];
+      }
+      urlsByFolder[folder].push([title, value]);
+    });
 
-      // ラジオボタン
-      const radioBtn = document.createElement("input");
-      radioBtn.type = "radio";
-      radioBtn.name = "savedUrlSelection";
-      radioBtn.value = url;
-      radioBtn.style.cssText = "margin-right: 5px;";
+    // フォルダをソート（ルートを最初に、その後アルファベット順）
+    const sortedFolders = Object.keys(urlsByFolder).sort((a, b) => {
+      if (a === "") return -1; // ルートフォルダを最初に
+      if (b === "") return 1;
+      return a.localeCompare(b);
+    });
 
-      // スターボタン（お気に入り）
-      const starBtn = document.createElement("button");
-      starBtn.style.cssText =
-        "background: none; border: none; cursor: pointer; font-size: 20px; padding: 0; line-height: 1;";
-      starBtn.textContent = favorite ? "⭐" : "☆";
-      starBtn.title = favorite ? "お気に入りから削除" : "お気に入りに追加";
-      starBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        // お気に入り状態をトグル
-        savedUrls[title].favorite = !savedUrls[title].favorite;
-        await savUrlsToStorage();
-        // リストを再表示
-        await showOpenUrlDialog(targetInput);
-        showFeedback(
-          savedUrls[title].favorite
-            ? `"${title}" をお気に入りに追加しました`
-            : `"${title}" をお気に入りから削除しました`,
-          "success",
-        );
+    // 各フォルダごとに表示
+    sortedFolders.forEach((folder) => {
+      const urlsInFolder = urlsByFolder[folder];
+
+      // フォルダ内のURLをソート（お気に入りを上に、その後タイトル順）
+      const sortedUrls = urlsInFolder.sort(
+        ([titleA, valueA], [titleB, valueB]) => {
+          const dataA =
+            typeof valueA === "string" ? { favorite: false } : valueA;
+          const dataB =
+            typeof valueB === "string" ? { favorite: false } : valueB;
+          const favA = dataA.favorite || false;
+          const favB = dataB.favorite || false;
+
+          // お気に入りを優先
+          if (favA && !favB) return -1;
+          if (!favA && favB) return 1;
+
+          // お気に入り状態が同じ場合はタイトル順
+          return titleA.localeCompare(titleB);
+        },
+      );
+
+      // フォルダヘッダーを作成
+      const folderHeader = document.createElement("div");
+      folderHeader.style.cssText = `
+        background: #f0f0f0;
+        padding: 8px 12px;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: bold;
+        user-select: none;
+      `;
+
+      const folderIcon = document.createElement("span");
+      folderIcon.textContent = "📂";
+      folderIcon.style.fontSize = "16px";
+
+      const folderName = document.createElement("span");
+      folderName.textContent = folder === "" ? "ルートフォルダ" : folder;
+      folderName.style.flex = "1";
+
+      const folderCount = document.createElement("span");
+      folderCount.textContent = `(${sortedUrls.length})`;
+      folderCount.style.cssText = "color: #666; font-size: 12px;";
+
+      const toggleIcon = document.createElement("span");
+      toggleIcon.textContent = "▼";
+      toggleIcon.style.fontSize = "12px";
+
+      // フォルダ管理ボタン（ルートフォルダ以外）
+      const manageBtn = document.createElement("button");
+      if (folder !== "") {
+        manageBtn.textContent = "⚙️";
+        manageBtn.style.cssText = `
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 14px;
+          padding: 4px;
+          opacity: 0.7;
+        `;
+        manageBtn.title = "フォルダ管理";
+        manageBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          showFolderManageMenu(folder, e.clientX, e.clientY, targetInput);
+        });
+      }
+
+      folderHeader.appendChild(folderIcon);
+      folderHeader.appendChild(folderName);
+      folderHeader.appendChild(folderCount);
+      if (folder !== "") {
+        folderHeader.appendChild(manageBtn);
+      }
+      folderHeader.appendChild(toggleIcon);
+
+      // フォルダコンテンツ（URL一覧）
+      const folderContent = document.createElement("div");
+      folderContent.style.cssText = "margin-bottom: 15px;";
+
+      // フォルダの折りたたみ機能
+      let isExpanded = true;
+      folderHeader.addEventListener("click", () => {
+        isExpanded = !isExpanded;
+        folderContent.style.display = isExpanded ? "block" : "none";
+        toggleIcon.textContent = isExpanded ? "▼" : "▶";
       });
 
-      // メインコンテンツエリア
-      const contentArea = document.createElement("div");
-      contentArea.style.cssText = "flex: 1; cursor: pointer;";
+      savedUrlsList.appendChild(folderHeader);
+      savedUrlsList.appendChild(folderContent);
 
-      // タグを表示
-      const tagsHtml =
-        tags.length > 0
-          ? `<div style="margin-top: 4px;">
+      // フォルダ内の各URLを表示
+      sortedUrls.forEach(([title, value]) => {
+        // v5形式とv4形式とv3形式とv1形式の両方に対応
+        const urlData =
+          typeof value === "string"
+            ? { url: value, tags: [], favorite: false, memo: "", folder: "" }
+            : value;
+        const url = urlData.url;
+        const tags = urlData.tags || [];
+        const favorite = urlData.favorite || false;
+        const memo = urlData.memo || "";
+        const folder = urlData.folder || "";
+
+        const item = document.createElement("div");
+        item.style.cssText =
+          "padding: 8px; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 4px; display: flex; align-items: center; gap: 10px;";
+
+        // ラジオボタン
+        const radioBtn = document.createElement("input");
+        radioBtn.type = "radio";
+        radioBtn.name = "savedUrlSelection";
+        radioBtn.value = url;
+        radioBtn.style.cssText = "margin-right: 5px;";
+
+        // スターボタン（お気に入り）
+        const starBtn = document.createElement("button");
+        starBtn.style.cssText =
+          "background: none; border: none; cursor: pointer; font-size: 20px; padding: 0; line-height: 1;";
+        starBtn.textContent = favorite ? "⭐" : "☆";
+        starBtn.title = favorite ? "お気に入りから削除" : "お気に入りに追加";
+        starBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          // お気に入り状態をトグル
+          savedUrls[title].favorite = !savedUrls[title].favorite;
+          await savUrlsToStorage();
+          // リストを再表示
+          await showOpenUrlDialog(targetInput);
+          showFeedback(
+            savedUrls[title].favorite
+              ? `"${title}" をお気に入りに追加しました`
+              : `"${title}" をお気に入りから削除しました`,
+            "success",
+          );
+        });
+
+        // メインコンテンツエリア
+        const contentArea = document.createElement("div");
+        contentArea.style.cssText = "flex: 1; cursor: pointer;";
+
+        // タグを表示
+        const tagsHtml =
+          tags.length > 0
+            ? `<div style="margin-top: 4px;">
              ${tags
                .map((tag) => {
                  const color = assignTagColor(tag);
@@ -1352,94 +1730,103 @@ async function showOpenUrlDialog(targetInput) {
                })
                .join("")}
            </div>`
-          : "";
+            : "";
 
-      contentArea.innerHTML = `
+        contentArea.innerHTML = `
         <strong>${title}</strong><br>
         <small style="color: #666;">${url}</small>
         ${tagsHtml}
       `;
 
-      // コンテンツクリックでラジオボタンを選択
-      contentArea.addEventListener("click", () => {
-        radioBtn.checked = true;
-        selectedUrl = url;
-        selectedTitle = title;
-        // 開くボタンを有効化
-        confirmOpenUrlBtn.disabled = false;
-      });
-
-      // ラジオボタンの変更イベント
-      radioBtn.addEventListener("change", () => {
-        if (radioBtn.checked) {
+        // コンテンツクリックでラジオボタンを選択
+        contentArea.addEventListener("click", () => {
+          radioBtn.checked = true;
           selectedUrl = url;
           selectedTitle = title;
+          // 開くボタンを有効化
           confirmOpenUrlBtn.disabled = false;
-        }
+        });
+
+        // ラジオボタンの変更イベント
+        radioBtn.addEventListener("change", () => {
+          if (radioBtn.checked) {
+            selectedUrl = url;
+            selectedTitle = title;
+            confirmOpenUrlBtn.disabled = false;
+          }
+        });
+
+        // ボタンコンテナ
+        const buttonContainer = document.createElement("div");
+        buttonContainer.style.cssText = "display: flex; gap: 5px;";
+
+        // 開くボタン
+        const openUrlBtn = document.createElement("button");
+        openUrlBtn.style.cssText =
+          "padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+        openUrlBtn.textContent = "開く";
+        openUrlBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          window.open(url, "_blank");
+          showFeedback(`"${title}" を開きました`, "success");
+        });
+
+        // タグ追加ボタン
+        const tagBtn = document.createElement("button");
+        tagBtn.style.cssText =
+          "padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+        tagBtn.textContent = "🏷️ タグ";
+        tagBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openUrlDialog.style.display = "none";
+          showQuickTagDialog(title, tags, targetInput);
+        });
+
+        // 編集ボタン
+        const editBtn = document.createElement("button");
+        editBtn.style.cssText =
+          "padding: 4px 8px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+        editBtn.textContent = "編集";
+        editBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openUrlDialog.style.display = "none";
+          showEditUrlDialog(
+            title,
+            url,
+            tags,
+            favorite,
+            memo,
+            folder,
+            targetInput,
+          );
+        });
+
+        // 削除ボタン
+        const deleteBtn = document.createElement("button");
+        deleteBtn.style.cssText =
+          "padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+        deleteBtn.textContent = "削除";
+        deleteBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (confirm(`"${title}" を削除してもよろしいですか？`)) {
+            delete savedUrls[title];
+            await savUrlsToStorage();
+            await showOpenUrlDialog(targetInput); // リストを再表示
+            showFeedback(`"${title}" を削除しました`, "success");
+          }
+        });
+
+        buttonContainer.appendChild(openUrlBtn);
+        buttonContainer.appendChild(tagBtn);
+        buttonContainer.appendChild(editBtn);
+        buttonContainer.appendChild(deleteBtn);
+
+        item.appendChild(radioBtn);
+        item.appendChild(starBtn);
+        item.appendChild(contentArea);
+        item.appendChild(buttonContainer);
+        folderContent.appendChild(item);
       });
-
-      // ボタンコンテナ
-      const buttonContainer = document.createElement("div");
-      buttonContainer.style.cssText = "display: flex; gap: 5px;";
-
-      // 開くボタン
-      const openUrlBtn = document.createElement("button");
-      openUrlBtn.style.cssText =
-        "padding: 4px 8px; background: #17a2b8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
-      openUrlBtn.textContent = "開く";
-      openUrlBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        window.open(url, "_blank");
-        showFeedback(`"${title}" を開きました`, "success");
-      });
-
-      // タグ追加ボタン
-      const tagBtn = document.createElement("button");
-      tagBtn.style.cssText =
-        "padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
-      tagBtn.textContent = "🏷️ タグ";
-      tagBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openUrlDialog.style.display = "none";
-        showQuickTagDialog(title, tags, targetInput);
-      });
-
-      // 編集ボタン
-      const editBtn = document.createElement("button");
-      editBtn.style.cssText =
-        "padding: 4px 8px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
-      editBtn.textContent = "編集";
-      editBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openUrlDialog.style.display = "none";
-        showEditUrlDialog(title, url, tags, favorite, memo, targetInput);
-      });
-
-      // 削除ボタン
-      const deleteBtn = document.createElement("button");
-      deleteBtn.style.cssText =
-        "padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
-      deleteBtn.textContent = "削除";
-      deleteBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (confirm(`"${title}" を削除してもよろしいですか？`)) {
-          delete savedUrls[title];
-          await savUrlsToStorage();
-          await showOpenUrlDialog(targetInput); // リストを再表示
-          showFeedback(`"${title}" を削除しました`, "success");
-        }
-      });
-
-      buttonContainer.appendChild(openUrlBtn);
-      buttonContainer.appendChild(tagBtn);
-      buttonContainer.appendChild(editBtn);
-      buttonContainer.appendChild(deleteBtn);
-
-      item.appendChild(radioBtn);
-      item.appendChild(starBtn);
-      item.appendChild(contentArea);
-      item.appendChild(buttonContainer);
-      savedUrlsList.appendChild(item);
     });
 
     // 開くボタンのイベントを設定

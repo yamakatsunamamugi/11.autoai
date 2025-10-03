@@ -238,7 +238,10 @@ const log = {
         errorMessage.includes("Overloaded") ||
         errorMessage.includes("overloaded") ||
         errorMessage.includes("quota exceeded") ||
-        errorMessage.includes("too many requests")
+        errorMessage.includes("too many requests") ||
+        errorMessage.includes("クォータエラー") ||
+        errorMessage.includes("quota") ||
+        errorMessage.includes("Quota")
       ) {
         errorType = "OVERLOADED_ERROR";
         return errorType;
@@ -247,7 +250,9 @@ const log = {
       if (
         errorMessage.includes("rate limit") ||
         errorMessage.includes("Rate limited") ||
-        errorMessage.includes("Too many requests")
+        errorMessage.includes("Too many requests") ||
+        errorMessage.includes("レート制限") ||
+        errorMessage.includes("Rate limit")
       ) {
         errorType = "RATE_LIMIT_ERROR";
         return errorType;
@@ -612,6 +617,15 @@ const log = {
 
     // オーバーレイ
     overlay: ".cdk-overlay-backdrop",
+
+    // エラーメッセージ（送信直後のエラー検出用）
+    errorMessage: [
+      'div[role="alert"]',
+      ".error-message",
+      ".gmat-error",
+      "mat-error",
+      '[data-test-id="error-message"]',
+    ],
   };
 
   // ========================================
@@ -1140,6 +1154,51 @@ const log = {
   }
 
   // ========================================
+  // Step 4-4-5: エラーメッセージ検出
+  // ========================================
+  async function checkForErrorMessage() {
+    log.debug("【Step 4-4-5】エラーメッセージチェック開始");
+
+    // エラーメッセージが表示されるまで少し待機
+    await wait(1500);
+
+    // エラーメッセージ要素を探す
+    const errorElement = findElement(SELECTORS.errorMessage);
+
+    if (errorElement) {
+      const errorText = errorElement.textContent.trim();
+      log.error("❌ 【Step 4-4-5】Geminiエラー検出:", errorText);
+
+      // エラーメッセージの種類を判定
+      if (
+        errorText.includes("エラーが発生しました") ||
+        errorText.includes("Error") ||
+        errorText.includes("Something went wrong")
+      ) {
+        // エラーコードを抽出（例: "エラーが発生しました(8)"）
+        const errorCodeMatch = errorText.match(/\((\d+)\)/);
+        const errorCode = errorCodeMatch ? errorCodeMatch[1] : "不明";
+
+        // エラーの種類に応じて処理を分岐
+        if (
+          errorCode === "8" ||
+          errorText.includes("Overloaded") ||
+          errorText.includes("quota")
+        ) {
+          throw new Error(
+            `Geminiレート制限/クォータエラー(${errorCode}): ${errorText}`,
+          );
+        } else {
+          throw new Error(`Gemini送信エラー(${errorCode}): ${errorText}`);
+        }
+      }
+    }
+
+    log.debug("【Step 4-4-5】エラーメッセージは検出されませんでした");
+    return true;
+  }
+
+  // ========================================
   // Step 4-5: メッセージ送信 - RetryManager統合
   // ========================================
   async function sendMessageGemini() {
@@ -1159,6 +1218,9 @@ const log = {
 
         sendButton.click();
         await wait(1000);
+
+        // 送信後にエラーメッセージをチェック
+        await checkForErrorMessage();
 
         return { success: true };
       },
