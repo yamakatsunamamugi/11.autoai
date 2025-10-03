@@ -1451,18 +1451,18 @@ async function checkAndHandleGroupCompletion(taskIndex) {
         `[3-4] ✅ [GROUP-TRANSITION] 次グループ準備完了: グループ${step2Result.groupNumber}[${taskIndex}]`,
       );
 
-      // 次のタスクを即座に探して実行
+      // 次のグループをバッチ処理で実行（Group 1と同じ処理フロー）
       setTimeout(() => {
         log.info(
-          `[3-4] 🚀 [GROUP-TRANSITION] 新グループでタスク探索開始[${taskIndex}]`,
+          `[3-4] 🚀 [GROUP-TRANSITION] 新グループバッチ処理開始: グループ${step2Result.groupNumber}[${taskIndex}]`,
         );
-        startNextTaskIfAvailable(taskIndex).catch((error) => {
+        window.executeStep3().catch((error) => {
           log.error(
-            `[3-4] ❌ [GROUP-TRANSITION] 新グループタスク探索エラー[${taskIndex}]:`,
+            `[3-4] ❌ [GROUP-TRANSITION] 新グループバッチ処理エラー[${taskIndex}]:`,
             error,
           );
         });
-      }, 2000); // 2秒待機してからタスク探索
+      }, 2000); // 2秒待機してからバッチ処理開始
     } else {
       log.info(
         `[3-4] 📋 [GROUP-TRANSITION] グループ${currentGroup.groupNumber}未完了 - 他タスクの完了待ち[${taskIndex}]`,
@@ -8012,159 +8012,6 @@ class DynamicTaskSearch {
     } catch (error) {
       log.error("[3-4] ❌ グループ完了状態確認エラー:", error);
       return false;
-    }
-  }
-
-  /**
-   * グループ移行の協調実行
-   * 【追加】統一移行協調システムを使用したグループ移行
-   */
-  async initiateGroupTransition(completedGroup) {
-    try {
-      log.info("[3-4] 🔀 [DynamicTaskSearch] グループ移行協調開始:", {
-        completedGroup: completedGroup.groupNumber,
-        initiator: "DynamicSearch",
-      });
-
-      // 統一移行協調システムが利用可能かチェック
-      if (!window.executeGroupTransition) {
-        log.warn(
-          "[3-4] ⚠️ [DynamicTaskSearch] グループ移行協調システム未利用可能 - 従来通知のみ",
-        );
-        return false;
-      }
-
-      // 次のグループを決定（step3-loop.jsと同じロジック）
-      const nextGroup = this.determineNextGroup(completedGroup);
-
-      if (!nextGroup) {
-        log.info(
-          "[3-4] 📋 [DynamicTaskSearch] 次のグループなし - スプレッドシートURLチェック開始",
-        );
-
-        // UI入力欄から最新のURL一覧を取得
-        const urlInputs = document.querySelectorAll(".spreadsheet-url-input");
-        const currentUrls = [];
-
-        urlInputs.forEach((input) => {
-          const url = input.value.trim();
-          if (url) currentUrls.push(url);
-        });
-
-        // 既存URLと比較して新しいURLを抽出
-        const existingUrls = window.globalState?.spreadsheetUrls || [];
-        const newUrls = currentUrls.filter(
-          (url) => !existingUrls.includes(url),
-        );
-
-        if (newUrls.length > 0) {
-          log.info(
-            `[3-4] 📋 [DynamicTaskSearch] 新しいスプレッドシート${newUrls.length}個を検出 - 処理開始`,
-          );
-
-          // globalStateに追加
-          window.globalState.spreadsheetUrls = [...existingUrls, ...newUrls];
-          window.globalState.totalUrlCount =
-            window.globalState.spreadsheetUrls.length;
-
-          // 最初の新しいURLでstep1-2-3を実行
-          const nextUrl = newUrls[0];
-          const nextIndex = existingUrls.length;
-          window.globalState.currentUrlIndex = nextIndex;
-
-          log.info(
-            `[3-4] 🔄 次のスプレッドシート(${nextIndex + 1}/${window.globalState.spreadsheetUrls.length})へ移行: ${nextUrl.substring(0, 80)}...`,
-          );
-
-          // Step1-2-3を実行
-          try {
-            if (typeof window.executeStep1 === "function") {
-              await window.executeStep1(nextUrl);
-              log.info("[3-4] ✅ Step1完了");
-            }
-
-            if (typeof window.executeStep2 === "function") {
-              await window.executeStep2();
-              log.info("[3-4] ✅ Step2完了");
-            }
-
-            // Step3は現在のループが継続する
-            return false; // ループ継続
-          } catch (error) {
-            log.error("[3-4] ❌ 次のスプレッドシート処理エラー:", error);
-            return true; // エラー時は終了
-          }
-        }
-
-        log.info("[3-4] 🎉 [DynamicTaskSearch] 全スプレッドシート処理完了");
-        return true;
-      }
-
-      // 統一移行協調システムを使用して移行実行
-      const transitionSuccess = await window.executeGroupTransition(
-        completedGroup,
-        nextGroup,
-        "DynamicSearch",
-      );
-
-      if (transitionSuccess) {
-        log.info("[3-4] ✅ [DynamicTaskSearch] グループ移行協調成功:", {
-          from: completedGroup.groupNumber,
-          to: nextGroup.groupNumber,
-        });
-      } else {
-        log.warn("[3-4] ❌ [DynamicTaskSearch] グループ移行協調失敗:", {
-          from: completedGroup.groupNumber,
-          to: nextGroup.groupNumber,
-        });
-      }
-
-      return transitionSuccess;
-    } catch (error) {
-      log.error("[3-4] ❌ [DynamicTaskSearch] グループ移行協調エラー:", error);
-      return false;
-    }
-  }
-
-  /**
-   * 次のグループを決定
-   * 【追加】step3-loop.jsのグループ順序と整合性を保つ
-   */
-  determineNextGroup(currentGroup) {
-    try {
-      const taskGroups = window.globalState?.taskGroups;
-      if (!taskGroups || !Array.isArray(taskGroups)) {
-        log.warn("[3-4] ⚠️ [DynamicTaskSearch] taskGroups未定義");
-        return null;
-      }
-
-      // 現在のグループのインデックスを検索
-      const currentIndex = taskGroups.findIndex(
-        (group) => group.groupNumber === currentGroup.groupNumber,
-      );
-
-      if (currentIndex === -1) {
-        log.warn(
-          "[3-4] ⚠️ [DynamicTaskSearch] 現在のグループがtaskGroups内に見つからない",
-        );
-        return null;
-      }
-
-      // 次のグループを取得
-      const nextIndex = currentIndex + 1;
-      if (nextIndex >= taskGroups.length) {
-        log.info(
-          "[3-4] 📋 [DynamicTaskSearch] 最後のグループ完了 - 次のグループなし",
-        );
-        return null;
-      }
-
-      const nextGroup = taskGroups[nextIndex];
-
-      return nextGroup;
-    } catch (error) {
-      log.error("[3-4] ❌ [DynamicTaskSearch] 次のグループ決定エラー:", error);
-      return null;
     }
   }
 
