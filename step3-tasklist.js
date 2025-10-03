@@ -1112,31 +1112,8 @@ async function findNextAvailableTask() {
       });
     }
 
-    // フォールバック: 従来の方法
-    if (typeof window.processIncompleteTasks === "function") {
-      // 既存のタスク処理システムを活用
-      log.debug("[3-2] 🔗 [次タスク検索] 既存システム活用（フォールバック）");
-      return null; // 既存システムに委譲
-    }
-
-    // 緊急時の代替実装：現在のタスクリストから次の未処理タスクを探す
-    if (window.currentTaskList && Array.isArray(window.currentTaskList)) {
-      const availableTask = window.currentTaskList.find(
-        (task) => task && !task.completed && !task.processing && task.prompt,
-      );
-
-      if (availableTask) {
-        log.info("[3-2] 🎯 [次タスク検索] 発見（フォールバック）:", {
-          taskId: availableTask.id,
-          aiType: availableTask.aiType,
-        });
-
-        // タスクを処理中としてマーク
-        availableTask.processing = true;
-        return availableTask;
-      }
-    }
-
+    // DynamicTaskSearchが最新データをスプレッドシートから取得して判定
+    // フォールバック処理は古いキャッシュを参照するため削除
     log.debug("[3-2] 📭 [次タスク検索] 利用可能タスクなし");
     return null;
   } catch (error) {
@@ -7442,9 +7419,6 @@ class DynamicTaskSearch {
         log.info(
           `[3-4] 🏁 グループ${currentGroup.groupNumber}完了 - step3メインループに制御移譲`,
         );
-
-        // 【修正】統一移行協調システムを使用
-        await this.initiateGroupTransition(currentGroup);
 
         // 【追加】グループ完了をglobalStateに記録（step3との協調用）
         if (window.globalState) {
