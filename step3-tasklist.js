@@ -7652,6 +7652,43 @@ async function executeStep3(taskList) {
 
     taskList = window.globalState?.taskGroups || [];
 
+    // 🔧 [FIX] スプレッドシートデータを再取得（グループ切り替え時の最新データ反映）
+    const sheetName =
+      window.globalState?.sheetName ||
+      `シート${window.globalState?.gid || "0"}`;
+    const range = `'${sheetName}'!A1:${SPREADSHEET_RANGE_CONFIG.MAX_COLUMN}${SPREADSHEET_RANGE_CONFIG.MAX_ROW}`;
+    const spreadsheetId = window.globalState?.spreadsheetId;
+    const token = window.globalState?.authToken;
+
+    if (spreadsheetId && token) {
+      try {
+        const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+        const response = await window.fetchWithTokenRefresh(apiUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.values) {
+            window.globalState.currentSpreadsheetData = data.values;
+            ExecuteLogger.info(
+              "✅ [DATA-REFRESH] スプレッドシートデータ再取得完了:",
+              {
+                行数: data.values.length,
+                列数: data.values[0]?.length || 0,
+              },
+            );
+          }
+        }
+      } catch (error) {
+        ExecuteLogger.error(
+          "❌ [DATA-REFRESH] スプレッドシートデータ再取得エラー:",
+          error,
+        );
+        // エラーでも処理継続（古いデータ使用）
+      }
+    }
+
     if (taskList.length === 0) {
       ExecuteLogger.warn("⚠️ [DATA-SOURCE] タスクグループが見つかりません");
       throw new Error(
