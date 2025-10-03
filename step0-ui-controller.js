@@ -520,6 +520,71 @@ async function savUrlsToStorage() {
   });
 }
 
+// バックアップ用ディレクトリハンドルを保存/取得するためのIndexedDB
+let backupDirHandle = null;
+
+// IndexedDBからディレクトリハンドルを取得
+async function getBackupDirHandle() {
+  if (backupDirHandle) return backupDirHandle;
+
+  return new Promise((resolve) => {
+    const request = indexedDB.open("AutoAIBackup", 1);
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains("handles")) {
+        db.createObjectStore("handles");
+      }
+    };
+
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      const transaction = db.transaction("handles", "readonly");
+      const store = transaction.objectStore("handles");
+      const getRequest = store.get("backupDir");
+
+      getRequest.onsuccess = () => {
+        backupDirHandle = getRequest.result;
+        resolve(backupDirHandle);
+      };
+
+      getRequest.onerror = () => {
+        resolve(null);
+      };
+    };
+
+    request.onerror = () => {
+      resolve(null);
+    };
+  });
+}
+
+// IndexedDBにディレクトリハンドルを保存
+async function saveBackupDirHandle(handle) {
+  return new Promise((resolve) => {
+    const request = indexedDB.open("AutoAIBackup", 1);
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains("handles")) {
+        db.createObjectStore("handles");
+      }
+    };
+
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      const transaction = db.transaction("handles", "readwrite");
+      const store = transaction.objectStore("handles");
+      store.put(handle, "backupDir");
+
+      transaction.oncomplete = () => {
+        backupDirHandle = handle;
+        resolve();
+      };
+    };
+  });
+}
+
 // 自動バックアップを実行
 async function autoBackupUrls() {
   try {
@@ -533,28 +598,98 @@ async function autoBackupUrls() {
     };
 
     const jsonStr = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-
     const timestamp = new Date()
       .toISOString()
       .replace(/[:.]/g, "-")
       .slice(0, -5);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `autoai-urls-backup-${timestamp}.json`;
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const filename = `autoai-urls-backup-${timestamp}.json`;
+
+    // File System Access APIを使用して特定フォルダに保存
+    let dirHandle = await getBackupDirHandle();
+
+    // ディレクトリハンドルがない、または権限がない場合
+    if (!dirHandle) {
+      try {
+        // ユーザーにフォルダを選択してもらう
+        dirHandle = await window.showDirectoryPicker({
+          mode: "readwrite",
+          startIn: "downloads",
+        });
+        await saveBackupDirHandle(dirHandle);
+        log.info("📁 バックアップフォルダを設定しました:", dirHandle.name);
+      } catch (err) {
+        log.warn(
+          "フォルダ選択がキャンセルされました。通常のダウンロードにフォールバック",
+        );
+        // フォールバック: 通常のダウンロード
+        await fallbackDownload(jsonStr, filename);
+        return;
+      }
+    }
+
+    // 権限確認
+    const permission = await dirHandle.queryPermission({ mode: "readwrite" });
+    if (permission !== "granted") {
+      const requestPermission = await dirHandle.requestPermission({
+        mode: "readwrite",
+      });
+      if (requestPermission !== "granted") {
+        log.warn(
+          "フォルダへの書き込み権限がありません。通常のダウンロードにフォールバック",
+        );
+        await fallbackDownload(jsonStr, filename);
+        return;
+      }
+    }
+
+    // ファイルに書き込み
+    const fileHandle = await dirHandle.getFileHandle(filename, {
+      create: true,
+    });
+    const writable = await fileHandle.createWritable();
+    await writable.write(jsonStr);
+    await writable.close();
 
     log.debug(
-      `📦 自動バックアップ実行: ${Object.keys(savedUrls).length}件のURL`,
+      `📦 自動バックアップ実行: ${dirHandle.name}/${filename} (${Object.keys(savedUrls).length}件のURL)`,
     );
   } catch (error) {
     log.error("自動バックアップエラー:", error);
+    // エラー時は通常のダウンロードにフォールバック
+    try {
+      const exportData = {
+        version: STORAGE_VERSION,
+        exportedAt: new Date().toISOString(),
+        exportedFrom: "AutoAI URL Manager (Auto Backup)",
+        urlCount: Object.keys(savedUrls).length,
+        urls: savedUrls,
+        tagColors: tagColors,
+      };
+      const jsonStr = JSON.stringify(exportData, null, 2);
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, -5);
+      await fallbackDownload(jsonStr, `autoai-urls-backup-${timestamp}.json`);
+    } catch (fallbackError) {
+      log.error("フォールバックダウンロードエラー:", fallbackError);
+    }
   }
+}
+
+// 通常のダウンロード（フォールバック）
+async function fallbackDownload(content, filename) {
+  const blob = new Blob([content], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  log.debug("📦 フォールバックダウンロード実行");
 }
 
 // フィードバック表示
