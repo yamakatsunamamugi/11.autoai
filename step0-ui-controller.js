@@ -1590,15 +1590,29 @@ async function showOpenUrlDialog(targetInput) {
     sortedFolders.forEach((folder) => {
       const urlsInFolder = urlsByFolder[folder];
 
-      // フォルダ内のURLをソート（お気に入りを上に、その後タイトル順）
+      // フォルダ内のURLをソート（カスタム順序→お気に入りを上に、その後タイトル順）
       const sortedUrls = urlsInFolder.sort(
         ([titleA, valueA], [titleB, valueB]) => {
           const dataA =
-            typeof valueA === "string" ? { favorite: false } : valueA;
+            typeof valueA === "string"
+              ? { favorite: false, order: undefined }
+              : valueA;
           const dataB =
-            typeof valueB === "string" ? { favorite: false } : valueB;
+            typeof valueB === "string"
+              ? { favorite: false, order: undefined }
+              : valueB;
+
+          const orderA = dataA.order;
+          const orderB = dataB.order;
           const favA = dataA.favorite || false;
           const favB = dataB.favorite || false;
+
+          // カスタム順序が設定されている場合は優先
+          if (orderA !== undefined && orderB !== undefined) {
+            return orderA - orderB;
+          }
+          if (orderA !== undefined) return -1;
+          if (orderB !== undefined) return 1;
 
           // お気に入りを優先
           if (favA && !favB) return -1;
@@ -1683,7 +1697,7 @@ async function showOpenUrlDialog(targetInput) {
       savedUrlsList.appendChild(folderContent);
 
       // フォルダ内の各URLを表示
-      sortedUrls.forEach(([title, value]) => {
+      sortedUrls.forEach(([title, value], index) => {
         // v5形式とv4形式とv3形式とv1形式の両方に対応
         const urlData =
           typeof value === "string"
@@ -1828,10 +1842,40 @@ async function showOpenUrlDialog(targetInput) {
           }
         });
 
+        // 上へ移動ボタン
+        const moveUpBtn = document.createElement("button");
+        moveUpBtn.style.cssText =
+          "padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+        moveUpBtn.textContent = "↑";
+        moveUpBtn.title = "上へ移動";
+        moveUpBtn.disabled = index === 0; // 最初のアイテムは上に移動できない
+        moveUpBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          await moveUrlInFolder(folder, index, index - 1);
+          await showOpenUrlDialog(targetInput);
+          showFeedback(`"${title}" を上へ移動しました`, "success");
+        });
+
+        // 下へ移動ボタン
+        const moveDownBtn = document.createElement("button");
+        moveDownBtn.style.cssText =
+          "padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;";
+        moveDownBtn.textContent = "↓";
+        moveDownBtn.title = "下へ移動";
+        moveDownBtn.disabled = index === sortedUrls.length - 1; // 最後のアイテムは下に移動できない
+        moveDownBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          await moveUrlInFolder(folder, index, index + 1);
+          await showOpenUrlDialog(targetInput);
+          showFeedback(`"${title}" を下へ移動しました`, "success");
+        });
+
         buttonContainer.appendChild(openUrlBtn);
         buttonContainer.appendChild(tagBtn);
         buttonContainer.appendChild(editBtn);
         buttonContainer.appendChild(deleteBtn);
+        buttonContainer.appendChild(moveUpBtn);
+        buttonContainer.appendChild(moveDownBtn);
 
         item.appendChild(radioBtn);
         item.appendChild(starBtn);
@@ -1886,6 +1930,61 @@ async function showOpenUrlDialog(targetInput) {
       }
     };
   }
+}
+
+// URLの順序を変更（フォルダ内）
+async function moveUrlInFolder(folder, fromIndex, toIndex) {
+  // フォルダ内のURLを取得
+  const urlsInFolder = Object.entries(savedUrls).filter(([title, value]) => {
+    const urlData = typeof value === "string" ? { folder: "" } : value;
+    return (urlData.folder || "") === folder;
+  });
+
+  // ソート（カスタム順序→お気に入り→タイトル順）
+  const sortedUrls = urlsInFolder.sort(([titleA, valueA], [titleB, valueB]) => {
+    const dataA =
+      typeof valueA === "string"
+        ? { favorite: false, order: undefined }
+        : valueA;
+    const dataB =
+      typeof valueB === "string"
+        ? { favorite: false, order: undefined }
+        : valueB;
+
+    const orderA = dataA.order;
+    const orderB = dataB.order;
+    const favA = dataA.favorite || false;
+    const favB = dataB.favorite || false;
+
+    if (orderA !== undefined && orderB !== undefined) {
+      return orderA - orderB;
+    }
+    if (orderA !== undefined) return -1;
+    if (orderB !== undefined) return 1;
+
+    if (favA && !favB) return -1;
+    if (!favA && favB) return 1;
+
+    return titleA.localeCompare(titleB);
+  });
+
+  // order値が設定されていない場合は全アイテムに割り当て
+  sortedUrls.forEach(([title, value], index) => {
+    if (savedUrls[title].order === undefined) {
+      savedUrls[title].order = index;
+    }
+  });
+
+  // fromIndexとtoIndexのorder値を入れ替え
+  const [titleFrom] = sortedUrls[fromIndex];
+  const [titleTo] = sortedUrls[toIndex];
+
+  const tempOrder = savedUrls[titleFrom].order;
+  savedUrls[titleFrom].order = savedUrls[titleTo].order;
+  savedUrls[titleTo].order = tempOrder;
+
+  // 保存
+  await savUrlsToStorage();
 }
 
 // エクスポート機能：URLデータをJSONファイルとしてダウンロード
