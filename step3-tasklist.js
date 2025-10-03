@@ -445,22 +445,14 @@ async function executeAsyncBatchProcessing(batchPromises, originalTasks = []) {
   // 全てのタスクの完了を待機
   const results = await Promise.all(enhancedPromises);
 
-  log.info(`[3-0] 🏁 [非同期バッチ処理] 全タスク完了:`, {
+  log.info(`[3-0] 🏁 [非同期バッチ処理] バッチ完了:`, {
     total: results.length,
     fulfilled: results.filter((r) => r.status === "fulfilled").length,
     rejected: results.filter((r) => r.status === "rejected").length,
   });
 
-  // Wake Lock解放（全タスク完了時）
-  if (window.releaseSleep && typeof window.releaseSleep === "function") {
-    try {
-      log.info("[3-0] 🔓 [非同期バッチ処理] Wake Lock解放を実行");
-      await window.releaseSleep();
-      log.info("[3-0] ✅ [非同期バッチ処理] Wake Lock解放完了");
-    } catch (error) {
-      log.error("[3-0] ❌ [非同期バッチ処理] Wake Lock解放エラー:", error);
-    }
-  }
+  // Wake Lock解放はcheckAndHandleGroupCompletion内で全グループ完了時に実行
+  // バッチ完了≠全グループ完了のため、ここでは解放しない
 
   return results;
 }
@@ -10886,6 +10878,21 @@ async function executeStep3(taskList) {
   }
 
   // executeStep3関数定義完了
+
+  // グループ完了チェックと次グループへの移行
+  // 全タスク完了後、利用可能なタスクがあるか確認し、なければグループ完了処理を実行
+  try {
+    ExecuteLogger.info(
+      "[3-0] 🔍 [GROUP-TRANSITION] バッチ完了後のグループ完了チェック開始",
+    );
+    await startNextTaskIfAvailable(0);
+  } catch (error) {
+    ExecuteLogger.error(
+      "[3-0] ❌ [GROUP-TRANSITION] グループ完了チェックエラー:",
+      error,
+    );
+  }
+
   return results;
 }
 
