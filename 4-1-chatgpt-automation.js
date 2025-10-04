@@ -2133,66 +2133,25 @@ async function reportSelectorError(selectorKey, error, selectors) {
     const retryManager = new ChatGPTRetryManager();
     const result = await retryManager.executeWithRetry(
       async () => {
-        const modelButton = await findElement(
-          SELECTORS.modelButton,
-          "モデルボタン",
-        );
-        await openModelMenu(modelButton);
-        await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+        // 共通処理を使用
+        const modelItems = await _openModelMenuAndGetItems();
 
-        const modelMenuEl = await findElement(
-          SELECTORS.modelMenu,
-          "モデルメニュー",
-        );
-        if (!modelMenuEl) throw new Error("モデルメニューが開きません");
+        // スプレッドシート指定のモデルを探す
+        const target = modelItems.find((item) => item.name.includes(modelName));
 
-        // メインメニューから検索
-        const mainMenuItems = modelMenuEl.querySelectorAll(
-          '[role="menuitem"][data-testid^="model-switcher-"]',
-        );
-        for (const item of mainMenuItems) {
-          const itemText = getCleanText(item);
-          if (itemText.includes(modelName)) {
-            item.click();
-            await sleep(1000);
-            return { success: true, selected: itemText };
-          }
-        }
-
-        // レガシーメニューから検索
-        const legacyButton = Array.from(
-          modelMenuEl.querySelectorAll('[role="menuitem"]'),
-        ).find(
-          (el) => el.textContent && el.textContent.includes("レガシーモデル"),
-        );
-
-        if (legacyButton) {
-          legacyButton.click();
-          await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT);
-
-          const legacyMenu = await findElement(
-            [
-              '[data-side="right"][role="menu"][data-radix-menu-content][data-state="open"]',
-            ],
-            "レガシーメニュー",
-            3,
+        if (!target) {
+          // メニューを閉じる
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
           );
-
-          if (legacyMenu) {
-            const legacyItems =
-              legacyMenu.querySelectorAll('[role="menuitem"]');
-            for (const item of legacyItems) {
-              const itemText = getCleanText(item);
-              if (itemText.includes(modelName)) {
-                item.click();
-                await sleep(1000);
-                return { success: true, selected: itemText };
-              }
-            }
-          }
+          throw new Error(`【Step 4-3】モデル '${modelName}' が見つかりません`);
         }
 
-        throw new Error(`【Step 4-3】モデル '${modelName}' が見つかりません`);
+        // クリック（メニューは自動的に閉じる）
+        target.element.click();
+        await sleep(1000);
+
+        return { success: true, selected: target.name };
       },
       "【Step 4-3】ChatGPTモデル選択",
       { modelName },
@@ -2203,6 +2162,80 @@ async function reportSelectorError(selectorKey, error, selectors) {
     }
 
     return result;
+  }
+
+  /**
+   * 🔧 共通処理: モデルメニューを開いて全アイテムを取得
+   * @description 検出システムと通常選択で共通利用
+   * @returns {Promise<Array>} - { name: string, element: Element }の配列
+   */
+  async function _openModelMenuAndGetItems() {
+    const modelButton = await findElement(
+      SELECTORS.modelButton,
+      "モデルボタン",
+    );
+    if (!modelButton) {
+      throw new Error("モデルボタンが見つかりません");
+    }
+
+    // PointerEventでメニューを開く（検出システムと同じロジック）
+    modelButton.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
+    await sleep(100);
+    modelButton.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    await sleep(1500);
+
+    const modelMenu = await findElement(SELECTORS.modelMenu, "モデルメニュー");
+    if (!modelMenu) {
+      throw new Error("モデルメニューが開きません");
+    }
+
+    const items = [];
+
+    // メインメニューアイテム取得
+    const mainMenuItems = modelMenu.querySelectorAll(
+      '[role="menuitem"][data-testid^="model-switcher-"]',
+    );
+    mainMenuItems.forEach((item) => {
+      const modelName = getCleanText(item);
+      if (modelName && !modelName.includes("レガシー")) {
+        items.push({ name: modelName, element: item });
+      }
+    });
+
+    // 「レガシーモデル」サブメニュー取得
+    const findElementByText = (selector, text, parentElement = document) => {
+      const elements = parentElement.querySelectorAll(selector);
+      return Array.from(elements).find(
+        (el) => el.textContent && el.textContent.trim().includes(text),
+      );
+    };
+
+    const legacyButton =
+      modelMenu.querySelector('[role="menuitem"][data-has-submenu]') ||
+      findElementByText('[role="menuitem"]', "レガシーモデル", modelMenu);
+
+    if (legacyButton) {
+      legacyButton.click();
+      await sleep(1500);
+
+      // レガシーサブメニュー取得
+      const allMenus = document.querySelectorAll('[role="menu"]');
+      allMenus.forEach((menu) => {
+        if (menu !== modelMenu) {
+          const legacyItems = menu.querySelectorAll('[role="menuitem"]');
+          legacyItems.forEach((item) => {
+            const modelName = getCleanText(item);
+            if (modelName && modelName.includes("GPT")) {
+              items.push({ name: modelName, element: item });
+            }
+          });
+        }
+      });
+    }
+
+    return items;
   }
 
   // ==========================================================
