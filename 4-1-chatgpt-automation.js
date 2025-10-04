@@ -2691,8 +2691,21 @@ async function reportSelectorError(selectorKey, error, selectors) {
           });
         }
 
-        const modelName = taskData.model || "";
-        const featureName = taskData.function || null;
+        let modelName = taskData.model || "";
+        let featureName = taskData.function || null;
+
+        // モデルが指定されていない場合、現在のモデルを検出
+        if (!modelName) {
+          try {
+            const currentModel = await getCurrentModelChatGPT();
+            if (currentModel) {
+              modelName = currentModel;
+              log.debug(`🔍 [ChatGPT] 現在のモデルを自動検出: ${modelName}`);
+            }
+          } catch (detectError) {
+            log.warn("[ChatGPT] モデル自動検出に失敗:", detectError);
+          }
+        }
 
         logWithTimestamp(`【Step 4-1】選択されたモデル: ${modelName}`, "info");
         logWithTimestamp(

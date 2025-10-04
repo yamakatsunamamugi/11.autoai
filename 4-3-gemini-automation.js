@@ -760,6 +760,30 @@ const log = {
   }
 
   // ========================================
+  // 現在選択されているモデルを取得
+  // ========================================
+  async function getCurrentModelGemini() {
+    try {
+      const modelDisplayElements = SELECTORS.modelDisplay;
+
+      for (const selector of modelDisplayElements) {
+        const element = findElement([selector]);
+        if (element) {
+          const modelText = element.textContent?.trim();
+          if (modelText) {
+            return modelText;
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      log.warn("[Gemini] モデル取得エラー:", error);
+      return null;
+    }
+  }
+
+  // ========================================
   // Step 4-0-2: 選択済み機能の解除
   // ========================================
   async function deselectAllFeatures() {
@@ -1710,8 +1734,21 @@ const log = {
         promptText = taskData.prompt || "テストメッセージです";
       }
 
-      const modelName = taskData.model || "";
-      const featureName = taskData.function || ""; // feature → function に修正
+      let modelName = taskData.model || "";
+      let featureName = taskData.function || ""; // feature → function に修正
+
+      // モデルが指定されていない場合、現在のモデルを検出
+      if (!modelName) {
+        try {
+          const currentModel = await getCurrentModelGemini();
+          if (currentModel) {
+            modelName = currentModel;
+            log.debug(`🔍 [Gemini] 現在のモデルを自動検出: ${modelName}`);
+          }
+        } catch (detectError) {
+          log.warn("[Gemini] モデル自動検出に失敗:", detectError);
+        }
+      }
 
       // 🔍 [DEBUG] タスクデータの詳細確認
       log.debug("📋 [Gemini Debug] TaskData詳細:", {
