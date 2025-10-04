@@ -5693,7 +5693,7 @@ class TaskStatusManager {
       // 書き込み前に現在値を確認（競合状態回避）
       const currentValue = await this.getCellValue(task);
       if (currentValue && currentValue.startsWith("作業中")) {
-        ExecuteLogger.warn(`⚠️ すでに作業中: ${range}`);
+        ExecuteLogger.debug(`⚠️ すでに作業中: ${range}`);
         return false;
       }
 

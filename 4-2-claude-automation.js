@@ -5025,6 +5025,18 @@
           }
           log.debug("─".repeat(50));
         } else {
+          // 🔍 [MODEL-DEBUG-5] elseブロックに入った理由の診断
+          log.error(
+            "🔍 [MODEL-DEBUG-5] エラー発生: モデル選択処理に入れませんでした",
+          );
+          log.error("  - modelName の値:", modelName);
+          log.error("  - modelName の型:", typeof modelName);
+          log.error('  - modelName === "":', modelName === "");
+          log.error('  - modelName === "設定なし":', modelName === "設定なし");
+          log.error('  - modelName === "未指定":', modelName === "未指定");
+          log.error("  - taskData.model の元の値:", taskData?.model);
+          log.error("  - 条件チェック失敗の理由を上記から特定してください");
+
           throw new Error(
             "モデル名が指定されていません。スプレッドシートのモデル行を確認してください。",
           );
