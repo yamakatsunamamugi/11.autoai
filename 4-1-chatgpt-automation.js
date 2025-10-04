@@ -3770,13 +3770,17 @@ async function reportSelectorError(selectorKey, error, selectors) {
                 // デバッグログ削除済み
                 const result = await executeTask(taskToExecute);
                 // デバッグログ削除済み
-                log.warn(
+                log.info(
                   `✅ [ChatGPT-直接実行方式] executeTask完了 [ID:${requestId}]:`,
-                  {
-                    success: result?.success,
-                    hasResult: !!result,
-                    resultKeys: result ? Object.keys(result) : [],
-                  },
+                  JSON.stringify(
+                    {
+                      success: result?.success,
+                      hasResult: !!result,
+                      resultKeys: result ? Object.keys(result) : [],
+                    },
+                    null,
+                    2,
+                  ),
                 );
                 // 全AI統一形式で返す（二重構造を解消）
                 sendResponse(result);
