@@ -3022,22 +3022,32 @@ async function generateTaskList(
             groupType: taskGroup.groupType,
             row: row + 1, // 1-basedの行番号
             column: answerColumn, // プロンプト列ではなく回答列を設定
-            prompt: `現在${answerColumn ? `${answerColumn}${row + 1}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row + 1}`).join(",") : `行${row + 1}`}の作業中です。\n\n${prompts.join("\n\n")}`, // 1-basedの行番号
+            prompt: prompts.join("\n\n"), // セル位置はautomation.js側で追加される
             ai: aiType, // 🔧 [FIX] 変換後のaiTypeを使用
             aiType:
               taskGroup.groupType === "3種類AI"
                 ? "3種類（ChatGPT・Gemini・Claude）"
                 : aiType, // Step4互換 - lowercase変換削除
             model:
-              spreadsheetData[modelRow - 1] && promptColumns[0]
-                ? spreadsheetData[modelRow - 1][columnToIndex(promptColumns[0])]
-                : "",
+              taskGroup.groupType === "3種類AI" && answerColumn
+                ? spreadsheetData[modelRow - 1]?.[
+                    columnToIndex(answerColumn)
+                  ] || ""
+                : spreadsheetData[modelRow - 1] && promptColumns[0]
+                  ? spreadsheetData[modelRow - 1][
+                      columnToIndex(promptColumns[0])
+                    ]
+                  : "",
             function:
-              spreadsheetData[functionRow - 1] && promptColumns[0]
-                ? spreadsheetData[functionRow - 1][
-                    columnToIndex(promptColumns[0])
-                  ]
-                : "",
+              taskGroup.groupType === "3種類AI" && answerColumn
+                ? spreadsheetData[functionRow - 1]?.[
+                    columnToIndex(answerColumn)
+                  ] || ""
+                : spreadsheetData[functionRow - 1] && promptColumns[0]
+                  ? spreadsheetData[functionRow - 1][
+                      columnToIndex(promptColumns[0])
+                    ]
+                  : "",
             logCell: taskGroup.columns?.log
               ? `${taskGroup.columns.log}${row + 1}` // 1-basedの行番号
               : taskGroup.logColumn
@@ -3112,8 +3122,7 @@ async function generateTaskList(
           groupNumber: taskGroup.groupNumber,
           groupType: taskGroup.groupType,
           row: row + 1, // 1-basedの行番号
-          // Step 4-5-3: 統一プロンプト生成ロジック（作業列を優先表示）
-          prompt: `現在${taskGroup.columns.work ? `${taskGroup.columns.work}${row + 1}` : promptColumns.length > 0 ? promptColumns.map((col) => `${col}${row + 1}`).join(",") : `行${row + 1}`}の作業中です。\n\n${prompts.join("\n\n")}`, // 1-basedの行番号
+          prompt: prompts.join("\n\n"), // セル位置はautomation.js側で追加される
           ai: taskGroup.groupType,
           aiType: taskGroup.groupType, // Step4互換 - lowercase変換削除
           model: "",

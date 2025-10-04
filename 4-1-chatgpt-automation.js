@@ -2694,19 +2694,6 @@ async function reportSelectorError(selectorKey, error, selectors) {
         let modelName = taskData.model || "";
         let featureName = taskData.function || null;
 
-        // モデルが指定されていない場合、現在のモデルを検出
-        if (!modelName) {
-          try {
-            const currentModel = await getCurrentModelChatGPT();
-            if (currentModel) {
-              modelName = currentModel;
-              log.debug(`🔍 [ChatGPT] 現在のモデルを自動検出: ${modelName}`);
-            }
-          } catch (detectError) {
-            log.warn("[ChatGPT] モデル自動検出に失敗:", detectError);
-          }
-        }
-
         logWithTimestamp(`【Step 4-1】選択されたモデル: ${modelName}`, "info");
         logWithTimestamp(
           `【Step 4-1】選択された機能: ${featureName || "設定なし"}`,
@@ -2830,9 +2817,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
             "success",
           );
         } else {
-          logWithTimestamp(
-            "【Step 4-3】モデル選択をスキップ（モデル名未指定）",
-            "info",
+          throw new Error(
+            "モデル名が指定されていません。スプレッドシートのモデル行を確認してください。",
           );
         }
 

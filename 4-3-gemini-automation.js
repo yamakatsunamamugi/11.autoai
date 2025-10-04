@@ -1044,8 +1044,9 @@ const log = {
     log.debug("【Step 4-3】モデル選択", modelName);
 
     if (!modelName || modelName === "" || modelName === "設定なし") {
-      log.debug("モデル選択をスキップ");
-      return { success: true, skipped: true };
+      throw new Error(
+        "モデル名が指定されていません。スプレッドシートのモデル行を確認してください。",
+      );
     }
 
     const retryManager = new GeminiRetryManager();

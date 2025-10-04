@@ -4986,9 +4986,8 @@
           }
           log.debug("─".repeat(50));
         } else {
-          log.debug(
-            "%c⏭️【Step 4-3-1】モデル選択をスキップ（設定なし）",
-            "color: #9E9E9E; font-style: italic;",
+          throw new Error(
+            "モデル名が指定されていません。スプレッドシートのモデル行を確認してください。",
           );
         }
 
