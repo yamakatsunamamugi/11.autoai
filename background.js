@@ -1292,6 +1292,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendTime: request.sendTime,
       taskInfo: request.taskInfo,
       logCell: request.logCell, // 🔍 logCell受信状況確認
+      originalAiType: request.originalAiType, // 🔍 3種類AI判定用
     });
 
     // 🔍 URL記録デバッグ - URLが含まれているかチェック
@@ -1301,6 +1302,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       hasUrl: !!request.taskInfo?.url,
       urlValue: request.taskInfo?.url,
       aiType: request.taskInfo?.aiType,
+      originalAiType: request.originalAiType,
     });
 
     // 非同期処理を適切にラップして実行
