@@ -3367,6 +3367,14 @@ async function reportSelectorError(selectorKey, error, selectors) {
   window.ChatGPTAutomationV2 = automationAPI;
   window.ChatGPTAutomation = automationAPI;
 
+  console.log("🔍 [VERIFY-1] 最初のChatGPTAutomation設定直後:");
+  console.log(
+    "  - detectChatGPTModelsAndFeatures:",
+    typeof window.ChatGPTAutomation.detectChatGPTModelsAndFeatures,
+  );
+  console.log("  - executeTask:", typeof window.ChatGPTAutomation.executeTask);
+  console.log("  - Object.keys:", Object.keys(window.ChatGPTAutomation));
+
   // グローバル関数として直接アクセス可能にする
   window.executeTask = executeTask;
   window.runAutomation = runAutomation;
@@ -3864,6 +3872,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
   );
 
   // ChatGPTAutomation オブジェクトを global に公開
+  console.log("🔍 [VERIFY-2] Object.assign実行前:");
+  console.log(
+    "  - detectChatGPTModelsAndFeatures:",
+    typeof window.ChatGPTAutomation.detectChatGPTModelsAndFeatures,
+  );
+
   window.ChatGPTAutomation = window.ChatGPTAutomation || {};
   Object.assign(window.ChatGPTAutomation, {
     detectChatGPTModelsAndFeatures,
@@ -3879,6 +3893,13 @@ async function reportSelectorError(selectorKey, error, selectors) {
     selectModelChatGPT,
     selectFunctionChatGPT,
   });
+
+  console.log("🔍 [VERIFY-3] Object.assign実行後:");
+  console.log(
+    "  - detectChatGPTModelsAndFeatures:",
+    typeof window.ChatGPTAutomation.detectChatGPTModelsAndFeatures,
+  );
+  console.log("  - Object.keys:", Object.keys(window.ChatGPTAutomation));
 
   logWithTimestamp(
     "✅ ChatGPT Automation Enhanced - インデックス選択機能追加完了",

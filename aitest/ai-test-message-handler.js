@@ -140,6 +140,12 @@
                   typeof window.ChatGPTAutomation
                     .detectChatGPTModelsAndFeatures === "function"
                 ) {
+                  console.log("🔍 [VERIFY-4] 統合テスト呼び出し時点:");
+                  console.log(
+                    "  - detectChatGPTModelsAndFeatures: function exists",
+                  );
+                  console.log(`  - retry: ${detectionRetryCount}`);
+
                   console.log(
                     `📋 [ChatGPT] Detecting models and features... (retry ${detectionRetryCount})`,
                   );
@@ -153,6 +159,18 @@
                     result = { models: [], features: [] };
                     break;
                   }
+                } else {
+                  console.log("🔍 [VERIFY-4] 統合テスト呼び出し時点:");
+                  console.log(
+                    "  - ChatGPTAutomation:",
+                    typeof window.ChatGPTAutomation,
+                  );
+                  console.log(
+                    "  - detectChatGPTModelsAndFeatures:",
+                    typeof window.ChatGPTAutomation
+                      ?.detectChatGPTModelsAndFeatures,
+                  );
+                  console.log(`  - retry: ${detectionRetryCount}`);
                 }
 
                 console.log(
