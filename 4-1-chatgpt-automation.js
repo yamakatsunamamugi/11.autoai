@@ -2366,14 +2366,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
     );
 
     if (moreButton) {
-      moreButton.dispatchEvent(
-        new PointerEvent("pointerdown", { bubbles: true }),
-      );
-      await sleep(100);
-      moreButton.dispatchEvent(
-        new PointerEvent("pointerup", { bubbles: true }),
-      );
-      await sleep(1500);
+      moreButton.click();
+      await sleep(1000);
 
       const subMenu = document.querySelector('[data-side="right"]');
       if (subMenu) {
@@ -4531,14 +4525,8 @@ async function reportSelectorError(selectorKey, error, selectors) {
 
         if (moreButton) {
           logWithTimestamp("追加機能メニュー発見、サブメニュー取得", "info");
-          moreButton.dispatchEvent(
-            new PointerEvent("pointerdown", { bubbles: true }),
-          );
-          await sleep(100);
-          moreButton.dispatchEvent(
-            new PointerEvent("pointerup", { bubbles: true }),
-          );
-          await sleep(1500);
+          moreButton.click();
+          await sleep(1000);
 
           const subMenu = document.querySelector('[data-side="right"]');
           if (subMenu) {
