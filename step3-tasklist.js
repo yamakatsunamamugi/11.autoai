@@ -4079,7 +4079,7 @@ class WindowController {
           errorMessage: error.message,
           errorType: error.constructor.name,
           isTabMissing: error?.message?.includes("No tab with id"),
-          callDuration: Date.now() - new Date(startTimestamp).getTime(),
+          callDuration: Date.now() - startTime,
         });
 
         // タブが存在しない場合の早期終了
@@ -4709,7 +4709,7 @@ class WindowLifecycleManager {
       },
       HEAVY_RESET: {
         range: [9, 20],
-        delays: [300000, 900000, 1800000, 3600000, 7200000], // 5分→15分→30分→1時間→2時間
+        delays: [300000, 600000, 900000, 1200000, 1800000], // 5分→10分→15分→20分→30分（最大30分に制限）
       },
     };
 
@@ -5229,10 +5229,21 @@ class WindowLifecycleManager {
   isNonRecoverableError(error) {
     if (!error || !error.message) return false;
 
+    // ReferenceErrorなどのプログラムエラーは即座に終了
+    if (error instanceof ReferenceError || error instanceof TypeError) {
+      ExecuteLogger.error(
+        `❌ [isNonRecoverableError] プログラムエラー検出: ${error.constructor.name}: ${error.message}`,
+      );
+      return true;
+    }
+
     const nonRecoverablePatterns = [
       /window has been closed/,
       /could not establish connection/i,
       /receiving end does not exist/i,
+      /タブID.*が無効です/,
+      /is not defined/,
+      /startTimestamp/,
     ];
 
     return nonRecoverablePatterns.some((pattern) =>

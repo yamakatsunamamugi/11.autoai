@@ -125,6 +125,101 @@ async function reportSelectorError(selectorKey, error, selectors) {
   window.CHATGPT_SCRIPT_LOADED = true;
   window.CHATGPT_SCRIPT_INIT_TIME = Date.now();
 
+  // ========================================
+  // タスク実行状態管理（重複実行防止）
+  // ========================================
+  let isExecuting = false;
+  let currentTaskId = null;
+  let taskStartTime = null;
+  let lastActivityTime = null;
+
+  // タスク実行状態を管理するヘルパー関数
+  const setExecutionState = (executing, taskId = null) => {
+    window.CHATGPT_TASK_EXECUTING = executing;
+    window.CHATGPT_CURRENT_TASK_ID = executing ? taskId : null;
+    window.CHATGPT_LAST_ACTIVITY_TIME = Date.now();
+
+    isExecuting = executing;
+    currentTaskId = executing ? taskId : null;
+    lastActivityTime = Date.now();
+
+    if (executing && taskId) {
+      window.CHATGPT_TASK_START_TIME = Date.now();
+      taskStartTime = Date.now();
+      console.log(`✅ [ChatGPT] タスク実行開始: ${taskId}`);
+    } else if (!executing) {
+      const duration = window.CHATGPT_TASK_START_TIME
+        ? Date.now() - window.CHATGPT_TASK_START_TIME
+        : 0;
+      console.log(
+        `✅ [ChatGPT] タスク実行完了 (${Math.round(duration / 1000)}秒)`,
+      );
+      window.CHATGPT_TASK_START_TIME = null;
+      taskStartTime = null;
+    }
+  };
+
+  // 実行状態を取得
+  const getExecutionStatus = () => {
+    return {
+      isExecuting: window.CHATGPT_TASK_EXECUTING || isExecuting,
+      currentTaskId: window.CHATGPT_CURRENT_TASK_ID || currentTaskId,
+      taskStartTime: window.CHATGPT_TASK_START_TIME || taskStartTime,
+      lastActivityTime: window.CHATGPT_LAST_ACTIVITY_TIME || lastActivityTime,
+      executionDuration: window.CHATGPT_TASK_START_TIME
+        ? Date.now() - window.CHATGPT_TASK_START_TIME
+        : 0,
+    };
+  };
+
+  // 重複実行チェック
+  const checkDuplicateExecution = async (taskId) => {
+    const currentStatus = getExecutionStatus();
+
+    if (window.CHATGPT_TASK_EXECUTING || currentStatus.isExecuting) {
+      // タイムアウトチェック（15分間実行状態が続いていたらリセット）
+      const timeSinceStart = currentStatus.taskStartTime
+        ? Date.now() - currentStatus.taskStartTime
+        : 0;
+      if (timeSinceStart > 15 * 60 * 1000) {
+        console.warn(
+          `⏰ [ChatGPT] タスク ${currentStatus.currentTaskId} は15分以上実行中 - リセット`,
+        );
+        setExecutionState(false);
+        return { canExecute: true };
+      } else {
+        if (currentStatus.currentTaskId === taskId) {
+          console.warn(`⚠️ [ChatGPT] タスクID ${taskId} は既に実行中です`);
+          return {
+            canExecute: false,
+            error: "Task already executing",
+            details: {
+              inProgress: true,
+              taskId: taskId,
+              executionStatus: currentStatus,
+            },
+          };
+        }
+
+        console.warn(
+          `⚠️ [ChatGPT] 別のタスク（${currentStatus.currentTaskId}）が実行中です。新しいタスク（${taskId}）は拒否されました`,
+        );
+        return {
+          canExecute: false,
+          error: "Another task is in progress",
+          details: {
+            busyWith: currentStatus.currentTaskId,
+            requestedTaskId: taskId,
+            executionStatus: currentStatus,
+          },
+        };
+      }
+    }
+
+    setExecutionState(true, taskId);
+    return { canExecute: true };
+  };
+
   // 早期メッセージリスナー登録（Content Script準備確認用）
   const earlyMessageListener = (request, sender, sendResponse) => {
     // 常にtrue返してポートを開いたままにする
@@ -2862,6 +2957,26 @@ async function reportSelectorError(selectorKey, error, selectors) {
       // ========================================
       console.log("🔍 [executeTask] タスク実行開始");
 
+      // タスクIDを取得
+      const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
+
+      // ========================================
+      // 重複実行チェック
+      // ========================================
+      console.log("🔍 [executeTask] 重複実行チェック開始");
+      const duplicateCheckResult = await checkDuplicateExecution(taskId);
+      if (!duplicateCheckResult.canExecute) {
+        console.warn(
+          `⚠️ [executeTask] 重複実行チェック失敗: ${duplicateCheckResult.error}`,
+        );
+        return {
+          success: false,
+          error: duplicateCheckResult.error,
+          ...duplicateCheckResult.details,
+        };
+      }
+      console.log("✅ [executeTask] 重複実行チェック完了");
+
       // 🔍 包括的デバッグ: 実行コンテキスト検証
       // デバッグログ削除済み
 
@@ -3663,9 +3778,17 @@ async function reportSelectorError(selectorKey, error, selectors) {
         }
 
         logWithTimestamp("【Step 4-9】✅ タスク完了", "success");
+
+        // 実行状態をリセット
+        setExecutionState(false);
+
         return result;
       } catch (error) {
-        // デバッグログ削除済み        return handleTaskError(error, taskData);
+        // デバッグログ削除済み
+        // 実行状態をリセット
+        setExecutionState(false);
+
+        return handleTaskError(error, taskData);
       }
     };
   } catch (defineError) {
