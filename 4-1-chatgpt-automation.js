@@ -3082,177 +3082,147 @@ async function reportSelectorError(selectorKey, error, selectors) {
         }
 
         // ========================================
-        // ステップ6: 応答待機（Deep Research/エージェントモード統合処理）
+        // ステップ6: 応答待機（エラーハンドリング強化版）
         // ========================================
         console.log("⏳ [Step 4-7] 応答待機開始");
         logWithTimestamp("\n【Step 4-7】応答待機", "step");
 
-        // 機能名マッピング（スプレッドシート値 → ChatGPT UI表記）
-        const featureMapping = {
-          DeepReserch: "Deep Research",
-          DeepResearch: "Deep Research",
-        };
+        // 停止ボタンが表示されるまで待機
+        let stopBtn = null;
+        let stopBtnFound = false;
 
-        let mappedFeatureName = featureMapping[featureName] || featureName;
-        if (featureName && featureMapping[featureName]) {
-          logWithTimestamp(
-            `機能名マッピング: "${featureName}" → "${mappedFeatureName}"`,
-            "info",
-          );
+        for (let i = 0; i < 30; i++) {
+          try {
+            stopBtn = await findElement(SELECTORS.stopButton, "停止ボタン", 1);
+            if (stopBtn) {
+              logWithTimestamp(
+                "【Step 4-7】停止ボタンが表示されました（応答生成中）",
+                "success",
+              );
+              stopBtnFound = true;
+              break;
+            } else {
+            }
+          } catch (error) {
+            log.debug(
+              `[Step 4-7] 停止ボタン検索エラー (${i + 1}/30): ${error.message}`,
+            );
+          }
+
+          // 停止ボタンが見つからなくても、アシスタントメッセージがあれば処理を継続
+          if (i >= 5) {
+            // 5秒待ってから確認開始
+            const assistantMessages = document.querySelectorAll(
+              '[data-message-author-role="assistant"]',
+            );
+            if (assistantMessages.length > 0) {
+              logWithTimestamp(
+                "【Step 4-7】停止ボタンは見つからないが、アシスタントメッセージを検出",
+                "warning",
+              );
+              break;
+            }
+          }
+
+          await sleep(1000);
         }
 
-        // Deep Research/エージェントモードの判定
-        const finalFeatureName = mappedFeatureName || featureName;
-        const isSpecialMode =
-          finalFeatureName &&
-          (finalFeatureName === "Deep Research" ||
-            finalFeatureName.includes("エージェント") ||
-            finalFeatureName.includes("Research"));
+        // 停止ボタンが消えるまで待機（Claude方式: 10秒間連続確認）
 
-        if (isSpecialMode) {
-          logWithTimestamp(
-            `${finalFeatureName}モード検出 - 特別待機処理を実行`,
-            "warning",
-          );
-          await handleSpecialModeWaiting(finalFeatureName);
-        } else {
-          // 通常の待機処理
-          logWithTimestamp("通常モード - 標準待機処理を実行", "info");
+        if (stopBtnFound) {
+          const maxWaitSeconds = AI_WAIT_CONFIG.MAX_WAIT / 1000;
+          const CHECK_INTERVAL = Math.ceil(
+            AI_WAIT_CONFIG.CHECK_INTERVAL / 1000,
+          ); // UI設定秒数連続で停止ボタンが消えたら完了
 
-          // 停止ボタンが表示されるまで待機
-          let stopBtn = null;
-          let stopBtnFound = false;
+          logWithTimestamp("【Step 4-7】応答生成を待機中...", "info");
 
-          for (let i = 0; i < 30; i++) {
+          let consecutiveAbsent = 0; // 停止ボタンが連続で見つからない回数
+
+          for (let i = 0; i < maxWaitSeconds; i++) {
             try {
               stopBtn = await findElement(
                 SELECTORS.stopButton,
                 "停止ボタン",
                 1,
               );
-              if (stopBtn) {
-                logWithTimestamp(
-                  "【Step 4-7】停止ボタンが表示されました（応答生成中）",
-                  "success",
-                );
-                stopBtnFound = true;
-                break;
+
+              if (!stopBtn) {
+                consecutiveAbsent++;
+
+                if (consecutiveAbsent <= 10) {
+                  log.debug(
+                    `[Step 4-7] 停止ボタン不在: ${consecutiveAbsent}秒連続`,
+                  );
+                }
+
+                // 10秒間連続で停止ボタンが見つからなければ完了
+                if (consecutiveAbsent >= CHECK_INTERVAL) {
+                  logWithTimestamp(
+                    `【Step 4-7】✅ 応答生成完了（連続非検出: ${consecutiveAbsent}秒）`,
+                    "success",
+                  );
+
+                  // 停止ボタン消滅後の3秒待機
+                  await sleep(3000);
+                  break;
+                }
+              } else {
+                // 停止ボタンが見つかったらカウントをリセット
+                if (consecutiveAbsent > 0) {
+                  log.debug(
+                    `[Step 4-7] 停止ボタン再検出。カウントリセット (${consecutiveAbsent} → 0)`,
+                  );
+                }
+                consecutiveAbsent = 0;
               }
             } catch (error) {
-              log.debug(
-                `[Step 4-7] 停止ボタン検索エラー (${i + 1}/30): ${error.message}`,
-              );
+              log.debug(`[Step 4-7] 停止ボタン再検索エラー: ${error.message}`);
+              // エラーが発生しても続行
             }
 
-            // 停止ボタンが見つからなくても、アシスタントメッセージがあれば処理を継続
-            if (i >= 5) {
-              const assistantMessages = document.querySelectorAll(
-                '[data-message-author-role="assistant"]',
+            if (i % 10 === 0 && i > 0) {
+              logWithTimestamp(
+                `【Step 4-7】応答待機中... (${i}秒経過)`,
+                "info",
               );
-              if (assistantMessages.length > 0) {
-                logWithTimestamp(
-                  "【Step 4-7】停止ボタンは見つからないが、アシスタントメッセージを検出",
-                  "warning",
-                );
-                break;
-              }
             }
 
             await sleep(1000);
           }
+        } else if (!stopBtnFound) {
+          // 停止ボタンが見つからなかった場合の代替待機
+          logWithTimestamp(
+            "【Step 4-7】停止ボタンが見つからないため、代替待機を実行",
+            "warning",
+          );
 
-          // 停止ボタンが消えるまで待機（10秒間連続確認）
-          if (stopBtnFound) {
-            const maxWaitSeconds = AI_WAIT_CONFIG.MAX_WAIT / 1000;
-            const CHECK_INTERVAL = Math.ceil(
-              AI_WAIT_CONFIG.CHECK_INTERVAL / 1000,
+          // アシスタントメッセージの出現を待つ
+          for (let i = 0; i < 30; i++) {
+            const assistantMessages = document.querySelectorAll(
+              '[data-message-author-role="assistant"]',
             );
-
-            logWithTimestamp("【Step 4-7】応答生成を待機中...", "info");
-
-            let consecutiveAbsent = 0;
-
-            for (let i = 0; i < maxWaitSeconds; i++) {
-              try {
-                stopBtn = await findElement(
-                  SELECTORS.stopButton,
-                  "停止ボタン",
-                  1,
-                );
-
-                if (!stopBtn) {
-                  consecutiveAbsent++;
-
-                  if (consecutiveAbsent <= 10) {
-                    log.debug(
-                      `[Step 4-7] 停止ボタン不在: ${consecutiveAbsent}秒連続`,
-                    );
-                  }
-
-                  if (consecutiveAbsent >= CHECK_INTERVAL) {
-                    logWithTimestamp(
-                      `【Step 4-7】✅ 応答生成完了（連続非検出: ${consecutiveAbsent}秒）`,
-                      "success",
-                    );
-                    await sleep(3000);
-                    break;
-                  }
-                } else {
-                  if (consecutiveAbsent > 0) {
-                    log.debug(
-                      `[Step 4-7] 停止ボタン再検出。カウントリセット (${consecutiveAbsent} → 0)`,
-                    );
-                  }
-                  consecutiveAbsent = 0;
-                }
-              } catch (error) {
-                log.debug(
-                  `[Step 4-7] 停止ボタン再検索エラー: ${error.message}`,
-                );
-              }
-
-              if (i % 10 === 0 && i > 0) {
+            if (assistantMessages.length > 0) {
+              const lastMessage =
+                assistantMessages[assistantMessages.length - 1];
+              const messageText = lastMessage.textContent || "";
+              if (messageText.length > 10) {
+                console.warn();
                 logWithTimestamp(
-                  `【Step 4-7】応答待機中... (${i}秒経過)`,
-                  "info",
+                  "【Step 4-7】アシスタントの応答を検出しました",
+                  "success",
                 );
+                break;
               }
-
-              await sleep(1000);
             }
-          } else if (!stopBtnFound) {
-            // 停止ボタンが見つからなかった場合の代替待機
-            logWithTimestamp(
-              "【Step 4-7】停止ボタンが見つからないため、代替待機を実行",
-              "warning",
-            );
-
-            for (let i = 0; i < 30; i++) {
-              const assistantMessages = document.querySelectorAll(
-                '[data-message-author-role="assistant"]',
-              );
-              if (assistantMessages.length > 0) {
-                const lastMessage =
-                  assistantMessages[assistantMessages.length - 1];
-                const messageText = lastMessage.textContent || "";
-                if (messageText.length > 10) {
-                  logWithTimestamp(
-                    "【Step 4-7】アシスタントの応答を検出しました",
-                    "success",
-                  );
-                  break;
-                }
-              }
-              await sleep(1000);
+            await sleep(1000);
+            if (i % 5 === 0 && i > 0) {
+              console.warn();
             }
           }
         }
 
-        await sleep(AI_WAIT_CONFIG.MEDIUM_WAIT); // 追加の待機
-
-        // テキスト取得前のDOM安定性チェック
-        logWithTimestamp("【Step 4-7】テキスト取得前の安定性チェック", "info");
-        await sleep(3000);
+        await sleep(2000); // 追加の待機
 
         // ========================================
         // ステップ7: テキスト取得
