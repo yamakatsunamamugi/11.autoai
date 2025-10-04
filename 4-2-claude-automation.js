@@ -4506,7 +4506,22 @@
           });
         }
 
+        // 🔍 [MODEL-DEBUG-1] taskData.model の詳細診断
+        log.debug("🔍 [MODEL-DEBUG-1] taskData.model の詳細:");
+        log.debug("  - 存在確認:", "model" in taskData);
+        log.debug("  - 値:", taskData?.model);
+        log.debug("  - 型:", typeof taskData?.model);
+        log.debug("  - 長さ:", taskData?.model?.length);
+        log.debug("  - JSON:", JSON.stringify(taskData?.model));
+
         const modelName = taskData?.model || "";
+
+        log.debug("🔍 [MODEL-DEBUG-2] modelName の詳細:");
+        log.debug("  - 値:", modelName);
+        log.debug("  - 型:", typeof modelName);
+        log.debug("  - 長さ:", modelName?.length);
+        log.debug("  - truthy:", !!modelName);
+
         // 🔧 [FIX] functionではなくfeatureを確認、または"じっくり考える"をデフォルトに
         const featureName =
           taskData?.feature || taskData?.function || "じっくり考える";
@@ -4623,6 +4638,30 @@
           taskData.cellInfo ||
           taskData.cell ||
           "不明";
+
+        // 🔍 [MODEL-DEBUG-3] 条件分岐前の状態診断
+        log.debug("🔍 [MODEL-DEBUG-3] 条件分岐前の状態:");
+        log.debug("  - modelName:", modelName);
+        log.debug("  - modelName (boolean):", !!modelName);
+        log.debug('  - modelName !== "":', modelName !== "");
+        log.debug('  - modelName !== "設定なし":', modelName !== "設定なし");
+        log.debug('  - modelName !== "未指定":', modelName !== "未指定");
+
+        const condition1 = !!modelName;
+        const condition2 = modelName !== "";
+        const condition3 = modelName !== "設定なし";
+        const finalCondition = condition1 && condition2 && condition3;
+
+        log.debug("🔍 [MODEL-DEBUG-4] 各条件の評価:");
+        log.debug("  - !!modelName:", condition1);
+        log.debug('  - modelName !== "":', condition2);
+        log.debug('  - modelName !== "設定なし":', condition3);
+        log.debug("  - 最終条件 (AND):", finalCondition);
+        log.debug(
+          "  - 分岐先:",
+          finalCondition ? "モデル選択処理" : "エラースロー",
+        );
+
         if (modelName && modelName !== "" && modelName !== "設定なし") {
           log.info("【Step 4-3】モデル選択:", modelName);
           log.debug(

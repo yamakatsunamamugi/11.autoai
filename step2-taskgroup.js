@@ -541,7 +541,7 @@ async function identifyTaskGroups() {
 
         // AI行の値からグループタイプを判定
         if (aiValue.includes("3種類")) {
-          currentGroup.groupType = "3type";
+          currentGroup.groupType = "3種類AI";
           currentGroup.type = "3種類AI";
           currentGroup.aiType = aiValue;
         } else if (aiValue) {
@@ -558,7 +558,7 @@ async function identifyTaskGroups() {
         // AIタイプを判定（stream-processor-v2.jsのdetectAITypeFromHeaderロジック）
         let detectedAiType = "Claude";
         if (
-          currentGroup.groupType === "3type" ||
+          currentGroup.groupType === "3種類AI" ||
           currentGroup.type === "3種類AI"
         ) {
           const headerLower = trimmedHeader.toLowerCase();

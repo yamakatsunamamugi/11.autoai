@@ -1491,7 +1491,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         const is3TypeAI =
           taskLogData.aiType?.includes("3種類") ||
-          taskLogData.aiType === "3type" ||
           taskLogData.aiType === "3種類（ChatGPT・Gemini・Claude）";
         const currentAiType =
           request.taskInfo?.aiType?.toLowerCase() || "unknown";
@@ -1593,7 +1592,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // taskLogDataが存在し、元のaiTypeに"3種類"が含まれていれば3種類AI
         const is3TypeAI =
           taskLogData?.aiType?.includes("3種類") ||
-          taskLogData?.aiType === "3type" ||
           taskLogData?.aiType === "3種類（ChatGPT・Gemini・Claude）";
 
         if (is3TypeAI) {

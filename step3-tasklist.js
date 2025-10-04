@@ -2319,7 +2319,7 @@ async function setup3TypeAIColumns(
     );
     if (success) {
       addedColumns.push({
-        type: "3type",
+        type: "3種類AI",
         column: indexToColumn(promptIndex),
         header: "ログ",
       });
@@ -2374,7 +2374,7 @@ async function setup3TypeAIColumns(
     );
     if (success) {
       addedColumns.push({
-        type: "3type",
+        type: "3種類AI",
         column: indexToColumn(insertPosition),
         header: answerHeaders[i],
       });
@@ -7882,7 +7882,7 @@ async function executeStep3(taskList) {
     const expandedTaskList = [];
     for (const task of taskList) {
       if (
-        task.aiType === "3type" ||
+        task.aiType === "3種類AI" ||
         task.aiType === "3種類（ChatGPT・Gemini・Claude）"
       ) {
         ExecuteLogger.info(
