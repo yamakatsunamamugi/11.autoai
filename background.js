@@ -1336,6 +1336,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
 
         // 🔍 3種類AI判定: キーにAIタイプを含めるかどうか
+        // 🐛 [DEBUG] 詳細ログを追加して判定ロジックを確認
+        console.log("🐛 [DEBUG-3TYPE-CHECK] aiType判定前:", {
+          "taskLogData.aiType": taskLogData.aiType,
+          "typeof aiType": typeof taskLogData.aiType,
+          "includes('3種類')結果": taskLogData.aiType?.includes("3種類"),
+          "request.originalAiType": request.originalAiType,
+          "request.taskInfo?.aiType": request.taskInfo?.aiType,
+        });
+
         const is3TypeAI = taskLogData.aiType?.includes("3種類");
         const currentAiType =
           request.taskInfo?.aiType?.toLowerCase() || "unknown";
