@@ -2281,6 +2281,77 @@ async function reportSelectorError(selectorKey, error, selectors) {
   }
 
   /**
+   * 🔧 共通処理: 機能メニューを開いて全アイテムを取得
+   * @description 検出システムと通常選択で共通利用
+   * @returns {Promise<Array>} - { name: string, element: Element }の配列
+   */
+  async function _openFunctionMenuAndGetItems() {
+    const funcMenuBtn = await findElement(
+      SELECTORS.menuButton,
+      "機能メニューボタン",
+    );
+    if (!funcMenuBtn) {
+      throw new Error("機能メニューボタンが見つかりません");
+    }
+
+    // PointerEventでメニューを開く
+    funcMenuBtn.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
+    await sleep(100);
+    funcMenuBtn.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    await sleep(1500);
+
+    const funcMenu = await findElement(SELECTORS.mainMenu, "メインメニュー");
+    if (!funcMenu) {
+      throw new Error("機能メニューが開きません");
+    }
+
+    const items = [];
+
+    // メインメニューアイテム取得
+    const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
+    menuItems.forEach((item) => {
+      const funcName = getCleanText(item);
+      if (funcName) {
+        items.push({ name: funcName, element: item });
+      }
+    });
+
+    // 「さらに表示」サブメニュー取得
+    const findElementByText = (selector, text, parentElement = document) => {
+      const elements = parentElement.querySelectorAll(selector);
+      return Array.from(elements).find(
+        (el) => el.textContent && el.textContent.trim().includes(text),
+      );
+    };
+
+    const moreButton = findElementByText(
+      '[role="menuitem"]',
+      "さらに表示",
+      funcMenu,
+    );
+
+    if (moreButton) {
+      moreButton.click();
+      await sleep(1000);
+
+      const subMenu = document.querySelector('[data-side="right"]');
+      if (subMenu) {
+        const subMenuItems = subMenu.querySelectorAll('[role="menuitemradio"]');
+        subMenuItems.forEach((item) => {
+          const funcName = getCleanText(item);
+          if (funcName) {
+            items.push({ name: funcName, element: item });
+          }
+        });
+      }
+    }
+
+    return items;
+  }
+
+  /**
    * 🎯 ChatGPT機能選択処理 - RetryManager統合
    * @description 指定された機能名の機能を選択
    * @param {string} functionName - 選択する機能名（例: "Code Interpreter", "Browse with Bing"）
@@ -2291,29 +2362,29 @@ async function reportSelectorError(selectorKey, error, selectors) {
     const retryManager = new ChatGPTRetryManager();
     const result = await retryManager.executeWithRetry(
       async () => {
-        const funcMenuBtn = await findElement(
-          SELECTORS.menuButton,
-          "機能メニューボタン",
-        );
-        await openFunctionMenu(funcMenuBtn);
+        // 共通処理を使用
+        const functionItems = await _openFunctionMenuAndGetItems();
 
-        const funcMenu = await findElement(
-          SELECTORS.mainMenu,
-          "メインメニュー",
+        // スプレッドシート指定の機能を探す
+        const target = functionItems.find((item) =>
+          item.name.includes(functionName),
         );
-        if (!funcMenu) throw new Error("機能メニューが開きません");
 
-        // メニューアイテムから検索
-        const menuItems = funcMenu.querySelectorAll('[role="menuitemradio"]');
-        for (const item of menuItems) {
-          if (getCleanText(item).includes(functionName)) {
-            item.click();
-            await sleep(1000);
-            return { success: true };
-          }
+        if (!target) {
+          // メニューを閉じる
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", code: "Escape" }),
+          );
+          throw new Error(
+            `【Step 4-4】機能 '${functionName}' が見つかりません`,
+          );
         }
 
-        throw new Error(`【Step 4-4】機能 '${functionName}' が見つかりません`);
+        // クリック（メニューは自動的に閉じる）
+        target.element.click();
+        await sleep(1000);
+
+        return { success: true };
       },
       "【Step 4-4】ChatGPT機能選択",
       { functionName },
