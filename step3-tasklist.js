@@ -2899,8 +2899,8 @@ async function generateTaskList(
 
         let aiTypes;
         if (taskGroup.groupType === "3種類AI") {
-          // 3種類AIの場合は特殊なaiTypeを設定
-          aiTypes = ["3種類（ChatGPT・Gemini・Claude）"];
+          // 3種類AIの場合は各AIごとにタスクを生成
+          aiTypes = ["ChatGPT", "Claude", "Gemini"];
         } else {
           // promptColumns[0]が存在するか確認
           if (promptColumns && promptColumns.length > 0 && promptColumns[0]) {
@@ -2930,6 +2930,18 @@ async function generateTaskList(
           const answerColumn = answerCell
             ? answerCell.match(/^([A-Z]+)/)?.[1]
             : null;
+
+          // 🔍 [MODEL-DEBUG-STEP3] answerColumn診断ログ
+          if (taskGroup.groupType === "3種類AI") {
+            log.debug("🔍 [MODEL-DEBUG-STEP3] answerColumn取得:");
+            log.debug("  - aiType:", aiType);
+            log.debug("  - answerCell:", answerCell);
+            log.debug("  - answerColumn:", answerColumn);
+            log.debug(
+              "  - taskGroup.columns.answer:",
+              taskGroup.columns.answer,
+            );
+          }
 
           // WindowControllerからtabID/windowIDを取得
           // aiTypeを正規化（大文字小文字の不一致を防ぐ）
@@ -3024,10 +3036,7 @@ async function generateTaskList(
             column: answerColumn, // プロンプト列ではなく回答列を設定
             prompt: prompts.join("\n\n"), // セル位置はautomation.js側で追加される
             ai: aiType, // 🔧 [FIX] 変換後のaiTypeを使用
-            aiType:
-              taskGroup.groupType === "3種類AI"
-                ? "3種類（ChatGPT・Gemini・Claude）"
-                : aiType, // Step4互換 - lowercase変換削除
+            aiType: aiType.toLowerCase(), // 常に個別AI名（"chatgpt"/"claude"/"gemini"）
             model:
               taskGroup.groupType === "3種類AI" && answerColumn
                 ? spreadsheetData[modelRow - 1]?.[
@@ -3067,6 +3076,41 @@ async function generateTaskList(
             sheetName: options.sheetName || "", // シート名を追加
           };
 
+          // 🔍 [MODEL-DEBUG-STEP3] モデル・機能情報取得診断
+          if (taskGroup.groupType === "3種類AI") {
+            log.debug("🔍 [MODEL-DEBUG-STEP3] モデル・機能情報取得:");
+            log.debug("  - aiType:", aiType);
+            log.debug("  - answerColumn:", answerColumn);
+            log.debug("  - modelRow:", modelRow);
+            log.debug("  - functionRow:", functionRow);
+            log.debug(
+              "  - columnToIndex(answerColumn):",
+              columnToIndex(answerColumn),
+            );
+            log.debug(
+              "  - spreadsheetData[modelRow - 1]:",
+              spreadsheetData[modelRow - 1],
+            );
+            log.debug(
+              "  - spreadsheetData[functionRow - 1]:",
+              spreadsheetData[functionRow - 1],
+            );
+            log.debug("  - 取得したmodel値:", task.model);
+            log.debug("  - 取得したfunction値:", task.function);
+
+            // 🔍 [TASK-OBJECT-VERIFICATION] taskオブジェクト作成直後の全フィールド検証
+            log.debug(
+              "🔍 [TASK-OBJECT-VERIFICATION] 作成直後のtaskオブジェクト全体:",
+            );
+            log.debug("  - task.ai:", task.ai);
+            log.debug("  - task.aiType:", task.aiType);
+            log.debug("  - task.model:", task.model);
+            log.debug("  - task.function:", task.function);
+            log.debug("  - task.column:", task.column);
+            log.debug("  - task.answerCell:", task.answerCell);
+            log.debug("  - task.row:", task.row);
+          }
+
           // デバッグログを収集（後でまとめて表示）
           debugLogs.push({
             row: row + 1, // 1-basedの行番号
@@ -3081,6 +3125,19 @@ async function generateTaskList(
           // DEBUG: タスク作成完了
 
           validTasks.push(task);
+
+          // 🔍 [VALIDTASKS-PUSH] pushされたタスクの検証
+          if (taskGroup.groupType === "3種類AI") {
+            log.debug("🔍 [VALIDTASKS-PUSH] pushされたタスク:", {
+              index: validTasks.length - 1,
+              ai: task.ai,
+              aiType: task.aiType,
+              model: task.model,
+              column: task.column,
+              row: task.row,
+            });
+          }
+
           tasksCreated++; // タスク作成数をインクリメント
         }
       } else {
@@ -3213,6 +3270,16 @@ async function generateTaskList(
     log.debug(
       `[3-4] [TaskList] 処理結果サマリー: 全${totalRows}行中、処理対象${processedRows}行、スキップ${skippedCount}行`,
     );
+
+    // 🔍 [RETURN-VALIDTASKS] 返却するタスク配列全体の検証
+    if (taskGroup.groupType === "3種類AI") {
+      log.debug("🔍 [RETURN-VALIDTASKS] 返却するタスク配列全体:");
+      validTasks.forEach((t, i) => {
+        log.debug(
+          `  [${i}] ai=${t.ai}, aiType=${t.aiType}, model=${t.model}, column=${t.column}, row=${t.row}`,
+        );
+      });
+    }
 
     // 全タスクを返す（バッチ処理はexecuteStep3のメインループで行う）
     return validTasks;
@@ -7879,82 +7946,9 @@ async function executeStep3(taskList) {
       "📋 [step4-execute.js] Step 4-6-0: 3種類AIタスクの展開処理開始",
     );
 
-    const expandedTaskList = [];
-    for (const task of taskList) {
-      if (
-        task.aiType === "3種類AI" ||
-        task.aiType === "3種類（ChatGPT・Gemini・Claude）"
-      ) {
-        ExecuteLogger.info(
-          `[step4-execute.js] Step 4-6-0-1: 3種類AIタスク検出！プロンプト: ${task.prompt?.substring(0, 30)}...`,
-        );
-
-        // グループ情報から回答列を取得
-        const taskGroup = window.globalState.taskGroups?.find(
-          (g) => g.groupNumber === task.groupNumber,
-        );
-
-        if (!taskGroup || !taskGroup.columns?.answer) {
-          ExecuteLogger.error(
-            `[step4-execute.js] Step 4-6-0-1: グループ情報または回答列が見つかりません`,
-            { groupNumber: task.groupNumber, taskGroup },
-          );
-          expandedTaskList.push(task);
-          continue;
-        }
-
-        const answerCols = taskGroup.columns.answer;
-        const chatgptCol = answerCols.chatgpt;
-        const claudeCol = answerCols.claude;
-        const geminiCol = answerCols.gemini;
-
-        if (!chatgptCol || !claudeCol || !geminiCol) {
-          ExecuteLogger.error(
-            `[step4-execute.js] Step 4-6-0-1: 3種類AI用の回答列が不足しています`,
-            { chatgptCol, claudeCol, geminiCol, answerCols },
-          );
-          expandedTaskList.push(task);
-          continue;
-        }
-
-        // 1つのタスクを3つに展開（元のai-task-executor.jsの動作を再現）
-        const baseRow = task.row || task.cellInfo?.row;
-        const expandedTasks = [
-          {
-            ...task,
-            aiType: "chatgpt",
-            column: chatgptCol,
-            cellInfo: { ...task.cellInfo, column: chatgptCol, row: baseRow },
-            originalAiType: task.aiType,
-            taskGroup: task.id || task.taskId, // グループ化用
-          },
-          {
-            ...task,
-            aiType: "claude",
-            column: claudeCol,
-            cellInfo: { ...task.cellInfo, column: claudeCol, row: baseRow },
-            originalAiType: task.aiType,
-            taskGroup: task.id || task.taskId, // グループ化用
-          },
-          {
-            ...task,
-            aiType: "gemini",
-            column: geminiCol,
-            cellInfo: { ...task.cellInfo, column: geminiCol, row: baseRow },
-            originalAiType: task.aiType,
-            taskGroup: task.id || task.taskId, // グループ化用
-          },
-        ];
-
-        ExecuteLogger.info(
-          `[step4-execute.js] Step 4-6-0-2: 1つのタスクを3つに展開完了`,
-        );
-        expandedTaskList.push(...expandedTasks);
-      } else {
-        // 通常のタスクはそのまま追加
-        expandedTaskList.push(task);
-      }
-    }
+    // 🔧 [SIMPLIFY] 展開処理を削除 - step3で既に分割済み
+    // タスクリストをそのまま使用（展開不要）
+    const expandedTaskList = taskList;
 
     ExecuteLogger.info(
       `[step4-execute.js] Step 4-6-0-3: タスク展開完了 - 元: ${taskList.length}個 → 展開後: ${expandedTaskList.length}個`,
@@ -8570,6 +8564,16 @@ async function executeStep3(taskList) {
                   },
                 },
               );
+
+              // 🔍 [EXECUTE-TASK] 実行直前のタスク検証
+              log.debug("🔍 [EXECUTE-TASK] 実行直前のタスク:", {
+                aiType: task.aiType,
+                ai: task.ai,
+                model: task.model,
+                column: task.column,
+                row: task.row,
+                taskId: task.id || task.taskId,
+              });
 
               result = await executeNormalAITask(task);
 

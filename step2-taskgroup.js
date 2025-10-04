@@ -562,15 +562,30 @@ async function identifyTaskGroups() {
           currentGroup.type === "3種類AI"
         ) {
           const headerLower = trimmedHeader.toLowerCase();
+
+          // 🔍 [COLUMN-DEBUG-1] 列検出の詳細ログ
+          log.debug("🔍 [COLUMN-DEBUG-1] 3種類AI列検出:");
+          log.debug("  - columnLetter:", columnLetter);
+          log.debug("  - trimmedHeader:", trimmedHeader);
+          log.debug("  - headerLower:", headerLower);
+          log.debug("  - 現在のchatgptColumn:", currentGroup.chatgptColumn);
+          log.debug("  - 現在のclaudeColumn:", currentGroup.claudeColumn);
+          log.debug("  - 現在のgeminiColumn:", currentGroup.geminiColumn);
+
           if (headerLower.includes("chatgpt") || headerLower.includes("gpt")) {
             detectedAiType = "ChatGPT";
             currentGroup.chatgptColumn = columnLetter;
+            log.debug("  ✓ ChatGPT列として検出 →", columnLetter);
           } else if (headerLower.includes("claude")) {
             detectedAiType = "Claude";
             currentGroup.claudeColumn = columnLetter;
+            log.debug("  ✓ Claude列として検出 →", columnLetter);
           } else if (headerLower.includes("gemini")) {
             detectedAiType = "Gemini";
             currentGroup.geminiColumn = columnLetter;
+            log.debug("  ✓ Gemini列として検出 →", columnLetter);
+          } else {
+            log.debug("  ✗ どのAIタイプにもマッチせず");
           }
         } else {
           currentGroup.answerColumn = columnLetter;
@@ -588,6 +603,16 @@ async function identifyTaskGroups() {
 
     // 最後のグループを追加
     if (currentGroup && currentGroup.answerColumns.length > 0) {
+      // 🔍 [COLUMN-DEBUG-2] 最終的な列マッピング
+      if (
+        currentGroup.groupType === "3種類AI" ||
+        currentGroup.type === "3種類AI"
+      ) {
+        log.debug("🔍 [COLUMN-DEBUG-2] 最終的な3種類AI列マッピング:");
+        log.debug("  - chatgptColumn:", currentGroup.chatgptColumn);
+        log.debug("  - claudeColumn:", currentGroup.claudeColumn);
+        log.debug("  - geminiColumn:", currentGroup.geminiColumn);
+      }
       taskGroups.push(currentGroup);
     }
 
@@ -663,6 +688,13 @@ async function identifyTaskGroups() {
           claude: group.claudeColumn || "D",
           gemini: group.geminiColumn || "E",
         };
+
+        // 🔍 [COLUMN-DEBUG-3] answerColumnsオブジェクト作成後
+        log.debug("🔍 [COLUMN-DEBUG-3] answerColumnsオブジェクト作成:");
+        log.debug("  - group.chatgptColumn:", group.chatgptColumn);
+        log.debug("  - group.claudeColumn:", group.claudeColumn);
+        log.debug("  - group.geminiColumn:", group.geminiColumn);
+        log.debug("  - answerColumns:", JSON.stringify(answerColumns));
       } else {
         // 通常処理の場合
         const primaryColumn =
