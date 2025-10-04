@@ -5086,17 +5086,25 @@
               featureMenuBtn.click();
               await wait(1000);
 
-              // リサーチボタンを探してクリック
+              // リサーチボタンを探してクリック（時計アイコン）
+              log.debug("\n【Step 4-4-3.5】リサーチボタンをクリック");
               const buttons = document.querySelectorAll(
                 'button[type="button"][aria-pressed]',
               );
               for (const btn of buttons) {
-                const svg = btn.querySelector('svg path[d*="M8.5 2C12.0899"]');
+                // 時計アイコン（リサーチ）を検出
+                const svg = btn.querySelector(
+                  'svg path[d*="M10.3857 2.50977"]',
+                );
                 if (svg) {
                   const isPressed = btn.getAttribute("aria-pressed") === "true";
+                  log.debug(`  リサーチボタン検出: aria-pressed=${isPressed}`);
                   if (!isPressed) {
+                    log.debug("  → リサーチボタンをONにします");
                     btn.click();
                     await wait(1000);
+                  } else {
+                    log.debug("  → すでにONです");
                   }
                   break;
                 }
