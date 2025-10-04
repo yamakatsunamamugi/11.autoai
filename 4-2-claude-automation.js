@@ -3744,15 +3744,14 @@
           }
         }
 
-        // Step 4-7-1-2: 回答停止ボタンが消滅するまで待機（初回）
+        // Step 4-7-2: 2分間の初期待機（ChatGPT式）
         if (stopButtonFound) {
-          log.debug("\n【Step 4-7-2】回答停止ボタンが消滅するまで待機（初回）");
-          let stopButtonGone = false;
+          log.debug("\n【Step 4-7-2】2分間の初期待機チェック");
+          let earlyCompletion = false;
           waitCount = 0;
-          const maxDisappearWait =
-            AI_WAIT_CONFIG.STOP_BUTTON_DISAPPEAR_WAIT / 1000; // 統一設定: 5分
+          const initialWaitTime = 120; // 2分（120秒）
 
-          while (!stopButtonGone && waitCount < maxDisappearWait) {
+          while (waitCount < initialWaitTime) {
             const stopResult = await findClaudeElement(
               deepResearchSelectors["3_回答停止ボタン"],
               3,
@@ -3760,82 +3759,89 @@
             );
 
             if (!stopResult) {
-              stopButtonGone = true;
-              log.debug(`✓ 停止ボタンが消滅しました（${waitCount}秒後）`);
-              // 停止ボタン消滅後の3秒待機
-              // Post-stop wait...
-              await wait(3000);
+              // 停止ボタンが消えた（2分以内に完了）
+              const minutes = Math.floor(waitCount / 60);
+              const seconds = waitCount % 60;
+              log.debug(
+                `✓ 停止ボタンが消えました（${minutes}分${seconds}秒で完了）`,
+              );
+              earlyCompletion = true;
               break;
             }
 
             await wait(1000);
             waitCount++;
 
-            // 10秒ごとにログ出力
-            if (waitCount % 10 === 0) {
+            // 30秒ごとにログ出力
+            if (waitCount % 30 === 0 && waitCount > 0) {
               log.debug(
-                `  初回回答生成中... ${Math.floor(waitCount / 60)}分${waitCount % 60}秒経過`,
+                `  待機中... (${Math.floor(waitCount / 60)}分${waitCount % 60}秒経過)`,
               );
+            }
+          }
+
+          // Step 4-7-3: 2分以内に完了した場合の再送信処理
+          if (earlyCompletion) {
+            log.debug(
+              "\n【Step 4-7-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）",
+            );
+
+            const textInput = await findClaudeElement(
+              claudeSelectors["1_テキスト入力欄"],
+              3,
+              true,
+            );
+
+            if (textInput) {
+              const retryMessage = "いいから元のプロンプトを確認して作業をして";
+
+              // テキスト入力
+              if (
+                textInput.classList.contains("ProseMirror") ||
+                textInput.getAttribute("contenteditable") === "true"
+              ) {
+                textInput.innerHTML = "";
+                const p = document.createElement("p");
+                p.textContent = retryMessage;
+                textInput.appendChild(p);
+                textInput.dispatchEvent(new Event("input", { bubbles: true }));
+              } else {
+                textInput.value = retryMessage;
+                textInput.dispatchEvent(new Event("input", { bubbles: true }));
+              }
+
+              log.debug(`✓ 再送信メッセージ入力完了: "${retryMessage}"`);
+
+              // 送信ボタンをクリック
+              await wait(500);
+              const sendButton = await findClaudeElement(
+                claudeSelectors["2_送信ボタン"],
+                3,
+                true,
+              );
+
+              if (sendButton) {
+                sendButton.click();
+                log.debug("✓ 再送信完了");
+                await wait(2000);
+              } else {
+                log.debug("⚠️ 送信ボタンが見つかりません");
+              }
+            } else {
+              log.debug("⚠️ テキスト入力欄が見つかりません");
             }
           }
         }
 
-        // Step 4-7-1-3: 一時待機（Deep Researchの追加処理のため）
-        // Deep Research additional wait
-        await wait(5000);
-
-        // ログで状態を確認
-        const currentButtons = document.querySelectorAll("button");
-        for (const btn of currentButtons) {
-          const text = btn.textContent?.trim() || "";
-          if (text.includes("停止") || text.includes("Stop")) {
-            log.debug("  停止ボタン検出:", text);
-          }
-        }
-
-        // Step 4-7-1-4: 回答停止ボタンが出現するまで待機
-        // Waiting for stop button
-        stopButtonFound = false;
-        waitCount = 0;
-        const maxWaitCount = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
-
-        while (!stopButtonFound && waitCount < maxWaitCount) {
-          const stopResult = await findClaudeElement(
-            deepResearchSelectors["3_回答停止ボタン"],
-            3,
-            true,
-          );
-
-          if (stopResult) {
-            stopButtonFound = true;
-            log.debug(
-              `✓ 停止ボタンが出現しました（開始から${Math.floor(waitCount / 60)}分${waitCount % 60}秒後）`,
-            );
-            break;
-          }
-
-          await wait(1000);
-          waitCount++;
-
-          // 1分ごとにログ出力
-          if (waitCount % 60 === 0) {
-            log.debug(
-              `  Deep Research処理中... ${Math.floor(waitCount / 60)}分経過`,
-            );
-          }
-        }
-
-        // Step 4-7-1-5: 回答停止ボタンが指定秒間消滅するまで待機
+        // Step 4-7-4: 最終待機（10秒連続消滅で完了、最大40分）
         if (stopButtonFound) {
-          log.debug(
-            `\n【Step 4-7-5】回答停止ボタンが${AI_WAIT_CONFIG.CHECK_INTERVAL / 1000}秒間消滅するまで待機`,
-          );
-          let stopButtonGone = false;
-          let disappearWaitCount = 0;
-          const maxDisappearWait = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 統一設定: 40分
-          let lastLogTime = Date.now();
+          log.debug("\n【Step 4-7-4】最終待機（最大40分）");
+          let consecutiveAbsent = 0;
+          waitCount = 0;
+          const maxWait = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000; // 40分
+          const checkIntervalSeconds = AI_WAIT_CONFIG.CHECK_INTERVAL / 1000; // 10秒
 
-          while (!stopButtonGone && disappearWaitCount < maxDisappearWait) {
+          while (waitCount < maxWait) {
             const stopResult = await findClaudeElement(
               deepResearchSelectors["3_回答停止ボタン"],
               3,
@@ -3843,46 +3849,30 @@
             );
 
             if (!stopResult) {
-              // Stop確認間隔で確認
-              const checkIntervalSeconds = AI_WAIT_CONFIG.CHECK_INTERVAL / 1000;
-              let confirmCount = 0;
-              let stillGone = true;
-
-              while (confirmCount < checkIntervalSeconds) {
-                await wait(1000);
-                const checkResult = await findClaudeElement(
-                  deepResearchSelectors["3_回答停止ボタン"],
-                  2,
-                );
-                if (checkResult) {
-                  stillGone = false;
-                  break;
-                }
-                confirmCount++;
-              }
-
-              if (stillGone) {
-                stopButtonGone = true;
+              consecutiveAbsent++;
+              if (consecutiveAbsent >= checkIntervalSeconds) {
                 log.debug(
-                  `✓ Deep Research完了（総時間: ${Math.floor(disappearWaitCount / 60)}分）`,
+                  `✓ Deep Research完了（停止ボタンが${checkIntervalSeconds}秒間連続で消滅）`,
                 );
-                // 停止ボタン消滅後の3秒待機
-                // Post-stop wait...
                 await wait(3000);
-                break;
+                break; // returnではなくbreakに変更
               }
+            } else {
+              consecutiveAbsent = 0;
             }
 
             await wait(1000);
-            disappearWaitCount++;
+            waitCount++;
 
-            // 1分ごとにログ出力
-            if (Date.now() - lastLogTime >= 60000) {
+            if (waitCount % 60 === 0 && waitCount > 0) {
               log.debug(
-                `  Deep Research生成中... ${Math.floor(disappearWaitCount / 60)}分経過`,
+                `  待機中... (${Math.floor(waitCount / 60)}分経過 / 最大40分)`,
               );
-              lastLogTime = Date.now();
             }
+          }
+
+          if (waitCount >= maxWait) {
+            log.debug("⚠️ Deep Research最大待機時間（40分）に到達");
           }
         }
       } catch (error) {
