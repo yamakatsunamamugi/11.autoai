@@ -2195,9 +2195,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           lastColumns: menuRowData.slice(-5), // 最後の5列を表示
         });
 
+        const answerKeywords = [
+          "回答",
+          "ChatGPT回答",
+          "Claude回答",
+          "Gemini回答",
+        ];
         const answerColumns = [];
         menuRowData.forEach((cell, index) => {
-          if (cell === "回答") {
+          if (answerKeywords.includes(cell)) {
             answerColumns.push(index);
           }
         });
