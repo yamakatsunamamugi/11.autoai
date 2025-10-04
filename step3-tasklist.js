@@ -3074,6 +3074,7 @@ async function generateTaskList(
             },
             ...parseSpreadsheetUrl(options.spreadsheetUrl || ""),
             sheetName: options.sheetName || "", // シート名を追加
+            originalAiType: taskGroup.groupType, // 3種類AI判定用
           };
 
           // 🔍 [MODEL-DEBUG-STEP3] モデル・機能情報取得診断
@@ -3202,6 +3203,7 @@ async function generateTaskList(
           },
           ...parseSpreadsheetUrl(options.spreadsheetUrl || ""),
           sheetName: options.sheetName || "", // シート名を追加
+          originalAiType: taskGroup.groupType, // 3種類AI判定用
         };
 
         // Step 4-5-4: 統一プロンプト生成の動作確認ログ
@@ -6005,12 +6007,32 @@ class TaskStatusManager {
           markerText: markerText,
           task: `${task.column}${task.row}`,
         });
-        return false;
+        return true; // 無効フォーマット→即タイムアウト
       }
 
       const timeString = match[1];
       const startTime = new Date(timeString);
       const now = new Date();
+
+      // 🛡️ 無効な日付を検出
+      if (isNaN(startTime.getTime())) {
+        ExecuteLogger.warn("⚠️ 無効なタイムスタンプを検出", {
+          timeString: timeString,
+          task: `${task.column}${task.row}`,
+        });
+        return true; // 無効な日付→即タイムアウト
+      }
+
+      // 🛡️ 未来日付を検出
+      if (startTime > now) {
+        ExecuteLogger.warn("⚠️ 未来日付のマーカーを検出（古いマーカー）", {
+          マーカー時刻: timeString,
+          現在時刻: now.toISOString(),
+          task: `${task.column}${task.row}`,
+        });
+        return true; // 未来日付→即タイムアウト
+      }
+
       const elapsed = now - startTime.getTime();
 
       // タスクに応じた最大待機時間を取得
@@ -6020,7 +6042,7 @@ class TaskStatusManager {
       const elapsedMinutes = Math.floor(elapsed / 60000);
       const maxMinutes = Math.floor(maxWaitTime / 60000);
 
-      ExecuteLogger.debug("タイムアウト判定", {
+      ExecuteLogger.debug("⏰ タイムアウト判定", {
         タスク: `${task.column}${task.row} (グループ${task.groupNumber})`,
         マーカー時刻: timeString,
         現在時刻: now.toISOString(),
@@ -6044,7 +6066,7 @@ class TaskStatusManager {
         マーカーテキスト: markerText,
         タスク: `${task.column}${task.row}`,
       });
-      return true; // 日時解析失敗時はタイムアウト扱い
+      return true; // エラー時は安全側（タイムアウト扱い）
     }
   }
 
@@ -6121,6 +6143,39 @@ class TaskStatusManager {
         error,
       );
     }
+  }
+
+  /**
+   * グループ内の全作業中マーカーをクリア
+   * @param {Array} tasks - クリア対象のタスクリスト
+   */
+  async clearGroupMarkers(tasks) {
+    ExecuteLogger.info(
+      `🧹 グループマーカークリア開始: ${tasks.length}個のタスクをチェック`,
+    );
+    let clearedCount = 0;
+
+    for (const task of tasks) {
+      try {
+        const cellValue = await this.getCellValue(task);
+        if (cellValue?.startsWith("作業中")) {
+          await this.clearMarker(task);
+          clearedCount++;
+          ExecuteLogger.info(
+            `🧹 古いマーカークリア: ${task.column}${task.row}`,
+          );
+        }
+      } catch (error) {
+        ExecuteLogger.error(
+          `❌ マーカークリアエラー: ${task.column}${task.row}`,
+          error,
+        );
+      }
+    }
+
+    ExecuteLogger.info(
+      `✅ グループマーカークリア完了: ${clearedCount}個をクリア`,
+    );
   }
 
   /**
@@ -6792,6 +6847,7 @@ class DynamicTaskSearch {
               cellRef: `${answerCol.column}${rowNumber}`,
               answerCell: `${answerCol.column}${rowNumber}`,
               logCell: logCellValue,
+              originalAiType: taskGroup.groupType, // 3種類AI判定用
             };
           }
         }
@@ -8186,6 +8242,9 @@ async function executeStep3(taskList) {
       ExecuteLogger.info(
         `🎯 グループ${groupNumber}の処理開始（${currentGroupTasks.length}タスク）`,
       );
+
+      // 🔧 グループ開始前に作業中マーカーをクリア（冪等性を保証）
+      await statusManager.clearGroupMarkers(currentGroupTasks);
 
       // 前のグループの完了を待機（イベントドリブン）
       const prevGroups = sortedGroupNumbers.filter(

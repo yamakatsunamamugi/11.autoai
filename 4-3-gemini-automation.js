@@ -1110,35 +1110,32 @@ const log = {
     const retryManager = new GeminiRetryManager();
     const result = await retryManager.executeWithRetry(
       async () => {
-        // 【Step 4-4-1】まずメインボタンから探す
-        let featureButton = null;
-        const allButtons = findElements(SELECTORS.mainButtons);
-        featureButton = Array.from(allButtons).find(
-          (btn) =>
-            getCleanText(findElement(SELECTORS.featureLabel, btn)) ===
-            featureName,
+        // 【Step 4-4-1】ツールボックスを開く（検出システムと同じロジック）
+        const toolboxButton = findElement(SELECTORS.toolboxButtonParent);
+        if (!toolboxButton) {
+          throw new Error("ツールボックスボタンが見つかりません");
+        }
+
+        log.info(`【Step 4-4-1】ツールボックスをクリック`);
+        toolboxButton.click();
+        await wait(1500);
+
+        // 【Step 4-4-2】全メニューアイテムから該当機能を探す
+        const menuItems = findElements(SELECTORS.featureMenuItems);
+        log.info(`【Step 4-4-2】メニューアイテム数: ${menuItems.length}`);
+
+        const featureButton = Array.from(menuItems).find(
+          (btn) => getCleanText(btn) === featureName,
         );
 
-        // 【Step 4-4-2】見つからなければ「その他」メニューを開く
         if (!featureButton) {
-          const moreButton = findElement(SELECTORS.moreButton);
-          if (!moreButton) {
-            throw new Error("「その他」ボタンが見つかりません");
-          }
-          moreButton.click();
-          await wait(1500);
-
-          const menuButtons = findElements(SELECTORS.featureMenuItems);
-          featureButton = Array.from(menuButtons).find(
-            (btn) =>
-              getCleanText(findElement(SELECTORS.featureLabel, btn)) ===
-              featureName,
-          );
-        }
-
-        if (!featureButton) {
+          // メニューを閉じてからエラーを投げる
+          const overlay = document.querySelector(SELECTORS.overlay);
+          if (overlay) overlay.click();
           throw new Error(`機能「${featureName}」が見つかりません`);
         }
+
+        log.info(`【Step 4-4-2】機能「${featureName}」を発見`);
 
         // 【Step 4-4-3】機能をクリック
         featureButton.click();

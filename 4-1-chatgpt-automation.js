@@ -2368,6 +2368,168 @@ async function reportSelectorError(selectorKey, error, selectors) {
   }
 
   // ==========================================================
+  // Step 4-7-DR: Deep Research/エージェントモード統合処理
+  // ==========================================================
+
+  /**
+   * 🔬 Deep Research/エージェントモード統合処理
+   * @param {string} featureName - 機能名
+   * @returns {Promise<boolean>} 処理成功フラグ
+   */
+  async function handleSpecialModeWaiting(featureName) {
+    try {
+      logWithTimestamp(`【${featureName}モード特別処理】開始`, "step");
+      logWithTimestamp("【ChatGPT-ステップ6-1】最大回答待機時間: 40分", "info");
+
+      // ステップ6-1: 停止ボタン出現待機
+      let stopBtn = await waitForStopButton();
+      if (!stopBtn) return false;
+
+      // ステップ6-2: 2分間初期待機
+      const disappeared = await initialWaitCheck();
+
+      // ステップ6-3: 2分以内に完了した場合の再送信
+      if (disappeared) {
+        await retryWithPrompt();
+      }
+
+      // ステップ6-4: 最終待機（最大40分）
+      await finalWaitForCompletion();
+
+      logWithTimestamp(`${featureName}モード特別処理完了`, "success");
+      return true;
+    } catch (error) {
+      logWithTimestamp(`特別処理エラー: ${error.message}`, "error");
+      return false;
+    }
+  }
+
+  /**
+   * 6-1: 停止ボタン出現待機
+   */
+  async function waitForStopButton() {
+    logWithTimestamp("【ChatGPT-ステップ6-1】停止ボタン出現待機", "step");
+    for (let i = 0; i < 60; i++) {
+      const stopBtn = await findElement(SELECTORS.stopButton, 1);
+      if (stopBtn) {
+        logWithTimestamp(
+          `停止ボタンが表示されました (${i + 1}秒後)`,
+          "success",
+        );
+        return stopBtn;
+      }
+      if (i % 10 === 0 && i > 0) {
+        logWithTimestamp(`停止ボタン待機中... ${i}秒経過`, "info");
+      }
+      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+    }
+    logWithTimestamp(
+      "【ChatGPT-ステップ6-1】停止ボタンが表示されませんでした",
+      "warning",
+    );
+    return null;
+  }
+
+  /**
+   * 6-2: 2分間初期待機
+   */
+  async function initialWaitCheck() {
+    logWithTimestamp("【ChatGPT-ステップ6-2】2分間初期待機チェック", "step");
+    for (let i = 0; i < 120; i++) {
+      const stopBtn = await findElement(SELECTORS.stopButton, 1);
+      if (!stopBtn) {
+        const minutes = Math.floor(i / 60);
+        const seconds = i % 60;
+        logWithTimestamp(
+          `停止ボタンが消えました (${minutes}分${seconds}秒で完了)`,
+          "info",
+        );
+        return true;
+      }
+      if (i % 30 === 0 && i > 0) {
+        logWithTimestamp(
+          `待機中... (${Math.floor(i / 60)}分${i % 60}秒経過)`,
+          "info",
+        );
+      }
+      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+    }
+    return false;
+  }
+
+  /**
+   * 6-3: 再送信処理
+   */
+  async function retryWithPrompt() {
+    logWithTimestamp(
+      "【ChatGPT-ステップ6-3】再送信処理（「いいから元のプロンプトを確認して作業をして」）",
+      "step",
+    );
+    const input = await findElement(SELECTORS.textInput);
+    if (!input) return;
+
+    const retryMessage = "いいから元のプロンプトを確認して作業をして";
+
+    // テキスト入力
+    if (
+      input.classList.contains("ProseMirror") ||
+      input.classList.contains("ql-editor")
+    ) {
+      input.innerHTML = "";
+      const p = document.createElement("p");
+      p.textContent = retryMessage;
+      input.appendChild(p);
+      input.classList.remove("ql-blank");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    } else {
+      input.textContent = retryMessage;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    // 送信
+    const sendBtn = await findElement(SELECTORS.sendButton);
+    if (sendBtn) {
+      sendBtn.click();
+      logWithTimestamp("【ChatGPT-ステップ6-2】再送信完了", "success");
+      await sleep(AI_WAIT_CONFIG.LONG_WAIT);
+    }
+  }
+
+  /**
+   * 6-4: 最終待機処理
+   */
+  async function finalWaitForCompletion() {
+    logWithTimestamp("【ChatGPT-ステップ6-4】最終待機（最大40分）", "step");
+    const maxWaitTime = AI_WAIT_CONFIG.DEEP_RESEARCH_WAIT / 1000;
+    let consecutiveAbsent = 0;
+
+    for (let i = 0; i < maxWaitTime; i++) {
+      const stopBtn = await findElement(SELECTORS.stopButton, 1);
+
+      if (!stopBtn) {
+        consecutiveAbsent++;
+        if (consecutiveAbsent >= 10) {
+          logWithTimestamp(
+            "【ChatGPT-ステップ6-3】停止ボタンが10秒間連続で消滅。完了！",
+            "success",
+          );
+          break;
+        }
+      } else {
+        consecutiveAbsent = 0;
+      }
+
+      if (i % 60 === 0 && i > 0) {
+        logWithTimestamp(
+          `待機中... (${Math.floor(i / 60)}分経過 / 最大40分)`,
+          "info",
+        );
+      }
+      await sleep(AI_WAIT_CONFIG.SHORT_WAIT);
+    }
+  }
+
+  // ==========================================================
   // Step 4-7: 応答待機
   // ==========================================================
 
