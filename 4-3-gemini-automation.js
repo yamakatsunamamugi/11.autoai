@@ -1814,7 +1814,7 @@ const log = {
               cellInfo: taskData.cellInfo,
             },
             logCell: fullLogCell, // シート名付きログセル
-            originalAiType: taskData.aiType, // 3種類AI判定用
+            originalAiType: taskData.originalAiType || taskData.aiType, // 3種類AI判定用（展開後のoriginalAiTypeを優先）
           };
 
           // Promise化してタイムアウト処理を追加

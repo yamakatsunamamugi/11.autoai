@@ -4035,7 +4035,7 @@
               cellInfo: taskData.cellInfo,
             },
             logCell: fullLogCell,
-            originalAiType: taskData.aiType, // 3種類AI判定用
+            originalAiType: taskData.originalAiType || taskData.aiType, // 3種類AI判定用（展開後のoriginalAiTypeを優先）
           };
 
           // Promise化してタイムアウト処理を追加
