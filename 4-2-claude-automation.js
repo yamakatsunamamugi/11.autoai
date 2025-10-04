@@ -3453,10 +3453,10 @@
 
       log.debug(`  - 思考プロセス除外: ${thinkingCount}個`);
 
-      // 4. standard-markdownを取得（Canvas/通常応答の両方に対応）
-      const standardMd = clone.querySelector(".standard-markdown");
+      // 4. standard-markdownを取得（複数ある場合は最後のものを選択）
+      const standardMds = clone.querySelectorAll(".standard-markdown");
 
-      if (!standardMd) {
+      if (standardMds.length === 0) {
         log.debug(
           "⚠️ standard-markdownが見つかりません - 直接textContentを取得",
         );
@@ -3478,6 +3478,12 @@
           method: "Direct TextContent",
         };
       }
+
+      // 最後のstandard-markdownを使用（複数ある場合、最終応答が最後にある）
+      const standardMd = standardMds[standardMds.length - 1];
+      log.debug(
+        `  - standard-markdown選択: ${standardMds.length}個中の最後のもの`,
+      );
 
       // 5. テキスト取得
       const text = standardMd.textContent?.trim() || "";
