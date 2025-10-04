@@ -1328,16 +1328,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             : [],
         });
 
+        // 🔍 3種類AI判定: キーにAIタイプを含めるかどうか
+        const is3TypeAI = taskLogData.aiType?.includes("3種類");
+        const currentAiType =
+          request.taskInfo?.aiType?.toLowerCase() || "unknown";
+
+        // キー生成: 3種類AIの場合はAIタイプを含める（上書き防止）
+        const storageKey = is3TypeAI
+          ? `taskLog_${request.taskId}_${currentAiType}`
+          : `taskLog_${request.taskId}`;
+
+        console.log("🔍 [STORAGE-KEY] 保存キー:", {
+          is3TypeAI,
+          currentAiType,
+          storageKey,
+          originalAiType: taskLogData.aiType,
+        });
+
         // Promise版Chrome Storageを使用（非同期処理の確実性向上）
         await chrome.storage.local.set({
-          [`taskLog_${request.taskId}`]: taskLogData,
+          [storageKey]: taskLogData,
         });
 
         // 🔍 保存後の確認読み取り
-        const verifyResult = await chrome.storage.local.get([
-          `taskLog_${request.taskId}`,
-        ]);
-        const savedData = verifyResult[`taskLog_${request.taskId}`];
+        const verifyResult = await chrome.storage.local.get([storageKey]);
+        const savedData = verifyResult[storageKey];
         console.log("🔍 [DEBUG-STORAGE] 保存後の確認読み取り:", {
           dataExists: !!savedData,
           hasTaskInfo: !!savedData?.taskInfo,
@@ -1382,13 +1397,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Chrome storageから送信時の情報を事前取得して判定
     (async () => {
       try {
-        const taskLogKey = `taskLog_${request.taskId}`;
-        const result = await chrome.storage.local.get([taskLogKey]);
-        const taskLogData = result[taskLogKey];
+        // 🔍 キー生成: recordSendTime と同じロジック
+        const currentAiType =
+          request.taskInfo?.aiType?.toLowerCase() || "unknown";
+
+        // まず3種類AI用のキーで検索を試みる
+        const key3TypeAI = `taskLog_${request.taskId}_${currentAiType}`;
+        const keySingleAI = `taskLog_${request.taskId}`;
+
+        const result3Type = await chrome.storage.local.get([key3TypeAI]);
+        const resultSingle = await chrome.storage.local.get([keySingleAI]);
+
+        const taskLogData =
+          result3Type[key3TypeAI] || resultSingle[keySingleAI];
+        const taskLogKey = result3Type[key3TypeAI] ? key3TypeAI : keySingleAI;
 
         // デバッグログ：判定に使うデータを確認
         console.log("🔍 [3TypeAI-Check] recordCompletionTime判定:", {
           taskId: request.taskId,
+          currentAiType,
+          key3TypeAI,
+          keySingleAI,
+          found3TypeKey: !!result3Type[key3TypeAI],
+          foundSingleKey: !!resultSingle[keySingleAI],
+          usedKey: taskLogKey,
           hasTaskLogData: !!taskLogData,
           savedAiType: taskLogData?.aiType,
           requestAiType: request.taskInfo?.aiType,
@@ -2154,15 +2186,24 @@ async function handle3TypeAICompletion(request, sendResponse) {
       return;
     }
 
-    // Chrome storageから送信時の情報を取得
-    const taskLogKey = `taskLog_${request.taskId}`;
+    // Chrome storageから送信時の情報を取得（3種類AI用のキー）
+    const taskLogKey = `taskLog_${request.taskId}_${aiType}`;
     const result = await chrome.storage.local.get([taskLogKey]);
     const taskLogData = result[taskLogKey];
+
+    console.log("🔍 [3TypeAI-Storage] Chrome Storage取得:", {
+      taskId: request.taskId,
+      aiType,
+      taskLogKey,
+      found: !!taskLogData,
+    });
 
     if (!taskLogData) {
       console.warn(
         "⚠️ [3TypeAI] 送信時刻データが見つかりません:",
         request.taskId,
+        aiType,
+        taskLogKey,
       );
       sendResponse({ success: false, error: "taskLog not found" });
       return;
