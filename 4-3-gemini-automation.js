@@ -1751,9 +1751,10 @@ const log = {
       await inputTextGemini(promptText);
 
       // 【Step 4-3】モデル選択（必要な場合、RetryManager内蔵）
+      let modelResult = null;
       if (modelName && modelName !== "設定なし") {
         log.info("【Step 4-3】モデル選択:", modelName);
-        const modelResult = await selectModel(modelName);
+        modelResult = await selectModel(modelName);
         if (!modelResult.success && !modelResult.skipped) {
           throw new Error(
             `モデル選択失敗: ${modelResult.error?.message || modelResult.error}`,
@@ -1762,9 +1763,10 @@ const log = {
       }
 
       // 【Step 4-4】機能選択（必要な場合、RetryManager内蔵）
+      let featureResult = null;
       if (featureName && featureName !== "設定なし") {
         log.info("【Step 4-4】機能選択:", featureName);
-        const featureResult = await selectFeature(featureName);
+        featureResult = await selectFeature(featureName);
         if (!featureResult.success && !featureResult.skipped) {
           throw new Error(
             `機能選択失敗: ${featureResult.error?.message || featureResult.error}`,
@@ -1779,9 +1781,11 @@ const log = {
       log.info("【Step 4-5】メッセージ送信");
       await sendMessageGemini();
 
-      // モデルと機能を取得
-      const modelName_current = modelName || "不明";
-      const featureName_var = featureName || "通常";
+      // モデルと機能を取得（実際に選択されたモデル/機能を優先）
+      const modelName_current =
+        modelResult?.result?.selected || modelName || "不明";
+      const featureName_var =
+        featureResult?.result?.selected || featureName || "通常";
 
       // background.jsに送信時刻を記録
       if (chrome.runtime && chrome.runtime.sendMessage) {

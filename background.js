@@ -675,6 +675,36 @@ function formatLogEntry(request) {
 }
 
 /**
+ * ログテキストをスプレッドシートに書き込む（URLリッチテキスト対応）
+ */
+async function writeLogToSpreadsheet(spreadsheetId, range, logText, urlValue) {
+  if (urlValue && typeof urlValue === "string" && urlValue.trim() !== "") {
+    try {
+      await sheetsClient.updateRichTextValue(
+        spreadsheetId,
+        range,
+        logText,
+        urlValue,
+      );
+      console.log(
+        `📊 ログ記録完了（リッチテキスト付き）: ${range} → ${logText}`,
+      );
+    } catch (richTextError) {
+      console.warn(
+        "⚠️ リッチテキスト設定失敗、通常テキストで記録:",
+        richTextError,
+      );
+      await sheetsClient.updateValue(spreadsheetId, range, logText);
+      console.log(`📊 ログ記録完了: ${range} → ${logText}`);
+    }
+  } else {
+    // URLがない場合は通常のテキストとして記録
+    await sheetsClient.updateValue(spreadsheetId, range, logText);
+    console.log(`📊 ログ記録完了: ${range} → ${logText}`);
+  }
+}
+
+/**
  * スプレッドシートにログを記録
  */
 async function recordLogToSpreadsheet(request) {
@@ -737,33 +767,10 @@ async function recordLogToSpreadsheet(request) {
 
     // 指定されたログセルにログを記録
     const range = logCell;
-
-    // URLがある場合はリッチテキストで記録
     const urlValue = request.taskInfo?.url;
-    if (urlValue && typeof urlValue === "string" && urlValue.trim() !== "") {
-      try {
-        await sheetsClient.updateRichTextValue(
-          result.spreadsheetId,
-          range,
-          logText,
-          urlValue,
-        );
-        console.log(
-          `📊 ログ記録完了（リッチテキスト付き）: ${range} → ${logText}`,
-        );
-      } catch (richTextError) {
-        console.warn(
-          "⚠️ リッチテキスト設定失敗、通常テキストで記録:",
-          richTextError,
-        );
-        await sheetsClient.updateValue(result.spreadsheetId, range, logText);
-        console.log(`📊 ログ記録完了: ${range} → ${logText}`);
-      }
-    } else {
-      // URLがない場合は通常のテキストとして記録
-      await sheetsClient.updateValue(result.spreadsheetId, range, logText);
-      console.log(`📊 ログ記録完了: ${range} → ${logText}`);
-    }
+
+    // 共通関数を使ってスプレッドシートに書き込み
+    await writeLogToSpreadsheet(result.spreadsheetId, range, logText, urlValue);
   } catch (error) {
     console.error("❌ スプレッドシートログ記録エラー:", error);
     throw error;
@@ -2307,11 +2314,20 @@ async function write3TypeAILog(logCell, chatgptData, claudeData, geminiData) {
       throw new Error("スプレッドシートIDが設定されていません");
     }
 
-    // 既存のupdateValue関数を使ってスプレッドシートに書き込み
-    const range = logCell;
-    await sheetsClient.updateValue(result.spreadsheetId, range, combinedLog);
+    // URLがある場合はいずれかのAIデータから取得
+    const urlValue =
+      chatgptData.taskInfo?.url ||
+      claudeData.taskInfo?.url ||
+      geminiData.taskInfo?.url;
 
-    console.log(`✅ [3TypeAI] ログ記録完了: ${range}`);
+    // 共通関数を使ってスプレッドシートに書き込み
+    const range = logCell;
+    await writeLogToSpreadsheet(
+      result.spreadsheetId,
+      range,
+      combinedLog,
+      urlValue,
+    );
   } catch (error) {
     console.error("❌ [3TypeAI] ログ記録エラー:", error);
     throw error;

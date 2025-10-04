@@ -2151,10 +2151,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
           '[role="menuitem"][data-testid^="model-switcher-"]',
         );
         for (const item of mainMenuItems) {
-          if (getCleanText(item).includes(modelName)) {
+          const itemText = getCleanText(item);
+          if (itemText.includes(modelName)) {
             item.click();
             await sleep(1000);
-            return { success: true };
+            return { success: true, selected: itemText };
           }
         }
 
@@ -2181,10 +2182,11 @@ async function reportSelectorError(selectorKey, error, selectors) {
             const legacyItems =
               legacyMenu.querySelectorAll('[role="menuitem"]');
             for (const item of legacyItems) {
-              if (getCleanText(item).includes(modelName)) {
+              const itemText = getCleanText(item);
+              if (itemText.includes(modelName)) {
                 item.click();
                 await sleep(1000);
-                return { success: true };
+                return { success: true, selected: itemText };
               }
             }
           }
@@ -2200,7 +2202,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
       throw new Error(result.error?.message || "【Step 4-3】モデル選択失敗");
     }
 
-    return true;
+    return result;
   }
 
   // ==========================================================
@@ -2803,12 +2805,13 @@ async function reportSelectorError(selectorKey, error, selectors) {
         // ========================================
         // ステップ3: モデル選択（RetryManager統合版）
         // ========================================
+        let modelResult = null;
         if (modelName && modelName !== "" && modelName !== "設定なし") {
           console.log("🤖 [Step 4-3] モデル選択処理開始");
           logWithTimestamp("\n【Step 4-3】モデル選択", "step");
           logWithTimestamp("【Step 4-3】選択するモデル: ${modelName}", "info");
 
-          await selectModelChatGPT(modelName);
+          modelResult = await selectModelChatGPT(modelName);
           logWithTimestamp(
             "【Step 4-3】✅ モデル選択完了: ${modelName}",
             "success",
@@ -2862,8 +2865,12 @@ async function reportSelectorError(selectorKey, error, selectors) {
         const sendTime = new Date();
         const taskId = taskData.taskId || taskData.id || "UNKNOWN_TASK_ID";
 
-        // モデルと機能を取得
-        const modelName_current = (await getCurrentModelChatGPT()) || "不明";
+        // モデルと機能を取得（実際に選択されたモデル/機能を優先）
+        const modelName_current =
+          modelResult?.result?.selected ||
+          (await getCurrentModelChatGPT()) ||
+          modelName ||
+          "不明";
         const featureName_current =
           (await getCurrentFunctionChatGPT()) || "通常";
 

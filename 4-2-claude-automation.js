@@ -4617,6 +4617,7 @@
         // ========================================
         // 🤖 Step 4-3: モデル選択
         // ========================================
+        let selectedModelText = null; // 実際に選択されたモデルテキストを保存
         const cellInfo =
           taskData.cellReference ||
           taskData.cellInfo ||
@@ -4805,6 +4806,7 @@
                   log.debug(
                     `[MODEL-MATCH-SUCCESS] モデル選択: "${extractedModelName}"`,
                   );
+                  selectedModelText = extractedModelName; // 選択したモデルテキストを保存
                   foundInMain = true;
                   await triggerReactEvent(item, "click");
                   await wait(1500);
@@ -5289,7 +5291,7 @@
           taskId,
           sendTime,
           taskData,
-          modelName,
+          selectedModelText || modelName,
           featureName,
         );
 
