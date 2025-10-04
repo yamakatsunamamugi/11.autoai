@@ -2904,8 +2904,10 @@ async function reportSelectorError(selectorKey, error, selectors) {
             sendTime: sendTime.toISOString(),
             taskInfo: {
               aiType: "ChatGPT",
-              model: modelName_current,
-              function: featureName_current,
+              model: modelName, // スプレッドシートからの指定（元の値）
+              displayedModel: modelName_current, // UIから検出した値
+              function: featureName, // スプレッドシートからの指定
+              displayedFunction: featureName_current, // UIから検出した値
               url: window.location.href,
               cellInfo: taskData.cellInfo,
             },

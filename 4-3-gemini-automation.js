@@ -1845,8 +1845,10 @@ const log = {
             sendTime: sendTime.toISOString(),
             taskInfo: {
               aiType: "Gemini",
-              model: modelName_current,
-              function: featureName_var,
+              model: modelName, // スプレッドシートからの指定（元の値）
+              displayedModel: modelName_current, // UIから検出した値
+              function: featureName, // スプレッドシートからの指定
+              displayedFunction: featureName_var, // UIから検出した値
               // URLは応答完了時に取得するため、ここでは記録しない（Claudeと同じ）
               cellInfo: taskData.cellInfo,
             },
