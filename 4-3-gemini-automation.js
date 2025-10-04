@@ -609,6 +609,7 @@ const log = {
     deepResearchButton: 'button[data-test-id="confirm-button"]',
 
     // レスポンス
+    deepResearchResponse: "#extended-response-markdown-content", // Deep Research応答
     canvasResponse: "immersive-editor .ProseMirror", // Canvas応答は immersive-editor 内
     normalResponse: ".model-response-text .markdown",
     responseAlt: [
@@ -1516,28 +1517,30 @@ const log = {
   // ========================================
   async function getResponseTextGemini() {
     log.debug("【Step 4-8】テキスト取得開始");
-    // Canvas
+
+    // 1. Deep Research（最優先）
+    const deepResearch = document.querySelector(SELECTORS.deepResearchResponse);
+    if (deepResearch && deepResearch.textContent.trim()) {
+      log.debug("【Step 4-8】Deep Research応答を取得");
+      return deepResearch.textContent.trim();
+    }
+
+    // 2. Canvas
     const canvasEditor = document.querySelector(SELECTORS.canvasResponse);
     if (canvasEditor && canvasEditor.textContent.trim()) {
+      log.debug("【Step 4-8】Canvas応答を取得");
       return canvasEditor.textContent.trim();
     }
 
-    // 通常応答
+    // 3. 通常応答
     const responseElements = document.querySelectorAll(
       SELECTORS.normalResponse,
     );
     if (responseElements.length > 0) {
       const latestResponse = responseElements[responseElements.length - 1];
       if (latestResponse) {
+        log.debug("【Step 4-8】通常応答を取得");
         return latestResponse.textContent.trim();
-      }
-    }
-
-    // フォールバック
-    for (const selector of SELECTORS.responseAlt) {
-      const element = document.querySelector(selector);
-      if (element) {
-        return element.textContent.trim();
       }
     }
 
