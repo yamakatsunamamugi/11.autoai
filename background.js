@@ -328,6 +328,150 @@ class SimpleSheetsClient {
   }
 
   /**
+   * 複数のURLにリッチテキストリンクを設定
+   * @param {string} spreadsheetId - スプレッドシートID
+   * @param {string} range - セル範囲（例: 'C11'）
+   * @param {string} text - 全体のテキスト
+   * @param {Array<{url: string, startIndex: number, endIndex: number}>} links - リンク情報の配列
+   */
+  async updateMultipleRichTextLinks(spreadsheetId, range, text, links) {
+    return await this.executeWithRetry(async (token) => {
+      const batchUpdateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+
+      // セル位置を解析
+      const match = range.match(/^'?([^'!]+)'?!([A-Z]+)(\d+)$/);
+      if (!match) {
+        throw new Error(`Invalid range format: ${range}`);
+      }
+
+      const sheetName = match[1];
+      const columnLetter = match[2];
+      const rowNumber = parseInt(match[3], 10);
+
+      // 列番号を計算 (A=0, B=1, ...)
+      let col = 0;
+      for (let i = 0; i < columnLetter.length; i++) {
+        col = col * 26 + (columnLetter.charCodeAt(i) - 65 + 1);
+      }
+      col -= 1;
+
+      // 行番号を0ベースに変換
+      const row = rowNumber - 1;
+
+      // シートIDを取得
+      let sheetId = null;
+      const metadataUrl = `${this.baseUrl}/${spreadsheetId}`;
+      const metadataResponse = await fetch(metadataUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!metadataResponse.ok) {
+        throw new Error(`メタデータ取得失敗: HTTP ${metadataResponse.status}`);
+      }
+
+      const metadata = await metadataResponse.json();
+      const sheet = metadata.sheets?.find(
+        (s) => s.properties.title === sheetName,
+      );
+      if (sheet) {
+        sheetId = sheet.properties.sheetId;
+      } else {
+        throw new Error(`シート名 "${sheetName}" が見つかりません`);
+      }
+
+      // textFormatRunsを構築
+      const textFormatRuns = [];
+
+      // リンク情報をソート（startIndexの昇順）
+      const sortedLinks = [...links].sort(
+        (a, b) => a.startIndex - b.startIndex,
+      );
+
+      let currentIndex = 0;
+      for (const link of sortedLinks) {
+        // リンク前の通常テキスト
+        if (link.startIndex > currentIndex) {
+          textFormatRuns.push({
+            startIndex: currentIndex,
+            format: {},
+          });
+        }
+
+        // リンク部分
+        textFormatRuns.push({
+          startIndex: link.startIndex,
+          format: {
+            link: { uri: link.url },
+            foregroundColor: { blue: 1.0 },
+            underline: true,
+          },
+        });
+
+        currentIndex = link.endIndex;
+      }
+
+      // 最後のリンク後の通常テキスト
+      if (currentIndex < text.length) {
+        textFormatRuns.push({
+          startIndex: currentIndex,
+          format: {},
+        });
+      }
+
+      const requests = [
+        {
+          updateCells: {
+            rows: [
+              {
+                values: [
+                  {
+                    userEnteredValue: { stringValue: text },
+                    textFormatRuns: textFormatRuns,
+                  },
+                ],
+              },
+            ],
+            fields: "userEnteredValue,textFormatRuns",
+            range: {
+              sheetId: sheetId,
+              startRowIndex: row,
+              endRowIndex: row + 1,
+              startColumnIndex: col,
+              endColumnIndex: col + 1,
+            },
+          },
+        },
+      ];
+
+      console.log("📝 複数リッチテキスト設定リクエスト:", {
+        spreadsheetId,
+        range,
+        linksCount: links.length,
+        links,
+      });
+
+      const response = await fetch(batchUpdateUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ requests }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `複数リッチテキスト設定失敗: HTTP ${response.status}, ${errorText}`,
+        );
+      }
+
+      console.log("✅ 複数リッチテキスト設定成功");
+      return await response.json();
+    }, `updateMultipleRichTextLinks(${range})`);
+  }
+
+  /**
    * スプレッドシートから全データを取得
    */
   async getAllValues(spreadsheetId) {
@@ -2329,20 +2473,89 @@ async function write3TypeAILog(logCell, chatgptData, claudeData, geminiData) {
       throw new Error("スプレッドシートIDが設定されていません");
     }
 
-    // URLがある場合はいずれかのAIデータから取得
-    const urlValue =
-      chatgptData.taskInfo?.url ||
-      claudeData.taskInfo?.url ||
-      geminiData.taskInfo?.url;
+    // 3つのURLをすべて取得
+    const urls = [
+      chatgptData.taskInfo?.url,
+      claudeData.taskInfo?.url,
+      geminiData.taskInfo?.url,
+    ].filter((url) => url && typeof url === "string" && url.trim() !== "");
 
-    // 共通関数を使ってスプレッドシートに書き込み
+    console.log("🔗 [3TypeAI] URL検出:", {
+      urlsCount: urls.length,
+      urls,
+    });
+
     const range = logCell;
-    await writeLogToSpreadsheet(
-      result.spreadsheetId,
-      range,
-      combinedLog,
-      urlValue,
-    );
+
+    // URLがある場合は複数リッチテキストリンクを設定
+    if (urls.length > 0) {
+      // 各URLのテキスト内位置を検索
+      const links = [];
+
+      for (const url of urls) {
+        // "URL: " という接頭辞の後にURLがあると仮定
+        const urlPattern = `URL: ${url}`;
+        const startIndex = combinedLog.indexOf(urlPattern);
+
+        if (startIndex !== -1) {
+          // "URL: " の長さ（5文字）を加えて、URL本体の開始位置を計算
+          const urlStartIndex = startIndex + 5;
+          const urlEndIndex = urlStartIndex + url.length;
+
+          links.push({
+            url: url,
+            startIndex: urlStartIndex,
+            endIndex: urlEndIndex,
+          });
+
+          console.log("🔗 [3TypeAI] リンク位置検出:", {
+            url,
+            startIndex: urlStartIndex,
+            endIndex: urlEndIndex,
+          });
+        } else {
+          console.warn("⚠️ [3TypeAI] URL位置が見つかりません:", url);
+        }
+      }
+
+      if (links.length > 0) {
+        // 複数リッチテキストリンクを設定
+        try {
+          await sheetsClient.updateMultipleRichTextLinks(
+            result.spreadsheetId,
+            range,
+            combinedLog,
+            links,
+          );
+          console.log(
+            `📊 [3TypeAI] ログ記録完了（複数リッチテキスト付き）: ${range}`,
+          );
+        } catch (richTextError) {
+          console.warn(
+            "⚠️ [3TypeAI] リッチテキスト設定失敗、通常テキストで記録:",
+            richTextError,
+          );
+          await sheetsClient.updateValue(
+            result.spreadsheetId,
+            range,
+            combinedLog,
+          );
+          console.log(`📊 [3TypeAI] ログ記録完了（通常テキスト）: ${range}`);
+        }
+      } else {
+        // リンク位置が見つからない場合は通常テキスト
+        await sheetsClient.updateValue(
+          result.spreadsheetId,
+          range,
+          combinedLog,
+        );
+        console.log(`📊 [3TypeAI] ログ記録完了（通常テキスト）: ${range}`);
+      }
+    } else {
+      // URLがない場合は通常テキスト
+      await sheetsClient.updateValue(result.spreadsheetId, range, combinedLog);
+      console.log(`📊 [3TypeAI] ログ記録完了（通常テキスト）: ${range}`);
+    }
   } catch (error) {
     console.error("❌ [3TypeAI] ログ記録エラー:", error);
     throw error;
