@@ -9196,6 +9196,7 @@ async function executeStep3(taskList) {
             spreadsheetId: task.spreadsheetId,
             gid: task.gid,
             cellInfo: task.cellInfo, // 🔧 [CELLINFO-FIX] セル位置情報を追加（ChatGPT/Claude/Gemini統一）
+            originalAiType: task.originalAiType, // 🔧 [3TypeAI-FIX] 3種類AI判定用（元のaiTypeを保持）
           };
 
           const messagePayload = {
