@@ -3795,37 +3795,29 @@
             if (textInput) {
               const retryMessage = "いいから元のプロンプトを確認して作業をして";
 
-              // テキスト入力
-              if (
-                textInput.classList.contains("ProseMirror") ||
-                textInput.getAttribute("contenteditable") === "true"
-              ) {
-                textInput.innerHTML = "";
-                const p = document.createElement("p");
-                p.textContent = retryMessage;
-                textInput.appendChild(p);
-                textInput.dispatchEvent(new Event("input", { bubbles: true }));
+              // 既存のinputText関数を使用（React対応）
+              const inputSuccess = await inputText(textInput, retryMessage);
+
+              if (inputSuccess) {
+                log.debug(`✓ 再送信メッセージ入力完了: "${retryMessage}"`);
+
+                // 送信ボタンをクリック
+                await wait(500);
+                const sendButton = await findClaudeElement(
+                  claudeSelectors["2_送信ボタン"],
+                  3,
+                  true,
+                );
+
+                if (sendButton) {
+                  sendButton.click();
+                  log.debug("✓ 再送信完了");
+                  await wait(2000);
+                } else {
+                  log.debug("⚠️ 送信ボタンが見つかりません");
+                }
               } else {
-                textInput.value = retryMessage;
-                textInput.dispatchEvent(new Event("input", { bubbles: true }));
-              }
-
-              log.debug(`✓ 再送信メッセージ入力完了: "${retryMessage}"`);
-
-              // 送信ボタンをクリック
-              await wait(500);
-              const sendButton = await findClaudeElement(
-                claudeSelectors["2_送信ボタン"],
-                3,
-                true,
-              );
-
-              if (sendButton) {
-                sendButton.click();
-                log.debug("✓ 再送信完了");
-                await wait(2000);
-              } else {
-                log.debug("⚠️ 送信ボタンが見つかりません");
+                log.debug("⚠️ テキスト入力に失敗しました");
               }
             } else {
               log.debug("⚠️ テキスト入力欄が見つかりません");

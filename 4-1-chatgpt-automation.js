@@ -3233,12 +3233,17 @@ async function reportSelectorError(selectorKey, error, selectors) {
         logWithTimestamp("\n【Step 4-7】応答待機", "step");
 
         // Deep Research/エージェントモードの判定
-        const finalFeatureName = featureName_current || featureName;
+        // taskData.functionを優先（UI検出よりも確実）
+        const finalFeatureName = featureName || featureName_current;
         const isSpecialMode =
           finalFeatureName &&
           (finalFeatureName === "Deep Research" ||
             finalFeatureName.includes("エージェント") ||
             finalFeatureName.includes("Research"));
+
+        log.debug(
+          `🔍 [Step 4-7] 機能判定: ${finalFeatureName} (isSpecialMode: ${isSpecialMode})`,
+        );
 
         if (isSpecialMode) {
           logWithTimestamp(
