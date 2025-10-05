@@ -2635,7 +2635,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
   async function initialWaitCheck() {
     logWithTimestamp("【ChatGPT-ステップ6-2】2分間初期待機チェック", "step");
     for (let i = 0; i < 120; i++) {
-      const stopBtn = await findElement(SELECTORS.stopButton, 1);
+      const stopBtn = await findElement(SELECTORS.stopButton, "", 1);
       if (!stopBtn) {
         const minutes = Math.floor(i / 60);
         const seconds = i % 60;
@@ -2708,7 +2708,7 @@ async function reportSelectorError(selectorKey, error, selectors) {
     let lastChangeTime = Date.now();
 
     for (let i = 0; i < maxWaitTime; i++) {
-      const stopBtn = await findElement(SELECTORS.stopButton, 1);
+      const stopBtn = await findElement(SELECTORS.stopButton, "", 1);
 
       // テキスト生成の監視
       try {
